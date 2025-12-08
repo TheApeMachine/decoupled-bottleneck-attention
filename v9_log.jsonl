@@ -1,0 +1,282 @@
+{"epoch": 1, "train_loss": 3.8889113998413087, "val_loss": 3.070622682571411, "loss_trend": 0, "rank_min": 64, "rank_avg": 64.0, "rank_max": 64, "elapsed_sec": 0.5170772075653076}
+{"epoch": 2, "train_loss": 2.815290679931641, "val_loss": 2.6871860027313232, "loss_trend": 0, "rank_min": 64, "rank_avg": 64.0, "rank_max": 64, "elapsed_sec": 0.32386088371276855}
+{"epoch": 3, "train_loss": 2.600131435394287, "val_loss": 2.541750907897949, "loss_trend": 0, "rank_min": 64, "rank_avg": 64.0, "rank_max": 64, "elapsed_sec": 0.3234219551086426}
+{"epoch": 4, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 50, "energy_captured": 0.9801950454711914, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 51, "energy_captured": 0.9818714261054993, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 50, "energy_captured": 0.9804156422615051, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 51, "energy_captured": 0.9813454747200012, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 64, "new_rank": 64, "spectral_target": 54, "energy_captured": 0.9806364178657532, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 64, "new_rank": 64, "spectral_target": 55, "energy_captured": 0.9828256964683533, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 50, "energy_captured": 0.9802175760269165, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 50, "energy_captured": 0.9812068939208984, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 51, "energy_captured": 0.9818999767303467, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 51, "energy_captured": 0.9810513854026794, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 64, "new_rank": 64, "spectral_target": 54, "energy_captured": 0.9802166819572449, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 64, "new_rank": 64, "spectral_target": 54, "energy_captured": 0.9804255962371826, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 50, "energy_captured": 0.9813825488090515, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 50, "energy_captured": 0.9812380075454712, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 51, "energy_captured": 0.9816076159477234, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 51, "energy_captured": 0.9813646674156189, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 64, "new_rank": 64, "spectral_target": 55, "energy_captured": 0.9820705652236938, "loss_trend": 0}
+{"epoch": 4, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 64, "new_rank": 64, "spectral_target": 55, "energy_captured": 0.9807288646697998, "loss_trend": 0}
+{"epoch": 4, "train_loss": 2.5150392484664916, "val_loss": 2.5187230110168457, "loss_trend": 0, "rank_min": 63, "rank_avg": 63.333333333333336, "rank_max": 64, "elapsed_sec": 0.36912012100219727}
+{"epoch": 5, "train_loss": 2.4669385957717895, "val_loss": 2.500457763671875, "loss_trend": 0, "rank_min": 63, "rank_avg": 63.333333333333336, "rank_max": 64, "elapsed_sec": 0.3248310089111328}
+{"epoch": 6, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.9806279540061951, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 51, "energy_captured": 0.9822847247123718, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.9808685779571533, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 51, "energy_captured": 0.9818532466888428, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 54, "energy_captured": 0.9809937477111816, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 64, "new_rank": 63, "spectral_target": 54, "energy_captured": 0.9801170825958252, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.980684757232666, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.98164302110672, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.9800626635551453, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 51, "energy_captured": 0.9815548658370972, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 54, "energy_captured": 0.9809763431549072, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 64, "new_rank": 63, "spectral_target": 54, "energy_captured": 0.9807682633399963, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.981743335723877, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 50, "energy_captured": 0.9816890358924866, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 51, "energy_captured": 0.9820692539215088, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 51, "energy_captured": 0.981765866279602, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 64, "new_rank": 63, "spectral_target": 55, "energy_captured": 0.9826211333274841, "loss_trend": -1}
+{"epoch": 6, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 64, "new_rank": 63, "spectral_target": 55, "energy_captured": 0.9809891581535339, "loss_trend": -1}
+{"epoch": 6, "train_loss": 2.4393848180770874, "val_loss": 2.42057466506958, "loss_trend": -1, "rank_min": 62, "rank_avg": 62.333333333333336, "rank_max": 63, "elapsed_sec": 0.37027692794799805}
+{"epoch": 7, "train_loss": 2.425847053527832, "val_loss": 2.4078383445739746, "loss_trend": 0, "rank_min": 62, "rank_avg": 62.333333333333336, "rank_max": 63, "elapsed_sec": 0.3194718360900879}
+{"epoch": 8, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9813204407691956, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9803327322006226, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9814413189888, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 51, "energy_captured": 0.9824066758155823, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 54, "energy_captured": 0.9818130731582642, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 63, "new_rank": 62, "spectral_target": 54, "energy_captured": 0.9809759259223938, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9812573194503784, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9822078347206116, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9808092713356018, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 51, "energy_captured": 0.9821195006370544, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 54, "energy_captured": 0.9820064902305603, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 63, "new_rank": 62, "spectral_target": 54, "energy_captured": 0.9816309213638306, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9822538495063782, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.982225239276886, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 50, "energy_captured": 0.9801563620567322, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 51, "energy_captured": 0.9824420213699341, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 63, "new_rank": 62, "spectral_target": 54, "energy_captured": 0.9805498123168945, "loss_trend": 0}
+{"epoch": 8, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 63, "new_rank": 62, "spectral_target": 55, "energy_captured": 0.9822673797607422, "loss_trend": 0}
+{"epoch": 8, "train_loss": 2.422788186073303, "val_loss": 2.402618408203125, "loss_trend": 0, "rank_min": 61, "rank_avg": 61.333333333333336, "rank_max": 62, "elapsed_sec": 0.37606287002563477}
+{"epoch": 9, "train_loss": 2.4161211585998537, "val_loss": 2.3666582107543945, "loss_trend": 0, "rank_min": 61, "rank_avg": 61.333333333333336, "rank_max": 62, "elapsed_sec": 0.3255791664123535}
+{"epoch": 10, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9820425510406494, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9810811877250671, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9821234345436096, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9804643392562866, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 53, "energy_captured": 0.9801570773124695, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 62, "new_rank": 61, "spectral_target": 54, "energy_captured": 0.9822356700897217, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.981965959072113, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 49, "energy_captured": 0.9802413582801819, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9815961122512817, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9801721572875977, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 53, "energy_captured": 0.9800407290458679, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 62, "new_rank": 61, "spectral_target": 54, "energy_captured": 0.9829045534133911, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9828370809555054, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 49, "energy_captured": 0.9801828861236572, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9809318780899048, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 50, "energy_captured": 0.9803659915924072, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 62, "new_rank": 61, "spectral_target": 54, "energy_captured": 0.9817260503768921, "loss_trend": 0}
+{"epoch": 10, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 62, "new_rank": 61, "spectral_target": 54, "energy_captured": 0.9808559417724609, "loss_trend": 0}
+{"epoch": 10, "train_loss": 2.4113985395431516, "val_loss": 2.3616132736206055, "loss_trend": 0, "rank_min": 60, "rank_avg": 60.333333333333336, "rank_max": 61, "elapsed_sec": 0.3687779903411865}
+{"epoch": 11, "train_loss": 2.4085617065429688, "val_loss": 2.380091667175293, "loss_trend": 0, "rank_min": 60, "rank_avg": 60.333333333333336, "rank_max": 61, "elapsed_sec": 0.3174550533294678}
+{"epoch": 12, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9828750491142273, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9818893074989319, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 49, "energy_captured": 0.9803124666213989, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9812299013137817, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9816519618034363, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 61, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9805082678794861, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9827872514724731, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 49, "energy_captured": 0.9810819625854492, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9825515151023865, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9810299277305603, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9812682867050171, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 61, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9809812903404236, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 49, "energy_captured": 0.9807361364364624, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 49, "energy_captured": 0.9809826612472534, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9818211793899536, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 50, "energy_captured": 0.9813823103904724, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 61, "new_rank": 61, "spectral_target": 54, "energy_captured": 0.9831196069717407, "loss_trend": 0}
+{"epoch": 12, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 61, "new_rank": 61, "spectral_target": 54, "energy_captured": 0.9824929237365723, "loss_trend": 0}
+{"epoch": 12, "train_loss": 2.400271482467651, "val_loss": 2.3905248641967773, "loss_trend": 0, "rank_min": 59, "rank_avg": 59.44444444444444, "rank_max": 61, "elapsed_sec": 0.362224817276001}
+{"epoch": 13, "train_loss": 2.3981654977798463, "val_loss": 2.3624632358551025, "loss_trend": 0, "rank_min": 59, "rank_avg": 59.44444444444444, "rank_max": 61, "elapsed_sec": 0.3184680938720703}
+{"epoch": 14, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9808592796325684, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9803194999694824, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9812756776809692, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 50, "energy_captured": 0.9823910593986511, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 60, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9832590222358704, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 60, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9821736216545105, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9809132218360901, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9819729328155518, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9807143807411194, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 50, "energy_captured": 0.981970489025116, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 60, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9827381372451782, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 60, "new_rank": 60, "spectral_target": 53, "energy_captured": 0.9825581908226013, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9816113710403442, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9819218516349792, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 49, "energy_captured": 0.9801573157310486, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 50, "energy_captured": 0.9825387597084045, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 61, "new_rank": 60, "spectral_target": 54, "energy_captured": 0.9831196069717407, "loss_trend": 0}
+{"epoch": 14, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 61, "new_rank": 60, "spectral_target": 54, "energy_captured": 0.9824929237365723, "loss_trend": 0}
+{"epoch": 14, "train_loss": 2.397345795631409, "val_loss": 2.3988518714904785, "loss_trend": 0, "rank_min": 58, "rank_avg": 58.666666666666664, "rank_max": 60, "elapsed_sec": 0.3569650650024414}
+{"epoch": 15, "train_loss": 2.3945194768905638, "val_loss": 2.3895835876464844, "loss_trend": 0, "rank_min": 58, "rank_avg": 58.666666666666664, "rank_max": 60, "elapsed_sec": 0.313798189163208}
+{"epoch": 16, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9818662405014038, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9816322922706604, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9823769927024841, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9808661937713623, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9832590222358704, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 60, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9821736216545105, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9819936752319336, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9830294251441956, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9819237589836121, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.980341911315918, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9827381372451782, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 60, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9825581908226013, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9826093912124634, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9829458594322205, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9813663959503174, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 49, "energy_captured": 0.9807481169700623, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 60, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9814450740814209, "loss_trend": 0}
+{"epoch": 16, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 60, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.980959415435791, "loss_trend": 0}
+{"epoch": 16, "train_loss": 2.390317039489746, "val_loss": 2.3967456817626953, "loss_trend": 0, "rank_min": 57, "rank_avg": 57.666666666666664, "rank_max": 59, "elapsed_sec": 0.3709421157836914}
+{"epoch": 17, "train_loss": 2.386635699272156, "val_loss": 2.3928847312927246, "loss_trend": 0, "rank_min": 57, "rank_avg": 57.666666666666664, "rank_max": 59, "elapsed_sec": 0.3197319507598877}
+{"epoch": 18, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 49, "energy_captured": 0.9830586910247803, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 49, "energy_captured": 0.9831949472427368, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9805863499641418, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 49, "energy_captured": 0.9822746515274048, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.98164302110672, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 59, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.9805784225463867, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9801635146141052, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9811424612998962, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9800851345062256, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 49, "energy_captured": 0.9817585945129395, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.9809945225715637, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 59, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.980760395526886, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9805225729942322, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9810518622398376, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 49, "energy_captured": 0.9827470183372498, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 49, "energy_captured": 0.9821385145187378, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 59, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9834422469139099, "loss_trend": 0}
+{"epoch": 18, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 59, "new_rank": 59, "spectral_target": 53, "energy_captured": 0.9831905364990234, "loss_trend": 0}
+{"epoch": 18, "train_loss": 2.3869804620742796, "val_loss": 2.3595762252807617, "loss_trend": 0, "rank_min": 56, "rank_avg": 56.77777777777778, "rank_max": 59, "elapsed_sec": 0.36481714248657227}
+{"epoch": 19, "train_loss": 2.3858305549621583, "val_loss": 2.3651533126831055, "loss_trend": 0, "rank_min": 56, "rank_avg": 56.77777777777778, "rank_max": 59, "elapsed_sec": 0.3168919086456299}
+{"epoch": 20, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9811159372329712, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9814447164535522, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9820039868354797, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9807302355766296, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 58, "new_rank": 58, "spectral_target": 51, "energy_captured": 0.9802062511444092, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 58, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.9826861619949341, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9816048741340637, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9824927449226379, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9815291166305542, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9801514148712158, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 58, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.9828641414642334, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 58, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.982778012752533, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9817250370979309, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9822083115577698, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9813377857208252, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 48, "energy_captured": 0.9804261326789856, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 59, "new_rank": 58, "spectral_target": 53, "energy_captured": 0.9834422469139099, "loss_trend": 0}
+{"epoch": 20, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 59, "new_rank": 58, "spectral_target": 53, "energy_captured": 0.9831905364990234, "loss_trend": 0}
+{"epoch": 20, "train_loss": 2.390690026283264, "val_loss": 2.3940277099609375, "loss_trend": 0, "rank_min": 55, "rank_avg": 56.27777777777778, "rank_max": 58, "elapsed_sec": 0.3556699752807617}
+{"epoch": 21, "train_loss": 2.381599850654602, "val_loss": 2.3737306594848633, "loss_trend": 0, "rank_min": 55, "rank_avg": 56.27777777777778, "rank_max": 58, "elapsed_sec": 0.31211090087890625}
+{"epoch": 22, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 55, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9826185703277588, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9814447164535522, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 55, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9835489988327026, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9807302355766296, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 51, "energy_captured": 0.9802062511444092, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 58, "new_rank": 57, "spectral_target": 52, "energy_captured": 0.9826861619949341, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 55, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9831007719039917, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9809371829032898, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 55, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9831014275550842, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9801514148712158, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 52, "energy_captured": 0.9828641414642334, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 58, "new_rank": 57, "spectral_target": 52, "energy_captured": 0.982778012752533, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 55, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9830597043037415, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9803475737571716, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9813377857208252, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 48, "energy_captured": 0.9804261326789856, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 58, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.9822867512702942, "loss_trend": 0}
+{"epoch": 22, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 58, "new_rank": 58, "spectral_target": 52, "energy_captured": 0.981817364692688, "loss_trend": 0}
+{"epoch": 22, "train_loss": 2.385036187171936, "val_loss": 2.4236996173858643, "loss_trend": 0, "rank_min": 54, "rank_avg": 55.666666666666664, "rank_max": 58, "elapsed_sec": 0.35340309143066406}
+{"epoch": 23, "train_loss": 2.3814294862747194, "val_loss": 2.339021921157837, "loss_trend": 0, "rank_min": 54, "rank_avg": 55.666666666666664, "rank_max": 58, "elapsed_sec": 0.32955193519592285}
+{"epoch": 24, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9826185703277588, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9831665754318237, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9835489988327026, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9825607538223267, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9824258685112, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 57, "new_rank": 57, "spectral_target": 51, "energy_captured": 0.9814932942390442, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9831007719039917, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9825811386108398, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9831014275550842, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9820824861526489, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 57, "new_rank": 57, "spectral_target": 51, "energy_captured": 0.9814327955245972, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 57, "new_rank": 57, "spectral_target": 51, "energy_captured": 0.9811432957649231, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9830597043037415, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9819639921188354, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9831094741821289, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 55, "new_rank": 54, "spectral_target": 48, "energy_captured": 0.9820824265480042, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 58, "new_rank": 57, "spectral_target": 52, "energy_captured": 0.9822867512702942, "loss_trend": 0}
+{"epoch": 24, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 58, "new_rank": 57, "spectral_target": 52, "energy_captured": 0.981817364692688, "loss_trend": 0}
+{"epoch": 24, "train_loss": 2.3774035692214968, "val_loss": 2.3743653297424316, "loss_trend": 0, "rank_min": 54, "rank_avg": 54.94444444444444, "rank_max": 57, "elapsed_sec": 0.3580667972564697}
+{"epoch": 25, "train_loss": 2.3706901836395264, "val_loss": 2.4023795127868652, "loss_trend": 0, "rank_min": 54, "rank_avg": 54.94444444444444, "rank_max": 57, "elapsed_sec": 0.31018686294555664}
+{"epoch": 26, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9808123707771301, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9816303253173828, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9817380905151367, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9812174439430237, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 50, "energy_captured": 0.9810194373130798, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 57, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9814932942390442, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9813596606254578, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9825811386108398, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.981507420539856, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9806317687034607, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9814327955245972, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 57, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9811432957649231, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9813368320465088, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9819639921188354, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9815794229507446, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 54, "new_rank": 54, "spectral_target": 47, "energy_captured": 0.9802960753440857, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 57, "new_rank": 57, "spectral_target": 51, "energy_captured": 0.9811535477638245, "loss_trend": 0}
+{"epoch": 26, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 57, "new_rank": 57, "spectral_target": 52, "energy_captured": 0.9842507243156433, "loss_trend": 0}
+{"epoch": 26, "train_loss": 2.3713085794448854, "val_loss": 2.3997325897216797, "loss_trend": 0, "rank_min": 53, "rank_avg": 54.388888888888886, "rank_max": 57, "elapsed_sec": 0.34883832931518555}
+{"epoch": 27, "train_loss": 2.3693018198013305, "val_loss": 2.3498153686523438, "loss_trend": 0, "rank_min": 53, "rank_avg": 54.388888888888886, "rank_max": 57, "elapsed_sec": 0.31340479850769043}
+{"epoch": 28, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 53, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9827297329902649, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9816303253173828, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 53, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9836800694465637, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9812174439430237, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 50, "energy_captured": 0.9810194373130798, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 56, "new_rank": 56, "spectral_target": 50, "energy_captured": 0.9801057577133179, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 53, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9831506609916687, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 46, "energy_captured": 0.9808327555656433, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 53, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9835678935050964, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9806317687034607, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 50, "energy_captured": 0.980040431022644, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 56, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9835609793663025, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 53, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9830934405326843, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 46, "energy_captured": 0.9804039001464844, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9815794229507446, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 54, "new_rank": 53, "spectral_target": 47, "energy_captured": 0.9802960753440857, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 57, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9811535477638245, "loss_trend": 0}
+{"epoch": 28, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 57, "new_rank": 56, "spectral_target": 52, "energy_captured": 0.9842507243156433, "loss_trend": 0}
+{"epoch": 28, "train_loss": 2.3641160488128663, "val_loss": 2.3505783081054688, "loss_trend": 0, "rank_min": 52, "rank_avg": 53.833333333333336, "rank_max": 56, "elapsed_sec": 0.3503758907318115}
+{"epoch": 29, "train_loss": 2.3731943941116334, "val_loss": 2.3833565711975098, "loss_trend": 0, "rank_min": 52, "rank_avg": 53.833333333333336, "rank_max": 56, "elapsed_sec": 0.3181309700012207}
+{"epoch": 30, "layer": "blocks.0.attn_q", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9827297329902649, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.0.attn_k", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 46, "energy_captured": 0.980050265789032, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.0.attn_v", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9836800694465637, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.0.attn_o", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.983411431312561, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.0.ff1", "shape": [512, 128], "old_rank": 55, "new_rank": 55, "spectral_target": 50, "energy_captured": 0.9835060238838196, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.0.ff2", "shape": [128, 512], "old_rank": 56, "new_rank": 55, "spectral_target": 50, "energy_captured": 0.9801057577133179, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.1.attn_q", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9831506609916687, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.1.attn_k", "shape": [128, 128], "old_rank": 52, "new_rank": 52, "spectral_target": 46, "energy_captured": 0.9827705025672913, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.1.attn_v", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9835678935050964, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.1.attn_o", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9827324151992798, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.1.ff1", "shape": [512, 128], "old_rank": 56, "new_rank": 55, "spectral_target": 50, "energy_captured": 0.980040431022644, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.1.ff2", "shape": [128, 512], "old_rank": 56, "new_rank": 55, "spectral_target": 51, "energy_captured": 0.9835609793663025, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.2.attn_q", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9830934405326843, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.2.attn_k", "shape": [128, 128], "old_rank": 52, "new_rank": 52, "spectral_target": 46, "energy_captured": 0.9824635982513428, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.2.attn_v", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9835188388824463, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.2.attn_o", "shape": [128, 128], "old_rank": 53, "new_rank": 52, "spectral_target": 47, "energy_captured": 0.9822543859481812, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.2.ff1", "shape": [512, 128], "old_rank": 56, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9837745428085327, "loss_trend": 0}
+{"epoch": 30, "layer": "blocks.2.ff2", "shape": [128, 512], "old_rank": 56, "new_rank": 56, "spectral_target": 51, "energy_captured": 0.9825582504272461, "loss_trend": 0}
+{"epoch": 30, "train_loss": 2.3710442113876344, "val_loss": 2.3466134071350098, "loss_trend": 0, "rank_min": 52, "rank_avg": 53.111111111111114, "rank_max": 56, "elapsed_sec": 0.35508012771606445}
