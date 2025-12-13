@@ -1,0 +1,305 @@
+{"type": "epoch", "epoch": 1, "train_loss": 6.883933752330382, "val_loss": 6.255984163284301, "rank_min": 64, "rank_avg": 64.0, "rank_max": 64, "epoch_time_sec": 53.446287870407104}
+{"type": "rank_update", "step": 500, "layer": "block0.q_proj", "old_rank": 64, "new_rank": 59, "spectral_rank": 39, "tail_energy": 0.009758908301591873, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block0.k_proj", "old_rank": 64, "new_rank": 60, "spectral_rank": 42, "tail_energy": 0.009611059911549091, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block0.v_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 24, "tail_energy": 0.009961143136024475, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block0.ff1", "old_rank": 64, "new_rank": 59, "spectral_rank": 41, "tail_energy": 0.009718814864754677, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block0.ff2", "old_rank": 64, "new_rank": 56, "spectral_rank": 24, "tail_energy": 0.009598400443792343, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block1.q_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 25, "tail_energy": 0.009544608183205128, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block1.k_proj", "old_rank": 64, "new_rank": 58, "spectral_rank": 33, "tail_energy": 0.009740013629198074, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block1.v_proj", "old_rank": 64, "new_rank": 63, "spectral_rank": 59, "tail_energy": 0.009184127673506737, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block1.ff1", "old_rank": 64, "new_rank": 58, "spectral_rank": 34, "tail_energy": 0.009641498327255249, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block1.ff2", "old_rank": 64, "new_rank": 56, "spectral_rank": 23, "tail_energy": 0.009322445839643478, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block2.q_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 18, "tail_energy": 0.009734068997204304, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block2.k_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 15, "tail_energy": 0.00965547002851963, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block2.v_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 15, "tail_energy": 0.009668310172855854, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block2.ff1", "old_rank": 64, "new_rank": 56, "spectral_rank": 23, "tail_energy": 0.009634869173169136, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block2.ff2", "old_rank": 64, "new_rank": 56, "spectral_rank": 20, "tail_energy": 0.009496918879449368, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block3.q_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 18, "tail_energy": 0.00916452705860138, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block3.k_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 10, "tail_energy": 0.007875962182879448, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block3.v_proj", "old_rank": 64, "new_rank": 56, "spectral_rank": 17, "tail_energy": 0.008871016092598438, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block3.ff1", "old_rank": 64, "new_rank": 56, "spectral_rank": 24, "tail_energy": 0.00987511221319437, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 500, "layer": "block3.ff2", "old_rank": 64, "new_rank": 56, "spectral_rank": 21, "tail_energy": 0.009893068112432957, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 2, "train_loss": 5.879163350631941, "val_loss": 5.991902589797974, "rank_min": 56, "rank_avg": 58.20833206176758, "rank_max": 64, "epoch_time_sec": 54.661351919174194}
+{"type": "epoch", "epoch": 3, "train_loss": 4.970864189204885, "val_loss": 4.2928188705444335, "rank_min": 56, "rank_avg": 58.20833206176758, "rank_max": 64, "epoch_time_sec": 54.112252950668335}
+{"type": "rank_update", "step": 1000, "layer": "block0.q_proj", "old_rank": 59, "new_rank": 55, "spectral_rank": 39, "tail_energy": 0.009904940612614155, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block0.k_proj", "old_rank": 60, "new_rank": 55, "spectral_rank": 39, "tail_energy": 0.00948941521346569, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block0.v_proj", "old_rank": 56, "new_rank": 58, "spectral_rank": 64, "tail_energy": 0.02115924097597599, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block0.ff1", "old_rank": 59, "new_rank": 57, "spectral_rank": 47, "tail_energy": 0.00986030325293541, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block0.ff2", "old_rank": 56, "new_rank": 52, "spectral_rank": 35, "tail_energy": 0.00944744236767292, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block1.q_proj", "old_rank": 56, "new_rank": 50, "spectral_rank": 24, "tail_energy": 0.009863137267529964, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block1.k_proj", "old_rank": 58, "new_rank": 51, "spectral_rank": 25, "tail_energy": 0.009854061529040337, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block1.v_proj", "old_rank": 63, "new_rank": 55, "spectral_rank": 22, "tail_energy": 0.009679634124040604, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block1.ff1", "old_rank": 58, "new_rank": 54, "spectral_rank": 39, "tail_energy": 0.009624971076846123, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block1.ff2", "old_rank": 56, "new_rank": 51, "spectral_rank": 31, "tail_energy": 0.009587683714926243, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block2.q_proj", "old_rank": 56, "new_rank": 48, "spectral_rank": 21, "tail_energy": 0.00888150092214346, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block2.k_proj", "old_rank": 56, "new_rank": 48, "spectral_rank": 21, "tail_energy": 0.009997702203691006, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block2.v_proj", "old_rank": 56, "new_rank": 48, "spectral_rank": 20, "tail_energy": 0.009192773140966892, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block2.ff1", "old_rank": 56, "new_rank": 51, "spectral_rank": 30, "tail_energy": 0.009520841762423515, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block2.ff2", "old_rank": 56, "new_rank": 51, "spectral_rank": 32, "tail_energy": 0.009683270007371902, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block3.q_proj", "old_rank": 56, "new_rank": 48, "spectral_rank": 21, "tail_energy": 0.008810014463961124, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block3.k_proj", "old_rank": 56, "new_rank": 48, "spectral_rank": 19, "tail_energy": 0.00955068226903677, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block3.v_proj", "old_rank": 56, "new_rank": 48, "spectral_rank": 20, "tail_energy": 0.009945494122803211, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block3.ff1", "old_rank": 56, "new_rank": 58, "spectral_rank": 64, "tail_energy": 0.009852775372564793, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1000, "layer": "block3.ff2", "old_rank": 56, "new_rank": 51, "spectral_rank": 32, "tail_energy": 0.009448317810893059, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 4, "train_loss": 2.751599561812273, "val_loss": 2.2388566303253175, "rank_min": 48, "rank_avg": 53.875, "rank_max": 64, "epoch_time_sec": 54.56289315223694}
+{"type": "epoch", "epoch": 5, "train_loss": 1.2622151686184442, "val_loss": 1.2490716409683227, "rank_min": 48, "rank_avg": 53.875, "rank_max": 64, "epoch_time_sec": 54.4522020816803}
+{"type": "rank_update", "step": 1500, "layer": "block0.q_proj", "old_rank": 55, "new_rank": 50, "spectral_rank": 30, "tail_energy": 0.0096030468121171, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block0.k_proj", "old_rank": 55, "new_rank": 50, "spectral_rank": 30, "tail_energy": 0.009886144660413265, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block0.ff1", "old_rank": 57, "new_rank": 54, "spectral_rank": 42, "tail_energy": 0.009725776500999928, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block0.ff2", "old_rank": 52, "new_rank": 49, "spectral_rank": 39, "tail_energy": 0.009580300189554691, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block1.q_proj", "old_rank": 50, "new_rank": 44, "spectral_rank": 20, "tail_energy": 0.00967460684478283, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block1.k_proj", "old_rank": 51, "new_rank": 45, "spectral_rank": 20, "tail_energy": 0.009132198058068752, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block1.v_proj", "old_rank": 55, "new_rank": 47, "spectral_rank": 13, "tail_energy": 0.009001503698527813, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block1.ff1", "old_rank": 54, "new_rank": 50, "spectral_rank": 34, "tail_energy": 0.009688370861113071, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block1.ff2", "old_rank": 51, "new_rank": 47, "spectral_rank": 33, "tail_energy": 0.009228997863829136, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block2.q_proj", "old_rank": 48, "new_rank": 42, "spectral_rank": 18, "tail_energy": 0.008692755363881588, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block2.k_proj", "old_rank": 48, "new_rank": 41, "spectral_rank": 14, "tail_energy": 0.009332064539194107, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block2.v_proj", "old_rank": 48, "new_rank": 40, "spectral_rank": 13, "tail_energy": 0.00939379632472992, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block2.ff1", "old_rank": 51, "new_rank": 46, "spectral_rank": 29, "tail_energy": 0.009726384654641151, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block2.ff2", "old_rank": 51, "new_rank": 47, "spectral_rank": 34, "tail_energy": 0.009624040685594082, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block3.q_proj", "old_rank": 48, "new_rank": 42, "spectral_rank": 17, "tail_energy": 0.009096479043364525, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block3.k_proj", "old_rank": 48, "new_rank": 41, "spectral_rank": 18, "tail_energy": 0.00967605784535408, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block3.v_proj", "old_rank": 48, "new_rank": 41, "spectral_rank": 15, "tail_energy": 0.009265759959816933, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block3.ff1", "old_rank": 58, "new_rank": 51, "spectral_rank": 27, "tail_energy": 0.009801848791539669, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 1500, "layer": "block3.ff2", "old_rank": 51, "new_rank": 48, "spectral_rank": 37, "tail_energy": 0.009601525031030178, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 6, "train_loss": 0.6374929192573277, "val_loss": 0.8151912486553192, "rank_min": 40, "rank_avg": 49.54166793823242, "rank_max": 64, "epoch_time_sec": 54.443175077438354}
+{"type": "epoch", "epoch": 7, "train_loss": 0.35430689511904073, "val_loss": 0.5757285034656525, "rank_min": 40, "rank_avg": 49.54166793823242, "rank_max": 64, "epoch_time_sec": 54.255467891693115}
+{"type": "rank_update", "step": 2000, "layer": "block0.q_proj", "old_rank": 50, "new_rank": 43, "spectral_rank": 17, "tail_energy": 0.009700587950646877, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block0.k_proj", "old_rank": 50, "new_rank": 44, "spectral_rank": 17, "tail_energy": 0.009392835199832916, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block0.v_proj", "old_rank": 58, "new_rank": 59, "spectral_rank": 64, "tail_energy": 0.011736147105693817, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block0.ff1", "old_rank": 54, "new_rank": 52, "spectral_rank": 43, "tail_energy": 0.00958439614623785, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block0.ff2", "old_rank": 49, "new_rank": 46, "spectral_rank": 34, "tail_energy": 0.00938340462744236, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block1.q_proj", "old_rank": 44, "new_rank": 39, "spectral_rank": 18, "tail_energy": 0.009624766185879707, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block1.k_proj", "old_rank": 45, "new_rank": 39, "spectral_rank": 15, "tail_energy": 0.009034301154315472, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block1.v_proj", "old_rank": 47, "new_rank": 40, "spectral_rank": 14, "tail_energy": 0.009387997910380363, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block1.ff1", "old_rank": 50, "new_rank": 48, "spectral_rank": 40, "tail_energy": 0.009410769678652287, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block1.ff2", "old_rank": 47, "new_rank": 46, "spectral_rank": 40, "tail_energy": 0.009803065098822117, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block2.q_proj", "old_rank": 42, "new_rank": 38, "spectral_rank": 20, "tail_energy": 0.008994976058602333, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block2.k_proj", "old_rank": 41, "new_rank": 36, "spectral_rank": 15, "tail_energy": 0.009059783071279526, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block2.v_proj", "old_rank": 40, "new_rank": 35, "spectral_rank": 12, "tail_energy": 0.009879926219582558, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block2.ff1", "old_rank": 46, "new_rank": 44, "spectral_rank": 35, "tail_energy": 0.009940529242157936, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block2.ff2", "old_rank": 47, "new_rank": 45, "spectral_rank": 38, "tail_energy": 0.009729058481752872, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block3.q_proj", "old_rank": 42, "new_rank": 37, "spectral_rank": 18, "tail_energy": 0.009760561399161816, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block3.k_proj", "old_rank": 41, "new_rank": 42, "spectral_rank": 49, "tail_energy": 0.009223000146448612, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block3.v_proj", "old_rank": 41, "new_rank": 42, "spectral_rank": 47, "tail_energy": 0.00885394774377346, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block3.ff1", "old_rank": 51, "new_rank": 48, "spectral_rank": 35, "tail_energy": 0.009837258607149124, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2000, "layer": "block3.ff2", "old_rank": 48, "new_rank": 47, "spectral_rank": 44, "tail_energy": 0.009843162260949612, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 8, "train_loss": 0.23113538497197095, "val_loss": 0.4752680903673172, "rank_min": 35, "rank_avg": 46.91666793823242, "rank_max": 64, "epoch_time_sec": 54.718586921691895}
+{"type": "epoch", "epoch": 9, "train_loss": 0.15805097374675878, "val_loss": 0.38524574279785156, "rank_min": 35, "rank_avg": 46.91666793823242, "rank_max": 64, "epoch_time_sec": 54.045727014541626}
+{"type": "rank_update", "step": 2500, "layer": "block0.q_proj", "old_rank": 43, "new_rank": 38, "spectral_rank": 18, "tail_energy": 0.009457478299736977, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block0.k_proj", "old_rank": 44, "new_rank": 38, "spectral_rank": 17, "tail_energy": 0.00903378240764141, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block0.v_proj", "old_rank": 59, "new_rank": 60, "spectral_rank": 64, "tail_energy": 0.014727268368005753, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block0.ff1", "old_rank": 52, "new_rank": 50, "spectral_rank": 45, "tail_energy": 0.009899323806166649, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block0.ff2", "old_rank": 46, "new_rank": 45, "spectral_rank": 40, "tail_energy": 0.009827377274632454, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block1.q_proj", "old_rank": 39, "new_rank": 35, "spectral_rank": 22, "tail_energy": 0.009560449048876762, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block1.k_proj", "old_rank": 39, "new_rank": 35, "spectral_rank": 21, "tail_energy": 0.009184202179312706, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block1.v_proj", "old_rank": 40, "new_rank": 35, "spectral_rank": 16, "tail_energy": 0.008974677883088589, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block2.q_proj", "old_rank": 38, "new_rank": 34, "spectral_rank": 21, "tail_energy": 0.009485971182584763, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block2.k_proj", "old_rank": 36, "new_rank": 31, "spectral_rank": 12, "tail_energy": 0.008653867058455944, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block2.v_proj", "old_rank": 35, "new_rank": 31, "spectral_rank": 14, "tail_energy": 0.009679889306426048, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block2.ff1", "old_rank": 44, "new_rank": 43, "spectral_rank": 39, "tail_energy": 0.009690040722489357, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block2.ff2", "old_rank": 45, "new_rank": 44, "spectral_rank": 39, "tail_energy": 0.009477485902607441, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block3.q_proj", "old_rank": 37, "new_rank": 34, "spectral_rank": 20, "tail_energy": 0.00900715496391058, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block3.k_proj", "old_rank": 42, "new_rank": 44, "spectral_rank": 49, "tail_energy": 0.009720738977193832, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block3.v_proj", "old_rank": 42, "new_rank": 37, "spectral_rank": 16, "tail_energy": 0.009949703700840473, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block3.ff1", "old_rank": 48, "new_rank": 45, "spectral_rank": 32, "tail_energy": 0.009979331865906715, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 2500, "layer": "block3.ff2", "old_rank": 47, "new_rank": 46, "spectral_rank": 42, "tail_energy": 0.00932895764708519, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 10, "train_loss": 0.1321144998073578, "val_loss": 0.34751909732818603, "rank_min": 31, "rank_avg": 44.79166793823242, "rank_max": 64, "epoch_time_sec": 53.438035011291504}
+{"type": "epoch", "epoch": 11, "train_loss": 0.10176282175886098, "val_loss": 0.31136555552482603, "rank_min": 31, "rank_avg": 44.79166793823242, "rank_max": 64, "epoch_time_sec": 54.38766098022461}
+{"type": "rank_update", "step": 3000, "layer": "block0.q_proj", "old_rank": 38, "new_rank": 36, "spectral_rank": 26, "tail_energy": 0.009361007250845432, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block0.k_proj", "old_rank": 38, "new_rank": 35, "spectral_rank": 24, "tail_energy": 0.009610558860003948, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block0.v_proj", "old_rank": 60, "new_rank": 61, "spectral_rank": 64, "tail_energy": 0.017710668966174126, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block0.ff2", "old_rank": 45, "new_rank": 44, "spectral_rank": 40, "tail_energy": 0.009878410957753658, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block1.q_proj", "old_rank": 35, "new_rank": 32, "spectral_rank": 21, "tail_energy": 0.009351705200970173, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block1.k_proj", "old_rank": 35, "new_rank": 31, "spectral_rank": 13, "tail_energy": 0.009019700810313225, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block1.v_proj", "old_rank": 35, "new_rank": 31, "spectral_rank": 15, "tail_energy": 0.009719844907522202, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block1.ff1", "old_rank": 48, "new_rank": 47, "spectral_rank": 46, "tail_energy": 0.009968467056751251, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block2.q_proj", "old_rank": 34, "new_rank": 31, "spectral_rank": 20, "tail_energy": 0.008631951175630093, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block2.k_proj", "old_rank": 31, "new_rank": 27, "spectral_rank": 13, "tail_energy": 0.008290915749967098, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block2.v_proj", "old_rank": 31, "new_rank": 28, "spectral_rank": 17, "tail_energy": 0.009426704607903957, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block2.ff1", "old_rank": 43, "new_rank": 42, "spectral_rank": 37, "tail_energy": 0.009584431536495686, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block3.q_proj", "old_rank": 34, "new_rank": 31, "spectral_rank": 22, "tail_energy": 0.00932201649993658, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block3.k_proj", "old_rank": 44, "new_rank": 39, "spectral_rank": 18, "tail_energy": 0.009952914901077747, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block3.v_proj", "old_rank": 37, "new_rank": 34, "spectral_rank": 21, "tail_energy": 0.009118846617639065, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block3.ff1", "old_rank": 45, "new_rank": 46, "spectral_rank": 51, "tail_energy": 0.009801531210541725, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3000, "layer": "block3.ff2", "old_rank": 46, "new_rank": 45, "spectral_rank": 42, "tail_energy": 0.009676379151642323, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 12, "train_loss": 0.09173733137770375, "val_loss": 0.28485904544591906, "rank_min": 27, "rank_avg": 43.16666793823242, "rank_max": 64, "epoch_time_sec": 53.251206159591675}
+{"type": "epoch", "epoch": 13, "train_loss": 0.07891274624462448, "val_loss": 0.2682942593097687, "rank_min": 27, "rank_avg": 43.16666793823242, "rank_max": 64, "epoch_time_sec": 53.69592308998108}
+{"type": "rank_update", "step": 3500, "layer": "block0.q_proj", "old_rank": 36, "new_rank": 32, "spectral_rank": 17, "tail_energy": 0.009120156057178974, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block0.k_proj", "old_rank": 35, "new_rank": 31, "spectral_rank": 15, "tail_energy": 0.00964406132698059, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block0.ff1", "old_rank": 50, "new_rank": 47, "spectral_rank": 38, "tail_energy": 0.00985779333859682, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block0.ff2", "old_rank": 44, "new_rank": 42, "spectral_rank": 34, "tail_energy": 0.009829399175941944, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block1.q_proj", "old_rank": 32, "new_rank": 30, "spectral_rank": 18, "tail_energy": 0.009531197138130665, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block1.k_proj", "old_rank": 31, "new_rank": 32, "spectral_rank": 36, "tail_energy": 0.008992762304842472, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block1.v_proj", "old_rank": 31, "new_rank": 28, "spectral_rank": 14, "tail_energy": 0.009617111645638943, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block1.ff1", "old_rank": 47, "new_rank": 49, "spectral_rank": 60, "tail_energy": 0.00975547544658184, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block2.q_proj", "old_rank": 31, "new_rank": 29, "spectral_rank": 19, "tail_energy": 0.00935832317918539, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block2.k_proj", "old_rank": 27, "new_rank": 24, "spectral_rank": 13, "tail_energy": 0.008000720292329788, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block2.v_proj", "old_rank": 28, "new_rank": 25, "spectral_rank": 14, "tail_energy": 0.009856714867055416, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block2.ff1", "old_rank": 42, "new_rank": 41, "spectral_rank": 39, "tail_energy": 0.009579561650753021, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block2.ff2", "old_rank": 44, "new_rank": 43, "spectral_rank": 41, "tail_energy": 0.009382359683513641, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block3.q_proj", "old_rank": 31, "new_rank": 29, "spectral_rank": 18, "tail_energy": 0.008810198865830898, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block3.k_proj", "old_rank": 39, "new_rank": 40, "spectral_rank": 45, "tail_energy": 0.00926993042230606, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block3.v_proj", "old_rank": 34, "new_rank": 30, "spectral_rank": 17, "tail_energy": 0.00946119986474514, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block3.ff1", "old_rank": 46, "new_rank": 43, "spectral_rank": 32, "tail_energy": 0.009536582976579666, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 3500, "layer": "block3.ff2", "old_rank": 45, "new_rank": 42, "spectral_rank": 30, "tail_energy": 0.009377354755997658, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 14, "train_loss": 0.08642551436353085, "val_loss": 0.2673376104235649, "rank_min": 24, "rank_avg": 41.66666793823242, "rank_max": 64, "epoch_time_sec": 54.48151111602783}
+{"type": "rank_update", "step": 4000, "layer": "block0.q_proj", "old_rank": 32, "new_rank": 29, "spectral_rank": 16, "tail_energy": 0.009822292253375053, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block0.k_proj", "old_rank": 31, "new_rank": 28, "spectral_rank": 13, "tail_energy": 0.009857520461082458, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block0.v_proj", "old_rank": 61, "new_rank": 62, "spectral_rank": 64, "tail_energy": 0.013388289138674736, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block0.ff1", "old_rank": 47, "new_rank": 44, "spectral_rank": 30, "tail_energy": 0.009502015076577663, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block0.ff2", "old_rank": 42, "new_rank": 41, "spectral_rank": 35, "tail_energy": 0.009413092397153378, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block1.q_proj", "old_rank": 30, "new_rank": 27, "spectral_rank": 15, "tail_energy": 0.00993574969470501, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block1.k_proj", "old_rank": 32, "new_rank": 33, "spectral_rank": 35, "tail_energy": 0.009613104164600372, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block1.v_proj", "old_rank": 28, "new_rank": 25, "spectral_rank": 14, "tail_energy": 0.0087256645783782, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block1.ff1", "old_rank": 49, "new_rank": 47, "spectral_rank": 38, "tail_energy": 0.009639537893235683, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block2.q_proj", "old_rank": 29, "new_rank": 27, "spectral_rank": 17, "tail_energy": 0.009662295691668987, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block2.k_proj", "old_rank": 24, "new_rank": 22, "spectral_rank": 13, "tail_energy": 0.008786923252046108, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block2.v_proj", "old_rank": 25, "new_rank": 23, "spectral_rank": 15, "tail_energy": 0.009251384995877743, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block2.ff1", "old_rank": 41, "new_rank": 39, "spectral_rank": 32, "tail_energy": 0.009752622805535793, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block3.q_proj", "old_rank": 29, "new_rank": 27, "spectral_rank": 18, "tail_energy": 0.009969492442905903, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block3.k_proj", "old_rank": 40, "new_rank": 35, "spectral_rank": 16, "tail_energy": 0.008624331094324589, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block3.v_proj", "old_rank": 30, "new_rank": 28, "spectral_rank": 17, "tail_energy": 0.008874344639480114, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block3.ff1", "old_rank": 43, "new_rank": 40, "spectral_rank": 28, "tail_energy": 0.009521848522126675, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4000, "layer": "block3.ff2", "old_rank": 42, "new_rank": 40, "spectral_rank": 32, "tail_energy": 0.009587024338543415, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 15, "train_loss": 0.07558952966955171, "val_loss": 0.3091089475154877, "rank_min": 22, "rank_avg": 40.08333206176758, "rank_max": 64, "epoch_time_sec": 53.49198532104492}
+{"type": "epoch", "epoch": 16, "train_loss": 0.07611415063990142, "val_loss": 0.2579044559597969, "rank_min": 22, "rank_avg": 40.08333206176758, "rank_max": 64, "epoch_time_sec": 53.71281385421753}
+{"type": "rank_update", "step": 4500, "layer": "block0.q_proj", "old_rank": 29, "new_rank": 27, "spectral_rank": 22, "tail_energy": 0.009541881270706654, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block0.k_proj", "old_rank": 28, "new_rank": 26, "spectral_rank": 20, "tail_energy": 0.008747108280658722, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block0.ff1", "old_rank": 44, "new_rank": 43, "spectral_rank": 42, "tail_energy": 0.009384311735630035, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block1.q_proj", "old_rank": 27, "new_rank": 26, "spectral_rank": 21, "tail_energy": 0.00891499686986208, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block1.k_proj", "old_rank": 33, "new_rank": 30, "spectral_rank": 18, "tail_energy": 0.009549001231789589, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block1.v_proj", "old_rank": 25, "new_rank": 23, "spectral_rank": 16, "tail_energy": 0.009356214664876461, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block1.ff2", "old_rank": 46, "new_rank": 47, "spectral_rank": 52, "tail_energy": 0.009409874677658081, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block2.q_proj", "old_rank": 27, "new_rank": 25, "spectral_rank": 18, "tail_energy": 0.00870928168296814, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block2.k_proj", "old_rank": 22, "new_rank": 20, "spectral_rank": 11, "tail_energy": 0.008176754228770733, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block2.v_proj", "old_rank": 23, "new_rank": 22, "spectral_rank": 16, "tail_energy": 0.009875761345028877, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block2.ff1", "old_rank": 39, "new_rank": 40, "spectral_rank": 40, "tail_energy": 0.009234611876308918, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block2.ff2", "old_rank": 43, "new_rank": 44, "spectral_rank": 49, "tail_energy": 0.009252592921257019, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block3.q_proj", "old_rank": 27, "new_rank": 25, "spectral_rank": 19, "tail_energy": 0.009912239387631416, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block3.k_proj", "old_rank": 35, "new_rank": 31, "spectral_rank": 15, "tail_energy": 0.00905871856957674, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block3.v_proj", "old_rank": 28, "new_rank": 26, "spectral_rank": 18, "tail_energy": 0.009399093687534332, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 4500, "layer": "block3.ff1", "old_rank": 40, "new_rank": 39, "spectral_rank": 35, "tail_energy": 0.009875756688416004, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 17, "train_loss": 0.0729364807258791, "val_loss": 0.27338344871997833, "rank_min": 20, "rank_avg": 39.16666793823242, "rank_max": 64, "epoch_time_sec": 53.91092300415039}
+{"type": "epoch", "epoch": 18, "train_loss": 0.07043552134575239, "val_loss": 0.2511343389749527, "rank_min": 20, "rank_avg": 39.16666793823242, "rank_max": 64, "epoch_time_sec": 54.441800117492676}
+{"type": "rank_update", "step": 5000, "layer": "block0.k_proj", "old_rank": 26, "new_rank": 25, "spectral_rank": 20, "tail_energy": 0.009921560995280743, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block0.v_proj", "old_rank": 62, "new_rank": 63, "spectral_rank": 64, "tail_energy": 0.016789834946393967, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block0.ff1", "old_rank": 43, "new_rank": 42, "spectral_rank": 38, "tail_energy": 0.009655525907874107, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block0.ff2", "old_rank": 41, "new_rank": 40, "spectral_rank": 37, "tail_energy": 0.009433877654373646, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block1.q_proj", "old_rank": 26, "new_rank": 23, "spectral_rank": 15, "tail_energy": 0.009799569845199585, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block1.k_proj", "old_rank": 30, "new_rank": 26, "spectral_rank": 12, "tail_energy": 0.009541766718029976, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block1.v_proj", "old_rank": 23, "new_rank": 21, "spectral_rank": 14, "tail_energy": 0.008919254876673222, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block1.ff2", "old_rank": 47, "new_rank": 48, "spectral_rank": 51, "tail_energy": 0.0095424959436059, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block2.q_proj", "old_rank": 25, "new_rank": 23, "spectral_rank": 18, "tail_energy": 0.008700468577444553, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block2.k_proj", "old_rank": 20, "new_rank": 18, "spectral_rank": 11, "tail_energy": 0.008984694257378578, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block2.v_proj", "old_rank": 22, "new_rank": 21, "spectral_rank": 16, "tail_energy": 0.009507033973932266, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block2.ff1", "old_rank": 40, "new_rank": 41, "spectral_rank": 46, "tail_energy": 0.009147433564066887, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block2.ff2", "old_rank": 44, "new_rank": 45, "spectral_rank": 50, "tail_energy": 0.009993508458137512, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block3.q_proj", "old_rank": 25, "new_rank": 24, "spectral_rank": 18, "tail_energy": 0.009784650057554245, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block3.k_proj", "old_rank": 31, "new_rank": 28, "spectral_rank": 14, "tail_energy": 0.00993766076862812, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block3.v_proj", "old_rank": 26, "new_rank": 24, "spectral_rank": 17, "tail_energy": 0.009556228294968605, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block3.ff1", "old_rank": 39, "new_rank": 37, "spectral_rank": 29, "tail_energy": 0.009081592783331871, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5000, "layer": "block3.ff2", "old_rank": 40, "new_rank": 39, "spectral_rank": 36, "tail_energy": 0.009349537082016468, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 19, "train_loss": 0.0671153125950872, "val_loss": 0.25955433160066604, "rank_min": 18, "rank_avg": 38.25, "rank_max": 64, "epoch_time_sec": 54.316689014434814}
+{"type": "epoch", "epoch": 20, "train_loss": 0.06510132672126169, "val_loss": 0.238945432305336, "rank_min": 18, "rank_avg": 38.25, "rank_max": 64, "epoch_time_sec": 55.24334096908569}
+{"type": "rank_update", "step": 5500, "layer": "block0.q_proj", "old_rank": 27, "new_rank": 28, "spectral_rank": 32, "tail_energy": 0.009818796068429947, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block0.k_proj", "old_rank": 25, "new_rank": 27, "spectral_rank": 40, "tail_energy": 0.00880681537091732, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block0.ff1", "old_rank": 42, "new_rank": 41, "spectral_rank": 38, "tail_energy": 0.009338424541056156, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block1.q_proj", "old_rank": 23, "new_rank": 22, "spectral_rank": 18, "tail_energy": 0.009717530570924282, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block1.k_proj", "old_rank": 26, "new_rank": 23, "spectral_rank": 13, "tail_energy": 0.009408361278474331, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block1.v_proj", "old_rank": 21, "new_rank": 20, "spectral_rank": 14, "tail_energy": 0.00863941665738821, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block1.ff2", "old_rank": 48, "new_rank": 49, "spectral_rank": 53, "tail_energy": 0.009452437981963158, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block2.q_proj", "old_rank": 23, "new_rank": 22, "spectral_rank": 16, "tail_energy": 0.007846730761229992, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block2.k_proj", "old_rank": 18, "new_rank": 17, "spectral_rank": 11, "tail_energy": 0.008368493057787418, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block2.v_proj", "old_rank": 21, "new_rank": 19, "spectral_rank": 15, "tail_energy": 0.009508851915597916, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block2.ff1", "old_rank": 41, "new_rank": 40, "spectral_rank": 39, "tail_energy": 0.009624727070331573, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block2.ff2", "old_rank": 45, "new_rank": 47, "spectral_rank": 51, "tail_energy": 0.009415237233042717, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block3.q_proj", "old_rank": 24, "new_rank": 22, "spectral_rank": 16, "tail_energy": 0.009494222700595856, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block3.k_proj", "old_rank": 28, "new_rank": 25, "spectral_rank": 16, "tail_energy": 0.009575787000358105, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block3.v_proj", "old_rank": 24, "new_rank": 22, "spectral_rank": 16, "tail_energy": 0.008615866303443909, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block3.ff1", "old_rank": 37, "new_rank": 36, "spectral_rank": 31, "tail_energy": 0.009782504290342331, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 5500, "layer": "block3.ff2", "old_rank": 39, "new_rank": 38, "spectral_rank": 32, "tail_energy": 0.009801785461604595, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 21, "train_loss": 0.06340428479293835, "val_loss": 0.2427249139547348, "rank_min": 17, "rank_avg": 37.66666793823242, "rank_max": 64, "epoch_time_sec": 54.65426206588745}
+{"type": "epoch", "epoch": 22, "train_loss": 0.06194385330178844, "val_loss": 0.24084694743156432, "rank_min": 17, "rank_avg": 37.66666793823242, "rank_max": 64, "epoch_time_sec": 53.94119310379028}
+{"type": "rank_update", "step": 6000, "layer": "block0.q_proj", "old_rank": 28, "new_rank": 29, "spectral_rank": 34, "tail_energy": 0.009041136130690575, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block0.k_proj", "old_rank": 27, "new_rank": 29, "spectral_rank": 40, "tail_energy": 0.009466306306421757, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block0.ff1", "old_rank": 41, "new_rank": 39, "spectral_rank": 31, "tail_energy": 0.009393226355314255, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block0.ff2", "old_rank": 40, "new_rank": 39, "spectral_rank": 36, "tail_energy": 0.009377283975481987, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block1.q_proj", "old_rank": 22, "new_rank": 21, "spectral_rank": 16, "tail_energy": 0.009295830503106117, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block1.k_proj", "old_rank": 23, "new_rank": 21, "spectral_rank": 13, "tail_energy": 0.00990704819560051, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block1.v_proj", "old_rank": 20, "new_rank": 18, "spectral_rank": 12, "tail_energy": 0.00972893089056015, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block1.ff1", "old_rank": 47, "new_rank": 46, "spectral_rank": 43, "tail_energy": 0.00945261400192976, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block2.q_proj", "old_rank": 22, "new_rank": 20, "spectral_rank": 13, "tail_energy": 0.00818114634603262, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block2.k_proj", "old_rank": 17, "new_rank": 15, "spectral_rank": 10, "tail_energy": 0.007982092909514904, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block2.v_proj", "old_rank": 19, "new_rank": 18, "spectral_rank": 13, "tail_energy": 0.009547715075314045, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block2.ff1", "old_rank": 40, "new_rank": 39, "spectral_rank": 35, "tail_energy": 0.009178835898637772, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block3.q_proj", "old_rank": 22, "new_rank": 21, "spectral_rank": 16, "tail_energy": 0.00929736066609621, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block3.k_proj", "old_rank": 25, "new_rank": 23, "spectral_rank": 15, "tail_energy": 0.009309804067015648, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block3.v_proj", "old_rank": 22, "new_rank": 21, "spectral_rank": 14, "tail_energy": 0.009320602752268314, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block3.ff1", "old_rank": 36, "new_rank": 35, "spectral_rank": 29, "tail_energy": 0.00897576380521059, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6000, "layer": "block3.ff2", "old_rank": 38, "new_rank": 35, "spectral_rank": 25, "tail_energy": 0.009838455356657505, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 23, "train_loss": 0.0618023612578191, "val_loss": 0.24745791733264924, "rank_min": 15, "rank_avg": 36.83333206176758, "rank_max": 64, "epoch_time_sec": 54.10315537452698}
+{"type": "epoch", "epoch": 24, "train_loss": 0.06069632537607381, "val_loss": 0.22335331588983537, "rank_min": 15, "rank_avg": 36.83333206176758, "rank_max": 64, "epoch_time_sec": 54.74336290359497}
+{"type": "rank_update", "step": 6500, "layer": "block0.k_proj", "old_rank": 29, "new_rank": 31, "spectral_rank": 40, "tail_energy": 0.009090692736208439, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block1.q_proj", "old_rank": 21, "new_rank": 20, "spectral_rank": 18, "tail_energy": 0.00830528698861599, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block1.k_proj", "old_rank": 21, "new_rank": 20, "spectral_rank": 12, "tail_energy": 0.00857480987906456, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block1.v_proj", "old_rank": 18, "new_rank": 17, "spectral_rank": 14, "tail_energy": 0.009227288886904716, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block1.ff2", "old_rank": 49, "new_rank": 50, "spectral_rank": 54, "tail_energy": 0.009591180831193924, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block2.q_proj", "old_rank": 20, "new_rank": 19, "spectral_rank": 15, "tail_energy": 0.00806871335953474, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block2.k_proj", "old_rank": 15, "new_rank": 14, "spectral_rank": 10, "tail_energy": 0.009701136499643326, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block2.ff2", "old_rank": 47, "new_rank": 48, "spectral_rank": 51, "tail_energy": 0.009760499931871891, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block3.q_proj", "old_rank": 21, "new_rank": 20, "spectral_rank": 16, "tail_energy": 0.009913517162203789, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block3.k_proj", "old_rank": 23, "new_rank": 22, "spectral_rank": 17, "tail_energy": 0.00894480012357235, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block3.v_proj", "old_rank": 21, "new_rank": 20, "spectral_rank": 17, "tail_energy": 0.008854145184159279, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 6500, "layer": "block3.ff1", "old_rank": 35, "new_rank": 34, "spectral_rank": 31, "tail_energy": 0.009042127057909966, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 25, "train_loss": 0.06056652997912311, "val_loss": 0.22356146842241287, "rank_min": 14, "rank_avg": 36.625, "rank_max": 64, "epoch_time_sec": 53.82579803466797}
+{"type": "epoch", "epoch": 26, "train_loss": 0.059928504402624136, "val_loss": 0.22021881073713304, "rank_min": 14, "rank_avg": 36.625, "rank_max": 64, "epoch_time_sec": 53.64686584472656}
+{"type": "rank_update", "step": 7000, "layer": "block0.q_proj", "old_rank": 29, "new_rank": 30, "spectral_rank": 34, "tail_energy": 0.009230570867657661, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block0.k_proj", "old_rank": 31, "new_rank": 33, "spectral_rank": 41, "tail_energy": 0.008808315731585026, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block0.ff1", "old_rank": 39, "new_rank": 40, "spectral_rank": 43, "tail_energy": 0.009961982257664204, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block0.ff2", "old_rank": 39, "new_rank": 40, "spectral_rank": 44, "tail_energy": 0.009352191351354122, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block1.k_proj", "old_rank": 20, "new_rank": 18, "spectral_rank": 12, "tail_energy": 0.009061194024980068, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block1.ff1", "old_rank": 46, "new_rank": 47, "spectral_rank": 48, "tail_energy": 0.009624883532524109, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block1.ff2", "old_rank": 50, "new_rank": 52, "spectral_rank": 59, "tail_energy": 0.009816092438995838, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block2.q_proj", "old_rank": 19, "new_rank": 18, "spectral_rank": 14, "tail_energy": 0.008416728116571903, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block2.v_proj", "old_rank": 18, "new_rank": 17, "spectral_rank": 15, "tail_energy": 0.009788496419787407, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block2.ff2", "old_rank": 48, "new_rank": 49, "spectral_rank": 54, "tail_energy": 0.009561938233673573, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block3.q_proj", "old_rank": 20, "new_rank": 19, "spectral_rank": 14, "tail_energy": 0.009772703982889652, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block3.k_proj", "old_rank": 22, "new_rank": 21, "spectral_rank": 15, "tail_energy": 0.00816491711884737, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7000, "layer": "block3.v_proj", "old_rank": 20, "new_rank": 19, "spectral_rank": 16, "tail_energy": 0.008981338702142239, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 27, "train_loss": 0.058653718652898694, "val_loss": 0.22333717375993728, "rank_min": 14, "rank_avg": 36.70833206176758, "rank_max": 64, "epoch_time_sec": 53.582648277282715}
+{"type": "rank_update", "step": 7500, "layer": "block0.q_proj", "old_rank": 30, "new_rank": 31, "spectral_rank": 35, "tail_energy": 0.009208397008478642, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block0.k_proj", "old_rank": 33, "new_rank": 35, "spectral_rank": 44, "tail_energy": 0.008876577951014042, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block0.v_proj", "old_rank": 63, "new_rank": 64, "spectral_rank": 64, "tail_energy": 0.01168211828917265, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block0.ff2", "old_rank": 40, "new_rank": 41, "spectral_rank": 42, "tail_energy": 0.009717371314764023, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block1.q_proj", "old_rank": 20, "new_rank": 19, "spectral_rank": 16, "tail_energy": 0.008828002959489822, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block1.k_proj", "old_rank": 18, "new_rank": 17, "spectral_rank": 11, "tail_energy": 0.009458187967538834, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block1.v_proj", "old_rank": 17, "new_rank": 16, "spectral_rank": 14, "tail_energy": 0.008451956324279308, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block1.ff1", "old_rank": 47, "new_rank": 46, "spectral_rank": 45, "tail_energy": 0.009459128603339195, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block1.ff2", "old_rank": 52, "new_rank": 53, "spectral_rank": 58, "tail_energy": 0.009567685425281525, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block2.q_proj", "old_rank": 18, "new_rank": 17, "spectral_rank": 15, "tail_energy": 0.008944029919803143, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block2.k_proj", "old_rank": 14, "new_rank": 13, "spectral_rank": 11, "tail_energy": 0.00825129821896553, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block2.ff1", "old_rank": 39, "new_rank": 38, "spectral_rank": 36, "tail_energy": 0.00972084328532219, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block3.q_proj", "old_rank": 19, "new_rank": 17, "spectral_rank": 11, "tail_energy": 0.009089762344956398, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block3.k_proj", "old_rank": 21, "new_rank": 19, "spectral_rank": 14, "tail_energy": 0.008876386098563671, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block3.ff1", "old_rank": 34, "new_rank": 33, "spectral_rank": 31, "tail_energy": 0.009873335249722004, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 7500, "layer": "block3.ff2", "old_rank": 35, "new_rank": 33, "spectral_rank": 28, "tail_energy": 0.00976634118705988, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 28, "train_loss": 0.05893613940188244, "val_loss": 0.2345228087902069, "rank_min": 13, "rank_avg": 36.375, "rank_max": 64, "epoch_time_sec": 53.47426462173462}
+{"type": "epoch", "epoch": 29, "train_loss": 0.0599178592048919, "val_loss": 0.2267398154735565, "rank_min": 13, "rank_avg": 36.375, "rank_max": 64, "epoch_time_sec": 52.73124885559082}
+{"type": "rank_update", "step": 8000, "layer": "block0.q_proj", "old_rank": 31, "new_rank": 32, "spectral_rank": 36, "tail_energy": 0.00896777119487524, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block0.k_proj", "old_rank": 35, "new_rank": 37, "spectral_rank": 44, "tail_energy": 0.009854343719780445, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block0.ff1", "old_rank": 40, "new_rank": 39, "spectral_rank": 38, "tail_energy": 0.009339407086372375, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block0.ff2", "old_rank": 41, "new_rank": 42, "spectral_rank": 46, "tail_energy": 0.009768973104655743, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block1.q_proj", "old_rank": 19, "new_rank": 18, "spectral_rank": 16, "tail_energy": 0.009645828977227211, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block1.k_proj", "old_rank": 17, "new_rank": 16, "spectral_rank": 12, "tail_energy": 0.008423243649303913, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block1.ff1", "old_rank": 46, "new_rank": 48, "spectral_rank": 60, "tail_energy": 0.009085535071790218, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block1.ff2", "old_rank": 53, "new_rank": 54, "spectral_rank": 58, "tail_energy": 0.009460443630814552, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block2.k_proj", "old_rank": 13, "new_rank": 12, "spectral_rank": 8, "tail_energy": 0.009078127332031727, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block2.v_proj", "old_rank": 17, "new_rank": 16, "spectral_rank": 14, "tail_energy": 0.00995225552469492, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block2.ff1", "old_rank": 38, "new_rank": 39, "spectral_rank": 39, "tail_energy": 0.009229485876858234, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block2.ff2", "old_rank": 49, "new_rank": 50, "spectral_rank": 54, "tail_energy": 0.009694136679172516, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block3.q_proj", "old_rank": 17, "new_rank": 16, "spectral_rank": 12, "tail_energy": 0.007877473719418049, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block3.k_proj", "old_rank": 19, "new_rank": 18, "spectral_rank": 13, "tail_energy": 0.009808509610593319, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block3.v_proj", "old_rank": 19, "new_rank": 17, "spectral_rank": 12, "tail_energy": 0.009857104159891605, "svd_interval": 500, "svals_len": 256}
+{"type": "rank_update", "step": 8000, "layer": "block3.ff1", "old_rank": 33, "new_rank": 32, "spectral_rank": 29, "tail_energy": 0.009628170169889927, "svd_interval": 500, "svals_len": 256}
+{"type": "epoch", "epoch": 30, "train_loss": 0.05947310964006986, "val_loss": 0.23103713154792785, "rank_min": 12, "rank_avg": 36.33333206176758, "rank_max": 64, "epoch_time_sec": 52.84368181228638}

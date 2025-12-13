@@ -1,83 +1,103 @@
-# Adaptive Low-Rank Training for Transformers
+Here is a professional, high-impact `README.md` ready for your repository. It highlights the key findings immediately and makes reproduction simple.
 
-This repository contains research and experimental code for **Adaptive Low-Rank Training**, a method to dynamically optimize the rank of linear layers in Transformer models during training.
+You will need to place two images in your repo for this to look perfect:
+1.  `assets/early_convergence.png` (Screenshot of Figure 1 from your PDF)
+2.  `assets/pareto_curve.png` (Screenshot of Figure 2 from your PDF)
 
-Unlike static compression techniques (like LoRA) or fixed-rank approximations, this approach allows the model to "learn" its own optimal topology. Layers with high information density grow in rank, while redundant layers shrink, automatically allocating parameters where they are most needed.
+***
 
-## 🚀 Latest State: v13 Lazy SVD Adaptive
+```markdown
+# Bottleneck Attention: Hard-Wiring Low-Dimensional Routing
 
-The current state-of-the-art implementation in this project is **`v13_transformer_lowrank_lazy_svd_adaptive.py`**.
+**[Read the Technical Report (PDF)](bottleneck_attention_tech_report.pdf)**
 
-### Key Innovations in v13
-*   **Fixed-Shape, Dynamic Rank**: Unlike previous versions that resized tensors (destroying optimizer state), v13 allocates "maximal" buffers (`U_full`, `V_full`) and slices them during the forward pass (`U_full[:, :rank]`). This **preserves AdamW momentum** throughout training, solving the "re-initialization shock" problem.
-*   **Lazy SVD Scheduling**: SVD is computationally expensive, so it is not run every step. The model waits for a warmup period and then runs SVD checks at intervals.
-*   **Adaptive Intervals**: The time between SVD checks is dynamic. If the layer is "stable" (rank isn't changing), the interval grows (checking less often). If the layer is "unstable" (high tail energy), the interval shrinks to adapt quickly.
-*   **Spectral Energy Targeting**: Ranks are chosen to preserve a specific percentage of spectral energy (default 98%), ensuring that only noise is pruned.
+### TL;DR
+Transformer attention matrices ($W_Q, W_K$) are massively over-parameterized. We demonstrate that you can **reduce the attention dimension from 512 to 32 (16$\times$ compression)** with only a ~4% increase in perplexity.
 
-## 📂 Project Structure & Evolution
+This architectural change reduces the **KV-Cache memory footprint by 93.75%**, enabling significantly larger batch sizes and longer contexts during inference.
 
-The codebase documents the evolution of the research idea:
+---
 
-| Version | Description |
-|---------|-------------|
-| **v13** | **Current Best.** Lazy SVD with adaptive intervals. Uses fixed-shape buffers to preserve optimizer momentum. |
-| **v11** | Momentum-based rank adaptation experiments. |
-| **v10** | Scaled Spectral Adaptive. Introduced Stable Rank estimation and SVD resizing (but reset optimizer). |
-| **v8 - v9** | Introduction of Spectral methods and Bidirectional rank adjustment. |
-| **v7** | **Dense Baseline** (`v7_transformer_dense_baseline.py`) and various experiments with EMA and Autograd-based rank adaptation. |
-| **v3 - v6** | Early Adaptive Low-Rank implementations. |
-| **v1 - v2** | Initial experiments with **Gradient Grouping** and clustering neurons based on similarity. |
+## 📊 Key Results
 
-## 🛠️ Installation & Requirements
+We trained a 6-layer GPT-style model on WikiText-2 using various attention dimensions ($d_{attn}$). The residual stream ($d_{model}$) remained constant at 512.
 
-The project relies on standard PyTorch.
+| Model Config | $d_{attn}$ | Params | Compression | Best Val Loss | vs Baseline | Throughput |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Baseline** | 512 | 36.06M | 1.0x | 5.3688 | -- | ~540 tok/s |
+| **Bottleneck** | 128 | 31.34M | 4.0x | 5.4686 | +1.8% | ~600 tok/s |
+| **Extreme + Null** | **32** | **30.16M** | **16.0x** | **5.6070** | **+4.4%** | **~626 tok/s** |
 
+### The "Early Convergence" Anomaly
+Surprisingly, restricting the attention dimension actually **accelerates early training**. In the first 500 steps, the Bottleneck models (Rank 128 and 32) achieve lower perplexity than the full-rank Baseline, suggesting that the standard 512-dimensional initialization introduces significant optimization noise.
+
+![Early Convergence](assets/early_convergence.png)
+*(Figure 1: Validation perplexity vs training step. Note the bottleneck models diving under the baseline in the inset.)*
+
+---
+
+## 🧠 The Hypothesis: "Wide Stream, Narrow Router"
+
+Standard Transformers assume $d_{attn} = d_{model}$.
+Our findings suggest this is inefficient. Attention acts as a **routing primitive** (deciding *where* to move information), which is an intrinsically low-rank operation (Rank $\approx$ 11-32). Feature processing, handled by the MLPs, requires high rank.
+
+**Bottleneck Attention** hard-wires this by decoupling the dimensions:
+1.  Project $d_{model} \to d_{attn}$ (where $d_{attn} \ll d_{model}$).
+2.  Compute Attention Scores and Aggregation in $d_{attn}$.
+3.  Project $d_{attn} \to d_{model}$.
+
+**The Null Token:**
+To prevent the "Softmax Bottleneck" in low dimensions, we add a learnable `null` key/value vector. This allows the model to explicitly assign probability mass to "attend nowhere," preventing noise from contaminating the residual stream when no relevant context exists.
+
+---
+
+## 🚀 Reproduction
+
+We provide a self-contained training script that requires only PyTorch. The dataset (WikiText-2) is downloaded and tokenized automatically.
+
+### Prerequisites
 ```bash
-pip install torch torchvision tqdm
+pip install torch
 ```
 
-*Note: The code is designed to be hardware-agnostic, automatically selecting CUDA (NVIDIA), MPS (Apple Silicon), or CPU.*
-
-## 🏃 Usage
-
-### 1. Prepare Data
-The scripts expect a text file. The v13 script includes a character-level loader, but you can point it to any text file.
-
-### 2. Run the Training
-You can run the latest implementation directly:
+### Run Experiments
+To reproduce the Baseline, Rank 128, and Rank 32 experiments sequentially:
 
 ```bash
-python3 v13_transformer_lowrank_lazy_svd_adaptive.py \
-    --data-file wiki.train.tokens \
-    --log-file v13_log.jsonl \
-    --epochs 30 \
-    --init-rank 64 \
-    --d-model 256 \
-    --n-layers 6 \
-    --n-heads 4
+make bottleneck_attention
 ```
 
-## 📊 Methodology (v13)
+*Note: This runs the script `v19_transformer_attn_bottleneck.py`. Logs and checkpoints will be saved to `runs/`.*
 
-### The Algorithm
-1.  **Allocation**: Allocate `U_full` and `V_full` with `max_rank` (e.g., 512). Initialize an integer `rank` pointer (e.g., 64).
-2.  **Forward Pass**: Use slicing: $ W_{active} = U_{full}[:, :rank] \times V_{full}[:rank, :] $. This is efficient and allows gradients to flow only to active components.
-3.  **Lazy Check**: Every $N$ steps (where $N$ is dynamic), compute the SVD of the active weight matrix $W_{active}$ on the CPU.
-4.  **Rank Decision**:
-    *   Calculate the cumulative spectral energy.
-    *   Find the smallest rank $k$ that retains 98% of the energy.
-    *   Smoothly adjust the current `rank` pointer towards $k$ (clamped step size).
-5.  **Interval Adjustment**:
-    *   If "tail energy" (discarded energy) is low, the approximation is good $\to$ increase check interval (save compute).
-    *   If "tail energy" is high, we are losing info $\to$ decrease check interval (adapt faster).
+---
 
-### Findings
-*   **Stability**: Preserving optimizer state (AdamW buffers) is critical for convergence. Virtual slicing is superior to physical resizing for this reason.
-*   **Efficiency**: SVD on CPU is fast enough if done "lazily" (every 100-1000 steps). It adds negligible overhead to the training loop.
+## 📦 Inference Implications
 
-## 📄 Research Notes
-*   `Adaptive_LowRank_Training_Research.docx.pdf`: Detailed theoretical background.
-*   `v10_review_gemini_3_pro_temp_0.md`: AI-assisted review of the spectral approach.
+The primary benefit of this architecture is **Inference Memory**.
+Standard KV Cache size is $2 \cdot L \cdot T \cdot d_{model}$.
+Bottleneck KV Cache size is $2 \cdot L \cdot T \cdot d_{attn}$.
 
-## 📜 License
-[MIT](LICENSE)
+| Context Length | Standard Cache ($d=512$) | Bottleneck Cache ($d=32$) | Savings |
+| :--- | :--- | :--- | :--- |
+| **4k** | ~10 MB | ~0.6 MB | **93%** |
+| **128k** | ~320 MB | ~20 MB | **93%** |
+
+This effectively allows for **16$\times$ longer context** or **16$\times$ larger batch sizes** within the same memory budget for the KV cache.
+
+---
+
+## 📜 Citation
+
+If you find this useful, please cite the technical report:
+
+```bibtex
+@techreport{vandommelen2025bottleneck,
+  title={Bottleneck Attention: Hard-Wiring Low-Dimensional Routing in GPT-Style Transformers},
+  author={van Dommelen, Daniel Owen},
+  year={2025},
+  month={December},
+  institution={Independent Research},
+  url={https://github.com/TheApeMachine/bottleneck-attention}
+}
+```
+```
