@@ -1,0 +1,151 @@
+File fineweb_100m.tokens could not be read as space-separated integers. Tokenizing as words...
+Tokenized 100002130 tokens. Vocab size: 49761
+Device: mps
+Tokens: train 90,001,917 | val 10,000,213 | vocab 49,761
+Uniform baseline loss log(V): 10.8150 (ppl ~ 49761)
+== eval step 0 | train 10.9158 | val 10.9145 | val_ppl 54969.25 | 14.4s
+   (new best) 10.9145
+step      0/6000 | loss 10.9024 | ppl 54306.91 | tok/s    24391
+step     50/6000 | loss 7.5081 | ppl  1822.69 | tok/s    21645
+step    100/6000 | loss 6.9295 | ppl  1021.98 | tok/s    13562
+step    150/6000 | loss 6.7098 | ppl   820.37 | tok/s    11854
+step    200/6000 | loss 6.5893 | ppl   727.29 | tok/s    14674
+step    250/6000 | loss 6.2428 | ppl   514.30 | tok/s    16261
+step    300/6000 | loss 6.1739 | ppl   480.05 | tok/s    16124
+step    350/6000 | loss 6.0871 | ppl   440.13 | tok/s    15679
+step    400/6000 | loss 6.0982 | ppl   445.06 | tok/s    15417
+step    450/6000 | loss 5.9083 | ppl   368.07 | tok/s    16322
+== eval step 500 | train 5.7772 | val 5.7221 | val_ppl 305.55 | 866.2s
+   (new best) 5.7221
+step    500/6000 | loss 5.9102 | ppl   368.77 | tok/s    16476
+step    550/6000 | loss 5.6397 | ppl   281.39 | tok/s    16316
+step    600/6000 | loss 5.7570 | ppl   316.41 | tok/s    16292
+step    650/6000 | loss 5.7129 | ppl   302.74 | tok/s    16614
+step    700/6000 | loss 5.4848 | ppl   240.99 | tok/s    17167
+step    750/6000 | loss 5.3988 | ppl   221.14 | tok/s    16782
+step    800/6000 | loss 5.4145 | ppl   224.63 | tok/s    16848
+step    850/6000 | loss 5.3220 | ppl   204.80 | tok/s    16824
+step    900/6000 | loss 5.3139 | ppl   203.14 | tok/s    16277
+step    950/6000 | loss 5.5096 | ppl   247.05 | tok/s    14607
+== eval step 1000 | train 5.2781 | val 5.2599 | val_ppl 192.47 | 812.2s
+   (new best) 5.2599
+step   1000/6000 | loss 5.2974 | ppl   199.82 | tok/s    17942
+step   1050/6000 | loss 5.1383 | ppl   170.42 | tok/s    17600
+step   1100/6000 | loss 5.3112 | ppl   202.59 | tok/s    16394
+step   1150/6000 | loss 5.2864 | ppl   197.63 | tok/s    16375
+step   1200/6000 | loss 5.2424 | ppl   189.12 | tok/s    15077
+step   1250/6000 | loss 5.1294 | ppl   168.92 | tok/s    15305
+step   1300/6000 | loss 5.1219 | ppl   167.66 | tok/s    14992
+step   1350/6000 | loss 5.0335 | ppl   153.46 | tok/s    15071
+step   1400/6000 | loss 5.2317 | ppl   187.12 | tok/s    18035
+step   1450/6000 | loss 5.1438 | ppl   171.36 | tok/s    18192
+== eval step 1500 | train 5.0000 | val 4.9568 | val_ppl 142.14 | 826.5s
+   (new best) 4.9568
+step   1500/6000 | loss 4.9096 | ppl   135.59 | tok/s    17405
+step   1550/6000 | loss 4.8598 | ppl   129.00 | tok/s    17979
+step   1600/6000 | loss 4.9781 | ppl   145.20 | tok/s    17978
+step   1650/6000 | loss 4.8903 | ppl   133.00 | tok/s    17919
+step   1700/6000 | loss 4.8169 | ppl   123.58 | tok/s    18095
+step   1750/6000 | loss 4.8616 | ppl   129.23 | tok/s    17670
+step   1800/6000 | loss 4.8551 | ppl   128.39 | tok/s    17893
+step   1850/6000 | loss 4.7372 | ppl   114.11 | tok/s    18133
+step   1900/6000 | loss 4.6347 | ppl   102.99 | tok/s    17621
+step   1950/6000 | loss 4.7772 | ppl   118.77 | tok/s    17267
+== eval step 2000 | train 4.7460 | val 4.7038 | val_ppl 110.36 | 769.0s
+   (new best) 4.7038
+step   2000/6000 | loss 4.8586 | ppl   128.85 | tok/s    17225
+step   2050/6000 | loss 4.7150 | ppl   111.61 | tok/s    17706
+step   2100/6000 | loss 4.6949 | ppl   109.39 | tok/s    16987
+step   2150/6000 | loss 4.6327 | ppl   102.80 | tok/s    17002
+step   2200/6000 | loss 4.4765 | ppl    87.92 | tok/s    17715
+step   2250/6000 | loss 4.4738 | ppl    87.69 | tok/s    17897
+step   2300/6000 | loss 4.6982 | ppl   109.75 | tok/s    18001
+step   2350/6000 | loss 4.6276 | ppl   102.27 | tok/s    16801
+step   2400/6000 | loss 4.5045 | ppl    90.42 | tok/s    16558
+step   2450/6000 | loss 4.6866 | ppl   108.48 | tok/s    16693
+== eval step 2500 | train 4.5203 | val 4.4963 | val_ppl 89.69 | 787.8s
+   (new best) 4.4963
+step   2500/6000 | loss 4.4818 | ppl    88.39 | tok/s    17460
+step   2550/6000 | loss 4.6127 | ppl   100.75 | tok/s    17651
+step   2600/6000 | loss 4.5588 | ppl    95.46 | tok/s    16999
+step   2650/6000 | loss 4.5281 | ppl    92.58 | tok/s    16468
+step   2700/6000 | loss 4.4350 | ppl    84.35 | tok/s    16999
+step   2750/6000 | loss 4.2988 | ppl    73.61 | tok/s    18834
+step   2800/6000 | loss 4.3963 | ppl    81.15 | tok/s    19053
+step   2850/6000 | loss 4.3961 | ppl    81.13 | tok/s    18781
+step   2900/6000 | loss 4.3217 | ppl    75.31 | tok/s    19101
+step   2950/6000 | loss 4.3005 | ppl    73.73 | tok/s    17155
+== eval step 3000 | train 4.3816 | val 4.3675 | val_ppl 78.84 | 768.9s
+   (new best) 4.3675
+step   3000/6000 | loss 4.3712 | ppl    79.14 | tok/s    17305
+step   3050/6000 | loss 4.4777 | ppl    88.03 | tok/s    16912
+step   3100/6000 | loss 4.2391 | ppl    69.35 | tok/s    17066
+step   3150/6000 | loss 4.4294 | ppl    83.88 | tok/s    16736
+step   3200/6000 | loss 4.4067 | ppl    82.00 | tok/s    16942
+step   3250/6000 | loss 4.3139 | ppl    74.73 | tok/s    17476
+step   3300/6000 | loss 4.4770 | ppl    87.97 | tok/s    17037
+step   3350/6000 | loss 4.2309 | ppl    68.78 | tok/s    17025
+step   3400/6000 | loss 4.3476 | ppl    77.30 | tok/s    16823
+step   3450/6000 | loss 4.3270 | ppl    75.72 | tok/s    16570
+== eval step 3500 | train 4.2819 | val 4.3359 | val_ppl 76.39 | 802.8s
+   (new best) 4.3359
+step   3500/6000 | loss 4.3150 | ppl    74.82 | tok/s    16647
+step   3550/6000 | loss 4.1299 | ppl    62.17 | tok/s    16178
+step   3600/6000 | loss 4.1796 | ppl    65.34 | tok/s    17181
+step   3650/6000 | loss 4.2346 | ppl    69.03 | tok/s    17134
+step   3700/6000 | loss 4.2551 | ppl    70.47 | tok/s    17513
+step   3750/6000 | loss 4.2549 | ppl    70.45 | tok/s    16333
+step   3800/6000 | loss 4.2096 | ppl    67.33 | tok/s    15183
+step   3850/6000 | loss 4.2676 | ppl    71.35 | tok/s    17066
+step   3900/6000 | loss 4.3225 | ppl    75.38 | tok/s    17678
+step   3950/6000 | loss 4.1162 | ppl    61.33 | tok/s    17406
+== eval step 4000 | train 4.2690 | val 4.2470 | val_ppl 69.89 | 804.7s
+   (new best) 4.2470
+step   4000/6000 | loss 4.2412 | ppl    69.49 | tok/s    17362
+step   4050/6000 | loss 4.1929 | ppl    66.21 | tok/s    17759
+step   4100/6000 | loss 4.3334 | ppl    76.20 | tok/s    17628
+step   4150/6000 | loss 4.3826 | ppl    80.05 | tok/s    17437
+step   4200/6000 | loss 4.2387 | ppl    69.32 | tok/s    16958
+step   4250/6000 | loss 4.1251 | ppl    61.87 | tok/s    16820
+step   4300/6000 | loss 4.1000 | ppl    60.34 | tok/s    17209
+step   4350/6000 | loss 4.0988 | ppl    60.27 | tok/s    17456
+step   4400/6000 | loss 4.1542 | ppl    63.70 | tok/s    17661
+step   4450/6000 | loss 4.2379 | ppl    69.26 | tok/s    17666
+== eval step 4500 | train 4.1849 | val 4.2145 | val_ppl 67.66 | 780.3s
+   (new best) 4.2145
+step   4500/6000 | loss 4.2408 | ppl    69.46 | tok/s    17730
+step   4550/6000 | loss 4.1438 | ppl    63.04 | tok/s    17707
+step   4600/6000 | loss 4.1742 | ppl    64.99 | tok/s    17805
+step   4650/6000 | loss 4.0051 | ppl    54.88 | tok/s    17205
+step   4700/6000 | loss 4.2008 | ppl    66.74 | tok/s    16760
+step   4750/6000 | loss 4.2693 | ppl    71.47 | tok/s    16568
+step   4800/6000 | loss 3.9066 | ppl    49.73 | tok/s    16982
+step   4850/6000 | loss 4.1264 | ppl    61.95 | tok/s    18017
+step   4900/6000 | loss 4.1642 | ppl    64.34 | tok/s    17038
+step   4950/6000 | loss 4.1505 | ppl    63.46 | tok/s    17414
+== eval step 5000 | train 4.0827 | val 4.1252 | val_ppl 61.88 | 780.1s
+   (new best) 4.1252
+step   5000/6000 | loss 4.1487 | ppl    63.35 | tok/s    17731
+step   5050/6000 | loss 4.2326 | ppl    68.90 | tok/s    18710
+step   5100/6000 | loss 4.0459 | ppl    57.16 | tok/s    16621
+step   5150/6000 | loss 4.1726 | ppl    64.89 | tok/s    15639
+step   5200/6000 | loss 4.0900 | ppl    59.74 | tok/s    17603
+step   5250/6000 | loss 4.0298 | ppl    56.25 | tok/s    18135
+step   5300/6000 | loss 4.1036 | ppl    60.56 | tok/s    17652
+step   5350/6000 | loss 4.1273 | ppl    62.01 | tok/s    17065
+step   5400/6000 | loss 3.9453 | ppl    51.69 | tok/s    16964
+step   5450/6000 | loss 3.9918 | ppl    54.15 | tok/s    17394
+== eval step 5500 | train 4.0980 | val 4.0989 | val_ppl 60.27 | 775.4s
+   (new best) 4.0989
+step   5500/6000 | loss 4.0541 | ppl    57.63 | tok/s    17867
+step   5550/6000 | loss 3.9099 | ppl    49.89 | tok/s    17937
+step   5600/6000 | loss 4.0668 | ppl    58.37 | tok/s    17432
+step   5650/6000 | loss 3.9918 | ppl    54.15 | tok/s    17256
+step   5700/6000 | loss 3.9416 | ppl    51.50 | tok/s    17614
+step   5750/6000 | loss 4.0031 | ppl    54.77 | tok/s    17776
+step   5800/6000 | loss 4.1375 | ppl    62.65 | tok/s    18155
+step   5850/6000 | loss 4.0603 | ppl    57.99 | tok/s    18154
+step   5900/6000 | loss 4.2283 | ppl    68.60 | tok/s    18189
+step   5950/6000 | loss 4.0388 | ppl    56.76 | tok/s    17418
+== eval step 6000 | train 4.0525 | val 4.0990 | val_ppl 60.28 | 758.6s
+Done. best_val=4.0989

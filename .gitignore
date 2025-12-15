@@ -6,5 +6,5 @@ Sympathetic_Neurons_Research_Note.docx.pdf
 wiki.train.tokens
 fineweb_100m.tokens
 data/
-runs/
+*.pt
 docs/v17 output differences.pdf

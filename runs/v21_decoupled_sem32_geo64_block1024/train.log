@@ -1,0 +1,44 @@
+File wiki.train.tokens could not be read as space-separated integers. Tokenizing as words...
+Tokenized 2075677 tokens. Vocab size: 33278
+Device: mps
+Tokens: train 1,868,110 | val 207,567 | vocab 33,278
+Uniform baseline loss log(V): 10.4127 (ppl ~ 33278)
+== eval step 0 | train 10.4211 | val 10.4196 | val_ppl 33510.97 | 10.2s
+   (new best) 10.4196
+step      0/1200 | loss 10.4203 | ppl 33533.80 | tok/s    14783
+step     50/1200 | loss 7.1187 | ppl  1234.86 | tok/s    27588
+step    100/1200 | loss 6.8588 | ppl   952.24 | tok/s    27477
+step    150/1200 | loss 6.6655 | ppl   784.86 | tok/s    26991
+== eval step 200 | train 6.5100 | val 6.6767 | val_ppl 793.73 | 117.0s
+   (new best) 6.6767
+step    200/1200 | loss 6.5070 | ppl   669.80 | tok/s    28111
+step    250/1200 | loss 6.4649 | ppl   642.22 | tok/s    27846
+step    300/1200 | loss 6.2515 | ppl   518.77 | tok/s    26661
+step    350/1200 | loss 6.3534 | ppl   574.47 | tok/s    26779
+== eval step 400 | train 6.0681 | val 6.3438 | val_ppl 568.96 | 119.5s
+   (new best) 6.3438
+step    400/1200 | loss 6.2141 | ppl   499.75 | tok/s    26365
+step    450/1200 | loss 6.0882 | ppl   440.64 | tok/s    26881
+step    500/1200 | loss 5.8896 | ppl   361.25 | tok/s    26767
+step    550/1200 | loss 6.0587 | ppl   427.84 | tok/s    25229
+== eval step 600 | train 5.7944 | val 6.1580 | val_ppl 472.46 | 121.2s
+   (new best) 6.1580
+step    600/1200 | loss 5.7867 | ppl   325.93 | tok/s    26834
+step    650/1200 | loss 5.6209 | ppl   276.15 | tok/s    26505
+step    700/1200 | loss 5.7165 | ppl   303.85 | tok/s    26280
+step    750/1200 | loss 5.5890 | ppl   267.46 | tok/s    26129
+== eval step 800 | train 5.5378 | val 6.0503 | val_ppl 424.23 | 123.0s
+   (new best) 6.0503
+step    800/1200 | loss 5.5827 | ppl   265.79 | tok/s    25620
+step    850/1200 | loss 5.5199 | ppl   249.60 | tok/s    24089
+step    900/1200 | loss 5.4362 | ppl   229.57 | tok/s    23724
+step    950/1200 | loss 5.1188 | ppl   167.13 | tok/s    24795
+== eval step 1000 | train 5.3473 | val 5.9409 | val_ppl 380.29 | 130.2s
+   (new best) 5.9409
+step   1000/1200 | loss 5.4850 | ppl   241.05 | tok/s    24983
+step   1050/1200 | loss 5.3601 | ppl   212.75 | tok/s    24826
+step   1100/1200 | loss 5.2087 | ppl   182.85 | tok/s    23150
+step   1150/1200 | loss 5.2069 | ppl   182.52 | tok/s    22878
+== eval step 1200 | train 5.1599 | val 5.8616 | val_ppl 351.28 | 134.2s
+   (new best) 5.8616
+Done. best_val=5.8616

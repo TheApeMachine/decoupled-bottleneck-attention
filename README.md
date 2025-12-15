@@ -97,6 +97,7 @@ decoupled-bottleneck-attention/
 ├── plot_results.py                             # Result graphs
 ├── vis_heatmap.py                              # Attention heatmaps
 ├── experiments/                                # Every historical version of the code from beginning to now
+├── runs/                                       # Training logs (and checkpoints once run locally)
 ├── assets/                                     # Generated figures
 │   ├── convergence_plot.png
 │   ├── memory_footprint.png

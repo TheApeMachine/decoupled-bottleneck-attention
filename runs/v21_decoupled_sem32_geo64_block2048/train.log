@@ -1,0 +1,32 @@
+File wiki.train.tokens could not be read as space-separated integers. Tokenizing as words...
+Tokenized 2075677 tokens. Vocab size: 33278
+Device: mps
+Tokens: train 1,868,110 | val 207,567 | vocab 33,278
+Uniform baseline loss log(V): 10.4127 (ppl ~ 33278)
+== eval step 0 | train 10.4189 | val 10.4182 | val_ppl 33462.28 | 7.0s
+   (new best) 10.4182
+step      0/800 | loss 10.4138 | ppl 33317.22 | tok/s    11382
+step     50/800 | loss 7.0251 | ppl  1124.53 | tok/s    15629
+step    100/800 | loss 6.7804 | ppl   880.45 | tok/s    15573
+step    150/800 | loss 6.5761 | ppl   717.75 | tok/s    15533
+== eval step 200 | train 6.4445 | val 6.6379 | val_ppl 763.53 | 198.9s
+   (new best) 6.6379
+step    200/800 | loss 6.5946 | ppl   731.14 | tok/s    15612
+step    250/800 | loss 6.2742 | ppl   530.70 | tok/s    15645
+step    300/800 | loss 6.2306 | ppl   508.05 | tok/s    15813
+step    350/800 | loss 6.1855 | ppl   485.68 | tok/s    15767
+== eval step 400 | train 6.0864 | val 6.3833 | val_ppl 591.87 | 195.4s
+   (new best) 6.3833
+step    400/800 | loss 6.1464 | ppl   467.04 | tok/s    16066
+step    450/800 | loss 6.1948 | ppl   490.19 | tok/s    16648
+step    500/800 | loss 5.9299 | ppl   376.10 | tok/s    17272
+step    550/800 | loss 5.8704 | ppl   354.40 | tok/s    17277
+== eval step 600 | train 5.8759 | val 6.2209 | val_ppl 503.18 | 181.7s
+   (new best) 6.2209
+step    600/800 | loss 5.6848 | ppl   294.35 | tok/s    17297
+step    650/800 | loss 5.9116 | ppl   369.30 | tok/s    17199
+step    700/800 | loss 5.7915 | ppl   327.50 | tok/s    15831
+step    750/800 | loss 5.7737 | ppl   321.73 | tok/s    16261
+== eval step 800 | train 5.7240 | val 6.0888 | val_ppl 440.90 | 188.6s
+   (new best) 6.0888
+Done. best_val=6.0888
