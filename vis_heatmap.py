@@ -61,7 +61,8 @@ def visualize_attention(
     input_ids: torch.Tensor,
     layer_idx: int = 0,
     head_idx: int = 0,
-    output_path: str = None
+    output_path: str = None,
+    run_name: str = None
 ) -> None:
     """
     Generate attention heatmap for a specific layer and head.
@@ -109,8 +110,9 @@ def visualize_attention(
     
     # Title
     mode = model.cfg.attn_mode
-    title = f'Attention Pattern ({mode.capitalize()}, Layer {layer_idx}, Head {head_idx})'
-    ax.set_title(title, fontsize=14, fontweight='bold')
+    name_str = run_name if run_name else mode.capitalize()
+    title = f'Attention Pattern: {name_str}\n(Layer {layer_idx}, Head {head_idx})'
+    ax.set_title(title, fontsize=12, fontweight='bold')
     
     # Add annotations for small sequences
     if seq_len <= 10:
@@ -223,6 +225,8 @@ def main():
     parser.add_argument('--seq-len', type=int, default=8, help='Sequence length for visualization')
     parser.add_argument('--compare', type=str, default=None, 
                         help='Path to second checkpoint for comparison')
+    parser.add_argument('--name', type=str, default=None,
+                        help='Custom name for output file (defaults to run directory name)')
     args = parser.parse_args()
     
     device = pick_device()
@@ -245,9 +249,17 @@ def main():
     # Generate dummy input (sequential IDs for clarity)
     input_ids = torch.arange(args.seq_len, dtype=torch.long).unsqueeze(0)
     
+    # Determine output name: use --name, or derive from checkpoint path
+    if args.name:
+        run_name = args.name
+    else:
+        # Extract run directory name from checkpoint path (e.g., "runs/v21_baseline/best.pt" -> "v21_baseline")
+        ckpt_path = Path(args.ckpt)
+        run_name = ckpt_path.parent.name
+    
     if args.compare:
         # Comparison mode
-        output_path = OUTPUT_DIR / f"comparison_L{args.layer}_H{args.head}.png"
+        output_path = OUTPUT_DIR / f"{run_name}_comparison_L{args.layer}_H{args.head}.png"
         compare_attention_patterns(
             args.ckpt, args.compare, input_ids,
             layer_idx=args.layer, head_idx=args.head,
@@ -255,11 +267,12 @@ def main():
         )
     else:
         # Single model visualization
-        output_path = OUTPUT_DIR / f"{cfg.attn_mode}_L{args.layer}_H{args.head}.png"
+        output_path = OUTPUT_DIR / f"{run_name}_L{args.layer}_H{args.head}.png"
         visualize_attention(
             model, input_ids,
             layer_idx=args.layer, head_idx=args.head,
-            output_path=str(output_path)
+            output_path=str(output_path),
+            run_name=run_name
         )
     
     print("\nDone!")

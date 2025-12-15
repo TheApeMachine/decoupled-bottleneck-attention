@@ -8,3 +8,7 @@ fineweb_100m.tokens
 data/
 *.pt
 docs/v17 output differences.pdf
+docs/raw/
+__pycache__/
+.venv/
+docs/RESEARCH_MASTER_PLAN.md
