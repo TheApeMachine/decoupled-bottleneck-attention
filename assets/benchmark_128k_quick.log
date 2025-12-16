@@ -1,0 +1,61 @@
+>>> Quick 128k inference test...
+python3.12 benchmark_128k.py \
+		--ckpt runs/context_1024/best.pt \
+		--data fineweb_100m.tokens \
+		--contexts 1024 16384 131072 \
+		--output assets/benchmark_128k_quick.png
+Device: mps
+Contexts to benchmark: [1024, 16384, 131072]
+
+Loading tokens from: fineweb_100m.tokens
+Loaded 132,072 tokens
+
+============================================================
+Loading: runs/context_1024/best.pt
+============================================================
+Attention mode: decoupled
+Trained context: 1024
+Dimensions: sem=32, geo=64
+
+Context 1,024:
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Inference time: 7.6ms
+  → Throughput: 131 tok/s
+  → Loss: 12.5449
+  → Perplexity: 280673.8
+  → KV cache (FP16): 0.002 GB
+  → KV cache (Q4): 0.001 GB
+
+Context 16,384:
+  [Extending block_size: 1024 -> 16384]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Inference time: 4.1ms
+  → Throughput: 246 tok/s
+  → Loss: 12.3868
+  → Perplexity: 239614.8
+  → KV cache (FP16): 0.035 GB
+  → KV cache (Q4): 0.009 GB
+
+Context 131,072:
+  [Extending block_size: 16384 -> 131072]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Inference time: 4.7ms
+  → Throughput: 213 tok/s
+  → Loss: 12.4014
+  → Perplexity: 243151.9
+  → KV cache (FP16): 0.281 GB
+  → KV cache (Q4): 0.070 GB
+
+================================================================================
+BENCHMARK SUMMARY
+================================================================================
+Context      Time (ms)    Tok/s        Loss       PPL       
+--------------------------------------------------------------------------------
+1,024        7.6          131          12.5449    280673.8  
+16,384       4.1          246          12.3868    239614.8  
+131,072      4.7          213          12.4014    243151.9  
+
+✓ Saved: assets/benchmark_128k_quick.png

@@ -4317,7 +4317,7 @@ def main() -> None:
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     use_amp = bool(args.amp) and device.type == "cuda"
     amp_dtype = torch.bfloat16 if args.amp_dtype == "bf16" else torch.float16
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp and amp_dtype == torch.float16)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp and amp_dtype == torch.float16)
 
 
     best_val = float("inf")

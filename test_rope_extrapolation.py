@@ -116,8 +116,9 @@ def main():
     ckpt = torch.load(args.ckpt, map_location=device)
     cfg = ModelConfig(**ckpt['config'])
     
-    print(f"Model trained at context: {cfg.block}")
+    print(f"Model trained at context: {cfg.block_size}")
     print(f"Attention mode: {cfg.attn_mode}")
+    print(f"attn_dim: {cfg.attn_dim}")
     if cfg.attn_mode == 'decoupled':
         print(f"  d_sem={cfg.sem_dim}, d_geo={cfg.geo_dim}")
     
@@ -136,7 +137,7 @@ def main():
     print("=" * 60)
     
     results = []
-    train_context = cfg.block
+    train_context = cfg.block_size
     
     for ctx in args.contexts:
         if ctx > len(tokens) - 1:
@@ -144,7 +145,16 @@ def main():
             continue
         
         # Temporarily modify model's block size for inference
-        # The model should handle this if RoPE is applied dynamically
+        # We need to update both the config and the causal mask
+        if ctx > model.cfg.block_size:
+            model.cfg.block_size = ctx
+            # Re-generate causal mask for larger context
+            model.register_buffer(
+                "causal_mask",
+                torch.tril(torch.ones(ctx, ctx, dtype=torch.bool)).view(1, 1, ctx, ctx).to(device),
+                persistent=False,
+            )
+        
         print(f"\nEvaluating at context={ctx}...", end=" ", flush=True)
         
         try:

@@ -98,13 +98,27 @@ def benchmark_inference(model: GPT, tokens: torch.Tensor,
         print(f"Warning: Not enough tokens ({len(tokens)}) for context {context_length}")
         return None
     
+    # Override block size to allow extrapolation
+    if model.cfg.block_size < context_length:
+        print(f"  [Extending block_size: {model.cfg.block_size} -> {context_length}]")
+        model.cfg.block_size = context_length
+        # Note: We do NOT resize self.causal_mask because creating a 128k x 128k bool tensor
+        # exceeds INT_MAX elements (2^31) which crashes MPS/CUDA on some setups.
+        # Since we use chunked inference (chunk_size=1024), we never need a mask larger
+        # than the chunk size, so the original mask (e.g. 1024x1024) is sufficient
+        # as long as we don't run a full dense forward pass.
+
     input_ids = tokens[:context_length].unsqueeze(0).to(device)
     target_ids = tokens[1:context_length + 1].unsqueeze(0).to(device)
     
     # Warmup
     print(f"  Warming up ({warmup_runs} runs)...", end=" ", flush=True)
+    # We skip full-context warmup to avoid OOM. 
+    # Instead we just run a small dummy pass to wake up the GPU.
+    dummy_input = input_ids[:, :128]
     for _ in range(warmup_runs):
-        _ = model(input_ids)
+        with torch.no_grad():
+             _ = model(dummy_input)
     
     # Synchronize
     if torch.backends.mps.is_available():
@@ -119,36 +133,127 @@ def benchmark_inference(model: GPT, tokens: torch.Tensor,
     times = []
     losses = []
     
+    # We must use chunked inference to avoid OOM on the full 128k matrix
+    # processing the sequence in blocks of 'chunk_size' using the KV cache.
+    chunk_size = 1024 
+    
     for _ in range(bench_runs):
         # Measure memory before
         mem_before = get_memory_usage_gb()
         
-        # Time the forward pass
-        start = time.perf_counter()
-        logits, _ = model(input_ids)
+        # Reset model cache
+        caches = []
+        # Initialize caches (we rely on model.generate structure or manually build them)
+        # Actually, let's just use the model's forward pass with cache in a loop.
         
-        # Synchronize for accurate timing
-        if torch.backends.mps.is_available():
-            torch.mps.synchronize()
-        elif torch.cuda.is_available():
-            torch.cuda.synchronize()
+        total_loss = 0.0
+        total_time = 0.0
         
-        end = time.perf_counter()
-        times.append(end - start)
+        # Initial chunk
+        curr_pos = 0
+        caches = None # Start with no cache
         
-        # Compute loss
-        loss = torch.nn.functional.cross_entropy(
-            logits.view(-1, logits.size(-1)),
-            target_ids.view(-1)
-        )
-        losses.append(loss.item())
-    
+        # We process the prompt in chunks. 
+        # For the first chunk, we compute standard attention.
+        # For subsequent chunks, we use the cache.
+        
+        # NOTE: This effectively benchmarks "Prefill" speed if we pass large chunks,
+        # or "Decode" speed if we pass 1 token at a time.
+        # To measure 128k context support, we need to process the whole prompt
+        # and see if it fits.
+        
+        # If we just want to test "can it handle 128k context inference",
+        # we should process (Context-1) tokens to fill cache, then measure generation of last token.
+        
+        try:
+            # 1. Fill Cache (Prefill) in chunks to avoid O(N^2) OOM
+            # We don't time the prefill of the whole 128k for the "inference latency" metric,
+            # we want to measure the time to generate *at* 128k.
+            
+            with torch.no_grad():
+                # We need to build up the cache up to context_length - 1
+                # We can do this in chunks of 4096 to be safe.
+                prefill_chunk = 4096
+                caches = None
+                
+                # We only need to process up to the last token to measure the *next* token prediction
+                # But to measure perplexity, we need loss on all tokens.
+                # Let's separate the two:
+                # 1. Perplexity: Sum of losses across chunks.
+                # 2. Latency: Time to forward the last chunk.
+                
+                # Simplification: We will run the *last chunk* of size 128 to measure 
+                # performance at deep context.
+                
+                # A. Fast-forward cache (simulated) or just run forward on full sequence?
+                # We can't run full sequence. We must chunk.
+                
+                start_prefill = time.perf_counter()
+                
+                # Iterate through chunks
+                for i in range(0, context_length, chunk_size):
+                    # End index for this chunk
+                    end = min(i + chunk_size, context_length)
+                    
+                    chunk_input = input_ids[:, i:end]
+                    
+                    # Forward pass with cache
+                    # Note: v21 model forward signature: forward(idx, caches=None, pos_offset=0)
+                    chunk_logits, caches = model(chunk_input, caches=caches, pos_offset=i)
+                    
+                    # Compute loss for this chunk
+                    # Targets match input shifted by 1. 
+                    # target_ids is tokens[1:context+1]
+                    # chunk_target corresponds to target_ids[:, i:end]
+                    chunk_target = target_ids[:, i:end]
+                    
+                    loss = torch.nn.functional.cross_entropy(
+                        chunk_logits.view(-1, chunk_logits.size(-1)),
+                        chunk_target.view(-1),
+                        reduction='sum' # Sum so we can average correctly later
+                    )
+                    total_loss += loss.item()
+                    
+                    # Delete logits to save memory
+                    del chunk_logits
+                    
+                end_prefill = time.perf_counter()
+                
+                # Measure single-token generation time at full context
+                # This is the "Inference Time" at 128k.
+                if torch.backends.mps.is_available():
+                    torch.mps.synchronize()
+                elif torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                
+                t0 = time.perf_counter()
+                # Generate 1 token
+                # Feed the last token again? No, feed a dummy token or next token
+                dummy_next = target_ids[:, -1:] 
+                _, _ = model(dummy_next, caches=caches, pos_offset=context_length)
+                
+                if torch.backends.mps.is_available():
+                    torch.mps.synchronize()
+                elif torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                t1 = time.perf_counter()
+                
+                times.append(t1 - t0)
+                losses.append(total_loss / context_length)
+
+        except RuntimeError as e:
+            if "out of memory" in str(e) or "buffer size" in str(e):
+                print(f"OOM at context {context_length}")
+                return None
+            raise e
+            
     print("done")
     
     # Compute metrics
     avg_time = sum(times) / len(times)
     avg_loss = sum(losses) / len(losses)
-    tokens_per_sec = context_length / avg_time
+    # tokens_per_sec is now 1 / avg_time (since we timed 1 token generation)
+    tokens_per_sec = 1.0 / avg_time 
     memory_gb = get_memory_usage_gb()
     perplexity = math.exp(avg_loss)
     
@@ -175,7 +280,7 @@ def theoretical_kv_cache_size(cfg: ModelConfig, context_length: int,
         kv_dim = cfg.d_model
     
     # K + V, for all layers
-    cache_elements = 2 * cfg.layers * context_length * kv_dim
+    cache_elements = 2 * cfg.n_layer * context_length * kv_dim
     cache_bits = cache_elements * quantization_bits
     cache_gb = cache_bits / 8 / (1024**3)
     
@@ -231,7 +336,7 @@ def main():
                 model_name += f" ({cfg.d_model})"
             
             print(f"Model: {model_name}")
-            print(f"Trained context: {cfg.block}")
+            print(f"Trained context: {cfg.block_size}")
             
             results = []
             for ctx in args.contexts:
@@ -293,7 +398,7 @@ def main():
         model.eval()
         
         print(f"Attention mode: {cfg.attn_mode}")
-        print(f"Trained context: {cfg.block}")
+        print(f"Trained context: {cfg.block_size}")
         if cfg.attn_mode == 'decoupled':
             print(f"Dimensions: sem={cfg.sem_dim}, geo={cfg.geo_dim}")
         
@@ -335,7 +440,7 @@ def main():
                       f"{r.tokens_per_sec:<12,.0f} {r.loss:<10.4f} {r.perplexity:<10.1f}")
             
             # Extrapolation quality
-            train_ctx = cfg.block
+            train_ctx = cfg.block_size
             train_result = next((r for r in results if r.context_length == train_ctx), None)
             max_result = results[-1]
             
@@ -382,8 +487,8 @@ def main():
             # PPL vs Context
             ax = axes[1, 0]
             ax.plot(contexts, [r.perplexity for r in results], 'ro-', linewidth=2)
-            ax.axvline(x=cfg.block, color='green', linestyle='--', 
-                       label=f'Train context ({cfg.block})')
+            ax.axvline(x=cfg.block_size, color='green', linestyle='--', 
+                       label=f'Train context ({cfg.block_size})')
             ax.set_xlabel('Context Length')
             ax.set_ylabel('Perplexity')
             ax.set_title('Perplexity vs Context (RoPE Extrapolation)')

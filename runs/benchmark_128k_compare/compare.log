@@ -1,0 +1,165 @@
+==============================================
+128K Context Comparison: Decoupled vs Baseline
+==============================================
+python3.12 benchmark_128k.py \
+		--compare runs/context_1024/best.pt runs/baseline_context_1024/best.pt \
+		--data fineweb_100m.tokens \
+		--contexts 1024 4096 16384 32768 65536 131072 \
+		--output assets/benchmark_128k_compare.png
+Device: mps
+Contexts to benchmark: [1024, 4096, 16384, 32768, 65536, 131072]
+
+Loading tokens from: fineweb_100m.tokens
+Loaded 132,072 tokens
+
+============================================================
+Loading: runs/context_1024/best.pt
+============================================================
+Model: decoupled (32/64)
+Trained context: 1024
+
+Context 1,024:
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 6.5ms
+  → Throughput: 155 tok/s
+  → Loss: 12.5449 (PPL: 280673.8)
+  → Theoretical KV cache: 0.002 GB
+
+Context 4,096:
+  [Extending block_size: 1024 -> 4096]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 3.8ms
+  → Throughput: 265 tok/s
+  → Loss: 12.3960 (PPL: 241828.1)
+  → Theoretical KV cache: 0.009 GB
+
+Context 16,384:
+  [Extending block_size: 4096 -> 16384]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 4.0ms
+  → Throughput: 251 tok/s
+  → Loss: 12.3868 (PPL: 239614.8)
+  → Theoretical KV cache: 0.035 GB
+
+Context 32,768:
+  [Extending block_size: 16384 -> 32768]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 4.1ms
+  → Throughput: 242 tok/s
+  → Loss: 12.4087 (PPL: 244920.1)
+  → Theoretical KV cache: 0.070 GB
+
+Context 65,536:
+  [Extending block_size: 32768 -> 65536]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 4.4ms
+  → Throughput: 228 tok/s
+  → Loss: 12.4064 (PPL: 244365.1)
+  → Theoretical KV cache: 0.141 GB
+
+Context 131,072:
+  [Extending block_size: 65536 -> 131072]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 5.2ms
+  → Throughput: 194 tok/s
+  → Loss: 12.4014 (PPL: 243151.9)
+  → Theoretical KV cache: 0.281 GB
+
+============================================================
+Loading: runs/baseline_context_1024/best.pt
+============================================================
+Model: standard (512)
+Trained context: 1024
+
+Context 1,024:
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 16.2ms
+  → Throughput: 62 tok/s
+  → Loss: 12.8104 (PPL: 366020.2)
+  → Theoretical KV cache: 0.012 GB
+
+Context 4,096:
+  [Extending block_size: 1024 -> 4096]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 3.5ms
+  → Throughput: 287 tok/s
+  → Loss: 12.6410 (PPL: 308977.8)
+  → Theoretical KV cache: 0.047 GB
+
+Context 16,384:
+  [Extending block_size: 4096 -> 16384]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 3.2ms
+  → Throughput: 316 tok/s
+  → Loss: 12.6367 (PPL: 307629.1)
+  → Theoretical KV cache: 0.188 GB
+
+Context 32,768:
+  [Extending block_size: 16384 -> 32768]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 3.3ms
+  → Throughput: 307 tok/s
+  → Loss: 12.6610 (PPL: 315226.9)
+  → Theoretical KV cache: 0.375 GB
+
+Context 65,536:
+  [Extending block_size: 32768 -> 65536]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 3.2ms
+  → Throughput: 314 tok/s
+  → Loss: 12.6584 (PPL: 314404.4)
+  → Theoretical KV cache: 0.750 GB
+
+Context 131,072:
+  [Extending block_size: 65536 -> 131072]
+  Warming up (2 runs)... done
+  Benchmarking (5 runs)... done
+  → Time: 3.6ms
+  → Throughput: 274 tok/s
+  → Loss: 12.6567 (PPL: 313868.3)
+  → Theoretical KV cache: 1.500 GB
+
+================================================================================
+COMPARISON SUMMARY
+================================================================================
+
+Context: 1,024
+------------------------------------------------------------
+  decoupled (32/64)              Loss: 12.5449  Time: 6.5ms  Tok/s: 155
+  standard (512)                 Loss: 12.8104  Time: 16.2ms  Tok/s: 62
+
+Context: 4,096
+------------------------------------------------------------
+  decoupled (32/64)              Loss: 12.3960  Time: 3.8ms  Tok/s: 265
+  standard (512)                 Loss: 12.6410  Time: 3.5ms  Tok/s: 287
+
+Context: 16,384
+------------------------------------------------------------
+  decoupled (32/64)              Loss: 12.3868  Time: 4.0ms  Tok/s: 251
+  standard (512)                 Loss: 12.6367  Time: 3.2ms  Tok/s: 316
+
+Context: 32,768
+------------------------------------------------------------
+  decoupled (32/64)              Loss: 12.4087  Time: 4.1ms  Tok/s: 242
+  standard (512)                 Loss: 12.6610  Time: 3.3ms  Tok/s: 307
+
+Context: 65,536
+------------------------------------------------------------
+  decoupled (32/64)              Loss: 12.4064  Time: 4.4ms  Tok/s: 228
+  standard (512)                 Loss: 12.6584  Time: 3.2ms  Tok/s: 314
+
+Context: 131,072
+------------------------------------------------------------
+  decoupled (32/64)              Loss: 12.4014  Time: 5.2ms  Tok/s: 194
+  standard (512)                 Loss: 12.6567  Time: 3.6ms  Tok/s: 274
