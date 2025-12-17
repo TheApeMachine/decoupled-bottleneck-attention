@@ -40,9 +40,9 @@ The Key-Value cache in Transformer models scales linearly with sequence length a
 
 We propose \textbf{Decoupled Bottleneck Attention}, an architectural modification that exploits the empirical observation that \textit{semantic routing}---deciding which tokens attend to which---operates in a low-rank subspace ($r \approx 32$), while \textit{positional geometry} requires higher fidelity ($r \approx 64$). By decoupling these concerns into separate projection paths, we achieve:
 \begin{itemize}
-    \item \textbf{Up to 168$\times$ KV-cache reduction} in a fixed-rank long-context scenario via dimension reduction plus 4-bit quantization (Section~2.6)
+    \item \textbf{Up to 168$\times$ end-to-end KV-cache reduction} in a fixed-rank long-context scenario, where $\sim 42.7\times$ comes from architectural dimension reduction and an additional $4\times$ comes from standard 4-bit quantization (Section~2.6)
     \item \textbf{Evidence at two scales:} v21 WikiText-2 ablations show that bottlenecking attention can outperform a full-rank baseline; v29 FineWeb-Edu scaling runs show that decoupling (48/96) outperforms a standard baseline, GQA (kv=2), and a matched-rank bottleneck baseline (Table~\ref{tab:fineweb})
-    \item \textbf{Superior data efficiency compared to Grouped-Query Attention (GQA).} On FineWeb-Edu, our Decoupled Bottleneck model ($d_{\text{sem}}{=}48, d_{\text{geo}}{=}96$; total $d_{\text{attn}}=144$) achieves substantially lower validation loss (5.862 vs 6.302) than a GQA baseline with shared KV heads (kv=2) under the same training recipe, demonstrating that reducing the \textit{interaction rank} is a more effective compression strategy than head sharing.
+    \item \textbf{Superior data efficiency compared to Grouped-Query Attention (GQA).} On FineWeb-Edu, our Decoupled Bottleneck model ($d_{\text{sem}}{=}48, d_{\text{geo}}{=}96$; total $d_{\text{attn}}=144$) achieves lower validation loss than a GQA baseline with shared KV heads (kv=2) under the same training recipe (mean over two seeds: $5.851 \pm 0.038$ vs $6.259 \pm 0.062$), demonstrating that reducing the \textit{interaction rank} is a more effective compression strategy than head sharing.
 \end{itemize}
 
 In our v21 WikiText-2 suite, a simple rank-96 bottleneck \textit{outperforms} the full rank-512 baseline (val loss 5.33 vs 5.37), suggesting that standard Transformers can over-allocate capacity to attention. In our v29 FineWeb-Edu suite, the Decoupled Bottleneck model achieves the best validation loss among baseline, GQA, and a matched-rank Bottleneck baseline (Table~\ref{tab:fineweb}).
@@ -84,8 +84,26 @@ DeBERTa \cite{he2020deberta} pioneered the separation of content and position re
     \item We demonstrate that attention routing can be performed in $\sim$32 dimensions without perplexity degradation, while positional encoding requires $\sim$64 dimensions for RoPE fidelity.
     \item We propose \textbf{Decoupled Bottleneck Attention}, which separates semantic and geometric scoring paths with asymmetric dimensionality.
     \item We introduce a \textbf{Null Token} mechanism that stabilizes training by providing an explicit ``attend nowhere'' option.
-    \item We show that combined dimension reduction + 4-bit quantization achieves \textbf{168$\times$} KV-cache compression with minimal quality loss (Figure~\ref{fig:memory}).
+    \item We show that architectural dimension reduction yields large KV-cache savings, and when combined with standard 4-bit quantization can reach \textbf{up to 168$\times$} end-to-end KV-cache compression in a fixed-rank scenario (Figure~\ref{fig:memory}).
 \end{enumerate}
+
+% ============================================================================
+% RELATED WORK
+% ============================================================================
+\section{Related Work}
+\label{sec:related_work}
+
+\paragraph{Low-rank and approximate attention.}
+A long line of work seeks to reduce the quadratic cost of attention by approximating the score computation or constraining its rank. Linformer \cite{wang2020linformer} projects keys and values into a lower-dimensional subspace along the sequence dimension, yielding linear-time attention under a low-rank assumption. Kernel and hashing methods such as Performer \cite{choromanski2021performer} and Reformer \cite{kitaev2020reformer} similarly reduce attention cost via randomized features or locality-sensitive hashing. Our setting is different: we train standard causal LMs, but explicitly reduce the query/key interaction dimension inside each layer, targeting both compute (\(O(n^2 r)\)) and KV-cache memory (\(O(n r)\)).
+
+\paragraph{Sparse/local attention for long documents.}
+Sparse patterns (e.g., sliding window with global tokens) as in Longformer \cite{beltagy2020longformer} and BigBird \cite{zaheer2020bigbird} reduce attention compute while retaining access to distant context. However, for autoregressive decoding these methods still accumulate a KV cache whose size grows linearly with context length. Our work instead reduces the per-token cache footprint, which is complementary to sparse attention and other long-context strategies \cite{huang2023longcontextsurvey}.
+
+\paragraph{KV-cache optimization.}
+Sharing KV heads reduces cache storage by amortizing keys and values across query heads (MQA/GQA) \cite{shazeer2019mqa,ainslie2023gqa}. Latent KV schemes such as MLA compress the cache into a lower-dimensional latent that is expanded during attention \cite{deepseek2024v2}. Orthogonally, quantizing the KV cache reduces memory at fixed architecture \cite{hooper2024kvquant,li2025commvq}. Our decoupled bottleneck reduces the interaction dimension before scoring (saving compute) and also makes heterogeneous KV quantization natural: semantic keys can often be quantized more aggressively than geometric keys.
+
+\paragraph{Expressiveness limits and structured alternatives.}
+Reducing interaction rank too far can harm representation power: theory and empirical evidence show regimes where increasing heads under fixed head dimension does not recover lost capacity \cite{bhojanapalli2020lowrank,amsel2025qualityheads}. Recent structured-matrix formulations aim to increase effective rank without full cost by parameterizing attention maps with richer structured operators \cite{kuang2025structuredmatrices}. Decoupling is a simple architectural compromise: we keep a higher-dimensional geometric path (with RoPE) while aggressively compressing only the semantic routing path.
 
 % ============================================================================
 % 2. METHODOLOGY
@@ -240,7 +258,7 @@ Table~\ref{tab:wikitext_v21} shows that the Combined 96 bottleneck achieves the 
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{assets/convergence_wikitext.png}
+\includegraphics[width=0.95\textwidth]{\detokenize{assets/convergence_wikitext.png}}
 \caption{Validation loss curves on WikiText-2 (v21 suite). Bottlenecked models converge rapidly; Combined 96 achieves the best final loss.}
 \label{fig:convergence_wikitext}
 \end{figure}
@@ -252,27 +270,27 @@ To validate that our findings generalize beyond small datasets, we train on 100M
 \begin{table}[htbp]
 \centering
 \small
-\caption{FineWeb-Edu Validation Loss (100M tokens, 1024 context, 6000 steps; v29 suite)}
+\caption{FineWeb-Edu Validation Loss (100M tokens, 1024 context, 6000 steps; v29 suite; mean $\pm$ std over two seeds)}
 \label{tab:fineweb}
-\begin{tabular}{@{}lccccc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{Model} & \textbf{Attn Config} & \textbf{Params} & \textbf{Val Loss} & \textbf{Val PPL} & \textbf{$\Delta$} \\
+\textbf{Model} & \textbf{Attn Config} & \textbf{Params} & \textbf{Val Loss} & \textbf{Val PPL} \\
 \midrule
-Standard Baseline & $d = 512$ & 139.8M & 6.326 & 559.0 & --- \\
-GQA (kv=2) & 12Q/2KV & 128.0M & 6.302 & 545.9 & -2.4\% \\
-Bottleneck (rank 144) & $d_{\text{attn}}=144$ & 116.8M & 6.127 & 458.1 & -18.0\% \\
-\textbf{Decoupled 48/96} & $d_{\text{sem}}{=}48, d_{\text{geo}}{=}96$ & \textbf{116.8M} & \textbf{5.862} & \textbf{351.5} & \textbf{-37.1\%} \\
+Standard Baseline & $d = 512$ & 139.8M & $6.467 \pm 0.242$ & $652.9 \pm 156.2$ \\
+GQA (kv=2) & 12Q/2KV & 128.0M & $6.259 \pm 0.062$ & $523.0 \pm 32.4$ \\
+Bottleneck (rank 144) & $d_{\text{attn}}=144$ & 116.8M & $6.458 \pm 0.095$ & $639.5 \pm 60.6$ \\
+\textbf{Decoupled 48/96} & $d_{\text{sem}}{=}48, d_{\text{geo}}{=}96$ & \textbf{116.8M} & $\mathbf{5.851 \pm 0.038}$ & $\mathbf{347.8 \pm 13.4}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Scaling Observation.}
-Surprisingly, on FineWeb-Edu (100M tokens), the Decoupled Bottleneck model \textit{outperformed} the Standard Baseline, a parameter-matched GQA model, and a matched-rank Bottleneck baseline, achieving a \textbf{37\% reduction in perplexity}. This contradicts the common assumption that compression must hurt performance. We hypothesize that standard high-dimensional attention can be sufficiently over-parameterized to hinder optimization at this scale, whereas explicitly reducing the interaction rank (and disentangling content from positional geometry) acts as a regularizer that forces the model to learn more robust features.
+On FineWeb-Edu (100M tokens), the Decoupled Bottleneck model \textit{outperformed} the Standard Baseline, a reduced-KV GQA baseline (kv=2), and a matched-rank Bottleneck baseline (Table~\ref{tab:fineweb}). We observe substantial run-to-run variability for the full-rank baseline under this short training regime; therefore, we report mean $\pm$ std over two seeds in Table~\ref{tab:fineweb}, and show representative learning curves for a single seed in Figure~\ref{fig:convergence_fineweb}.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{assets/m4max_big_convergence.png}
-\caption{Validation loss curves on FineWeb-Edu (100M tokens). Under the same training setup, the Decoupled Bottleneck model converges to the lowest validation loss, outperforming both the standard baseline and GQA.}
+\includegraphics[width=0.95\textwidth]{\detokenize{assets/m4max_seed1337_convergence.png}}
+\caption{Validation loss curves on FineWeb-Edu (100M tokens; seed 1337). Under the same training setup, the Decoupled Bottleneck model converges to the lowest validation loss, outperforming both the standard baseline and GQA.}
 \label{fig:convergence_fineweb}
 \end{figure}
 
@@ -282,8 +300,8 @@ Figure~\ref{fig:comparison_bar} provides a direct comparison of final validation
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{assets/m4max_big_comparison_bar.png}
-\caption{Final validation loss comparison (FineWeb-Edu, v29). Lower is better. Decoupled 48/96 achieves the best loss, outperforming both the standard baseline and a parameter-matched GQA baseline (kv=2).}
+\includegraphics[width=0.8\textwidth]{\detokenize{assets/m4max_seed1337_comparison_bar.png}}
+\caption{Final validation loss comparison (FineWeb-Edu, v29; seed 1337). Lower is better. Decoupled 48/96 achieves the best loss, outperforming both the standard baseline and a GQA baseline (kv=2).}
 \label{fig:comparison_bar}
 \end{figure}
 
@@ -293,10 +311,10 @@ Figure~\ref{fig:comparison_bar} provides a direct comparison of final validation
 Comparing ``Small Model'' ($d_{\text{model}} = 128$) to ``Bottleneck 128'' ($d_{\text{model}} = 512$, $d_{\text{attn}} = 128$), we observe a 0.26 loss gap (5.74 vs 5.48) and severe overfitting in the small model. This confirms that the \textit{residual stream} must remain wide; only the \textit{attention interaction} can be compressed.
 
 \paragraph{GQA vs. Bottleneck (Head Sharing vs. Interaction Rank).}
-We compared our method against Grouped-Query Attention (GQA) with matched KV memory footprints on FineWeb-Edu. While GQA reduces KV cache storage by sharing key-value heads, it retains full-rank query projections and attention scoring in high-dimensional space. In contrast, the Bottleneck architecture reduces the interaction dimension directly. In our runs, GQA (kv=2) achieved val loss 6.302 (ppl 545.9) with a measured KV cache of \(\sim 0.75\)~GB at 128k context, while the Bottleneck (rank 144) achieved val loss 6.127 (ppl 458.1) with a comparable KV cache of \(\sim 0.84\)~GB. This suggests that reducing the \textit{interaction rank} is more beneficial than merely reducing the \textit{head count}.
+We compared our method against Grouped-Query Attention (GQA) with matched KV memory footprints on FineWeb-Edu. While GQA reduces KV cache storage by sharing key-value heads, it retains full-rank query projections and attention scoring in high-dimensional space. In contrast, the Bottleneck architecture reduces the interaction dimension directly. In our v29 runs, both GQA (kv=2) and Bottleneck (rank 144) reduce KV-cache memory to \(\sim 0.75\)~GB and \(\sim 0.84\)~GB at 128k context respectively, but Bottleneck did not consistently improve validation loss over GQA under this recipe (Table~\ref{tab:fineweb}).
 
 \paragraph{Decoupled vs. Bottleneck (Separating Content and Geometry).}
-Holding the same total attention dimension fixed ($d_{\text{attn}}=144$), the Decoupled Bottleneck model (48/96) further improves validation loss to 5.862 (ppl 351.5) at essentially the same KV cache footprint (\(\sim 0.84\)~GB at 128k context). This suggests that the semantic/geometric separation is not only a memory strategy but can also improve optimization and generalization at this scale.
+Holding the same total attention dimension fixed ($d_{\text{attn}}=144$), the Decoupled Bottleneck model (48/96) improves validation loss at essentially the same KV cache footprint (\(\sim 0.84\)~GB at 128k context), suggesting that semantic/geometric separation can improve optimization and generalization at this scale (Table~\ref{tab:fineweb}).
 
 \paragraph{Long Context Stability.}
 We verify that the geometric path handles extended context correctly:
@@ -312,7 +330,7 @@ Figure~\ref{fig:pareto} shows the quality--efficiency trade-off for our FineWeb-
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{assets/m4max_big_pareto.png}
+\includegraphics[width=0.8\textwidth]{\detokenize{assets/m4max_seed1337_pareto.png}}
 \caption{Quality--efficiency comparison on FineWeb-Edu (v29). Points show best validation loss versus attention dimension ($d_{\text{attn}}$), with annotations derived from measured KV-cache memory at 128k context.}
 \label{fig:pareto}
 \end{figure}
@@ -342,7 +360,7 @@ Bottleneck (FP16) & 1.5 GB & 43$\times$ \\
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.85\textwidth]{assets/memory_footprint.png}
+\includegraphics[width=0.85\textwidth]{\detokenize{assets/memory_footprint.png}}
 \caption{KV-cache memory comparison at 128k context (illustrative). Depending on whether $d_{\text{attn}}$ scales with $d_{\text{model}}$ or is held fixed, the end-to-end FP16$\rightarrow$Q4 reduction ranges from $\sim$21$\times$ (constant fraction) up to $\sim$168$\times$ (fixed-rank).}
 \label{fig:memory}
 \end{figure}
@@ -392,7 +410,7 @@ For \textit{training}, use the v21 ablation suite to quickly explore attention-r
 % ============================================================================
 \section{Conclusion}
 
-We have demonstrated that attention in Transformers contains significant redundancy. On FineWeb-Edu (100M tokens), the Decoupled Bottleneck architecture \textbf{surpassed} the standard baseline, a parameter-matched GQA baseline, and a matched-rank Bottleneck baseline, suggesting that for many practical scales, standard attention is not just inefficient but suboptimal.
+We have demonstrated that attention in Transformers contains significant redundancy. On FineWeb-Edu (100M tokens), the Decoupled Bottleneck architecture \textbf{surpassed} the standard baseline, a GQA baseline (kv=2), and a matched-rank Bottleneck baseline under the same training recipe (Table~\ref{tab:fineweb}). These results suggest that, at this scale and training horizon, standard high-dimensional attention can be over-parameterized; larger-scale validation and longer training are important future work.
 
 The core insight is architectural: \textbf{Attention is a router, not a processor.} The heavy computation should happen in the feedforward layers (which we leave at full rank), while attention merely selects which tokens to aggregate. By matching the architecture to this functional role, we unlock dramatic efficiency gains.
 
@@ -414,6 +432,123 @@ All datasets used in this study are publicly available: WikiText-2 \cite{merity2
 
 \paragraph{Funding.}
 This research was conducted without external funding. All computational resources were provided by the author.
+
+% ============================================================================
+% APPENDIX
+% ============================================================================
+\appendix
+
+\section{Replication Plots for FineWeb-Edu (v29; Seed 1338)}
+\label{app:v29_seed1338}
+
+Table~\ref{tab:fineweb} reports mean $\pm$ std over two seeds. In the main text, we show representative learning curves and summary plots for seed 1337; here we include the corresponding plots for seed 1338 to make the replication evidence explicit.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{\detokenize{assets/m4max_seed1338_convergence.png}}
+\caption{Validation loss curves on FineWeb-Edu (100M tokens; seed 1338).}
+\label{fig:convergence_fineweb_seed1338}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{\detokenize{assets/m4max_seed1338_early_convergence.png}}
+\caption{Early convergence view on FineWeb-Edu (seed 1338), highlighting the first phase of optimization.}
+\label{fig:early_convergence_fineweb_seed1338}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\textwidth]{\detokenize{assets/m4max_seed1338_comparison_bar.png}}
+\caption{Final validation loss comparison on FineWeb-Edu (v29; seed 1338). Lower is better.}
+\label{fig:comparison_bar_seed1338}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\textwidth]{\detokenize{assets/m4max_seed1338_pareto.png}}
+\caption{Quality--efficiency comparison on FineWeb-Edu (v29; seed 1338).}
+\label{fig:pareto_seed1338}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{\detokenize{assets/m4max_seed1338_kv_memory_128k.png}}
+\caption{Measured KV-cache memory at 128k context (v29; seed 1338).}
+\label{fig:kv_memory_128k_seed1338}
+\end{figure}
+
+\section{Effective Rank Evidence (Projected \texorpdfstring{$W_Q/W_K$}{WQ/WK})}
+\label{app:effective_rank}
+
+We compute singular value spectra and entropy-based effective rank for the $W_Q$/$W_K$ projection matrices in trained checkpoints. The script to reproduce this figure is included in the repository; the figure below is generated automatically when that script is run.
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{assets/m4max_rank_evidence.png}{
+  \includegraphics[width=0.95\textwidth]{\detokenize{assets/m4max_rank_evidence.png}}
+}{
+  \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{assets/m4max_rank_evidence.png}.\\
+  Run the rank analysis script to generate this figure.}}
+}
+\caption{Singular value spectra and entropy-based effective rank for $W_Q$ and $W_K$ across layers (example: v29 checkpoints).}
+\label{fig:rank_evidence}
+\end{figure}
+
+\section{Long-Context Sanity Checks}
+\label{app:long_context}
+
+To complement the theoretical KV-cache scaling analysis, we include two lightweight long-context probes: (1) teacher-forced loss at increasing context lengths (RoPE extrapolation), and (2) a passkey ``needle-in-a-haystack'' next-token retrieval probe. These are not full downstream evaluations, but they help catch obvious long-context regressions and RoPE failures.
+
+\begin{figure}[htbp]
+\centering
+\begin{subfigure}{0.49\textwidth}
+\centering
+\IfFileExists{assets/m4max_baseline_rope_extrapolation.png}{
+  \includegraphics[width=\textwidth]{\detokenize{assets/m4max_baseline_rope_extrapolation.png}}
+}{
+  \fbox{\parbox{0.95\textwidth}{\textbf{Missing:} \texttt{assets/m4max\_baseline\_rope\_extrapolation.png}}}
+}
+\caption{Baseline}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.49\textwidth}
+\centering
+\IfFileExists{assets/m4max_decoupled_rope_extrapolation.png}{
+  \includegraphics[width=\textwidth]{\detokenize{assets/m4max_decoupled_rope_extrapolation.png}}
+}{
+  \fbox{\parbox{0.95\textwidth}{\textbf{Missing:} \texttt{assets/m4max\_decoupled\_rope\_extrapolation.png}}}
+}
+\caption{Decoupled}
+\end{subfigure}
+\caption{RoPE extrapolation probe (teacher-forced). Figures are generated by \texttt{test\_rope\_extrapolation\_v29.py}.}
+\label{fig:rope_extrapolation_appendix}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{subfigure}{0.49\textwidth}
+\centering
+\IfFileExists{assets/m4max_baseline_needle_haystack.png}{
+  \includegraphics[width=\textwidth]{\detokenize{assets/m4max_baseline_needle_haystack.png}}
+}{
+  \fbox{\parbox{0.95\textwidth}{\textbf{Missing:} \texttt{assets/m4max\_baseline\_needle\_haystack.png}}}
+}
+\caption{Baseline}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.49\textwidth}
+\centering
+\IfFileExists{assets/m4max_decoupled_needle_haystack.png}{
+  \includegraphics[width=\textwidth]{\detokenize{assets/m4max_decoupled_needle_haystack.png}}
+}{
+  \fbox{\parbox{0.95\textwidth}{\textbf{Missing:} \texttt{assets/m4max\_decoupled\_needle\_haystack.png}}}
+}
+\caption{Decoupled}
+\end{subfigure}
+\caption{Passkey needle-in-a-haystack next-token probe. Figures are generated by \texttt{test\_needle\_haystack\_v29.py}.}
+\label{fig:needle_haystack_appendix}
+\end{figure}
 
 % ============================================================================
 % REFERENCES

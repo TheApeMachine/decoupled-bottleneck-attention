@@ -21,3 +21,11 @@ fineweb_100m.npy.meta
 *.npy
 *.meta
 critiques.md
+.DS_Store
+paper.aux
+paper.bbl
+paper.blg
+paper.fdb_latexmk
+paper.pdf
+paper.synctex.gz
+sources.md
