@@ -49,6 +49,9 @@ Surprisingly, we find that a simple rank-96 bottleneck \textit{outperforms} the 
 
 \end{abstract}
 
+\paragraph{Keywords:}
+Transformer, attention mechanism, low-rank, KV-cache, memory efficiency, quantization, long context, rotary position embeddings
+
 % ============================================================================
 % 1. INTRODUCTION
 % ============================================================================
@@ -58,7 +61,7 @@ Modern Transformer architectures \cite{vaswani2017attention} achieve remarkable 
 
 \subsection{The Redundancy Hypothesis}
 
-We begin with a simple observation: in a 512-dimensional layer, the 512 neurons are not independent. They move in \textit{sympathetic clusters}---correlated groups that effectively reduce the intrinsic dimensionality of the representation. Prior work on LoRA \cite{hu2021lora} demonstrated that weight \textit{updates} during fine-tuning are low-rank (typically $r \leq 64$). Recent work on gradient dynamics \cite{refael2024adarankgrad} shows that optimization naturally collapses to low rank; we extend this observation to argue that the \textit{architecture itself}---specifically the attention mechanism---should be structurally constrained to match this intrinsic rank.
+We begin with a simple observation: in a 512-dimensional layer, the neurons are not independent. They move in \textit{sympathetic clusters}---correlated groups that reduce the intrinsic dimensionality of the representation. Prior work on LoRA \cite{hu2021lora} demonstrated that weight \textit{updates} during fine-tuning are low-rank (typically $r \leq 64$). Recent work on gradient dynamics \cite{refael2024adarankgrad} shows that optimization naturally collapses to low rank. We extend this observation to argue that the \textit{architecture itself}---specifically the attention mechanism---should be structurally constrained to match this intrinsic rank.
 
 Empirical measurements from our experiments show that the effective rank of $W_Q$ and $W_K$ projections stabilizes around 11-32 dimensions, even when the nominal dimension is 512. This aligns with theoretical analysis by Bhojanapalli et al. \cite{bhojanapalli2020lowrank}, who identified a ``low-rank bottleneck'' in multi-head attention, and recent work by Kobayashi et al. \cite{kobayashi2024weightdecay} showing that weight decay actively induces rank reduction during training. Wang et al. \cite{wang2025lowdim} further demonstrate that attention outputs are approximately 60\% low-dimensional, adding to low-dimensional residual subspaces. Crucially, Refael et al. \cite{refael2024adarankgrad} proved that gradient rank \textit{decreases monotonically} during training, asymptotically approaching rank one---providing theoretical justification for why architectural bottlenecks become increasingly appropriate as training progresses. Chiang \& Yogatama \cite{chiang2025rope} show that RoPE may cause dimension inefficiency for long-distance retrieval, supporting our use of higher dimensions (64) for the geometric path.
 
@@ -67,7 +70,7 @@ Empirical measurements from our experiments show that the effective rank of $W_Q
 \paragraph{Grouped-Query Attention (GQA).}
 While Grouped-Query Attention \cite{ainslie2023gqa} successfully reduces KV-cache memory by sharing key-value heads across multiple query heads, it maintains the full computational cost of the query projection and attention scoring in the high-dimensional space. Each query still operates in $\mathbb{R}^{d}$, and every attention score still requires a $d$-dimensional dot product---GQA merely amortizes the \textit{storage} cost, not the \textit{interaction} cost.
 
-Our Bottleneck approach attacks both memory \textit{and} compute by compressing the interaction manifold itself. Rather than sharing high-dimensional KV pairs, we project queries and keys into a low-rank semantic subspace ($r \ll d$) \textit{before} computing attention, reducing the dot-product complexity from $O(n^2 d)$ to $O(n^2 r)$.
+Our Bottleneck approach reduces both memory \textit{and} compute by compressing the interaction manifold. Rather than sharing high-dimensional KV pairs, we project queries and keys into a low-rank semantic subspace ($r \ll d$) \textit{before} computing attention, reducing dot-product complexity from $O(n^2 d)$ to $O(n^2 r)$.
 
 \paragraph{Multi-Head Latent Attention (MLA).}
 DeepSeek-V2 \cite{deepseek2024v2} introduced MLA, which compresses KV storage into a latent vector, achieving 93\% cache reduction. However, MLA \textit{up-projects} during the forward pass to perform attention in the original high-dimensional space. Our method remains low-rank throughout, saving both memory and compute.
@@ -142,12 +145,12 @@ where $d_{\text{attn}} = d_{\text{sem}} + d_{\text{geo}} = 96$ in our default co
 
 \subsection{The Null Token Mechanism}
 
-Low-rank attention can become unstable when queries have no semantically appropriate keys to attend to. We introduce a learnable \textbf{null token} $k_\emptyset$ that provides an explicit ``attend nowhere'' option:
+Low-rank attention can become unstable when queries lack semantically appropriate keys. We introduce a learnable \textbf{null token} $k_\emptyset$ providing an explicit ``attend nowhere'' option:
 \begin{equation}
     \text{Score}_{\text{null}} = \frac{Q_{\text{sem}} k_{\emptyset,\text{sem}}^\top}{\sqrt{d_{\text{sem}}/H}} + \frac{Q_{\text{geo}} k_{\emptyset,\text{geo}}^\top}{\sqrt{d_{\text{geo}}/H}}
 \end{equation}
 
-The null token score is concatenated to the attention matrix before softmax, allowing the model to ``dump'' attention mass when no key is appropriate. This stabilizes training, particularly at very low ranks.
+This score is concatenated to the attention matrix before softmax, allowing the model to ``dump'' attention mass when no key is appropriate, which stabilizes training at very low ranks.
 
 \subsection{Tied Q-K Projections}
 
@@ -187,7 +190,7 @@ All models use $d_{\text{model}} = 512$, 6 layers, 8 attention heads, and a SwiG
 \paragraph{Datasets.}
 \begin{itemize}
     \item \textbf{WikiText-2}: 2M tokens of Wikipedia text with word-level tokenization (vocab size 33,278). Used for rapid prototyping and ablation studies.
-    \item \textbf{FineWeb-Edu}: 100M tokens of educational web content with GPT-2 tokenization (vocab size 50,257). Used to validate scaling behavior.
+    \item \textbf{FineWeb-Edu}: 100M tokens of educational web content with word-level tokenization (vocab size 49,761). Used to validate scaling behavior.
 \end{itemize}
 
 \paragraph{Training.}
@@ -215,21 +218,21 @@ Small Model & $d_{\text{model}} = 128$ & 4.2M & 5.74 & 930k \\
 \end{table}
 
 \paragraph{Key Finding.}
-The Combined 96 bottleneck achieves the \textit{lowest} validation loss (5.33), outperforming the full-rank baseline (5.37). This demonstrates that standard Transformers over-allocate capacity to attention.
+Table~\ref{tab:main_results} shows that the Combined 96 bottleneck achieves the \textit{lowest} validation loss (5.33), outperforming the full-rank baseline (5.37). This demonstrates that standard Transformers over-allocate capacity to attention.
 
 \paragraph{Throughput Note.}
-Throughput measurements were performed on Apple MPS with proper synchronization (\texttt{torch.mps.synchronize()}). The 5-6$\times$ speedup for bottleneck models reflects memory-bandwidth effects from smaller attention tensors---these gains may vary on different hardware (CUDA, TPU). We report throughput for reference but emphasize that \textbf{memory savings} are the primary contribution.
+Throughput measurements were performed on Apple MPS with proper synchronization (\texttt{torch.mps.synchronize()}). The 5-6$\times$ speedup for bottleneck models reflects memory-bandwidth effects from smaller attention tensors---these gains may vary on different hardware (CUDA, TPU). We report throughput for reference but emphasize that \textbf{memory savings} are the primary contribution. Figure~\ref{fig:convergence_wikitext} shows the convergence behavior on WikiText-2.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{assets/convergence_plot.png}
+\includegraphics[width=0.95\textwidth]{assets/convergence_wikitext.png}
 \caption{Validation loss curves on WikiText-2. The bottleneck models converge faster in early training, with Combined 96 achieving the best final loss. GQA overfits severely after step 1000.}
-\label{fig:convergence}
+\label{fig:convergence_wikitext}
 \end{figure}
 
 \subsection{FineWeb-Edu Results}
 
-To validate that our findings generalize beyond small datasets, we train on 100M tokens from FineWeb-Edu.
+To validate that our findings generalize beyond small datasets, we train on 100M tokens from FineWeb-Edu (Figure~\ref{fig:convergence_fineweb}).
 
 \begin{table}[htbp]
 \centering
@@ -249,6 +252,24 @@ Decoupled 32/64 & $d_{\text{sem}}{=}32, d_{\text{geo}}{=}64$ & 4.492 & 89.25 & +
 \paragraph{Scaling Observation.}
 On FineWeb-Edu (100M tokens), the decoupled architecture shows a larger perplexity gap (+9.6\%) compared to WikiText-2 (+4\%). This suggests that while the low-rank hypothesis holds for \textit{routing}, larger datasets may benefit from higher-rank representations. Notably, the Combined 96 bottleneck (which \textit{beat} baseline on WikiText-2) would be the recommended configuration for larger-scale training, with Decoupled reserved for inference-constrained deployment where the 168$\times$ memory savings justify the quality trade-off.
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{assets/convergence_fineweb.png}
+\caption{Validation loss curves on FineWeb-Edu (100M tokens). Both architectures converge smoothly, with the baseline maintaining a consistent advantage throughout training.}
+\label{fig:convergence_fineweb}
+\end{figure}
+
+\subsection{Final Loss Comparison}
+
+Figure~\ref{fig:comparison_bar} provides a direct comparison of final validation losses across all architectures and datasets. The Combined 96 bottleneck achieves the best performance on WikiText-2, while the gap widens on FineWeb-Edu.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\textwidth]{assets/comparison_bar.png}
+\caption{Final validation loss comparison across architectures. Lower is better. Combined 96 beats the baseline on WikiText-2; the gap widens on larger datasets.}
+\label{fig:comparison_bar}
+\end{figure}
+
 \subsection{Ablation Studies}
 
 \paragraph{Wide Residual Stream Hypothesis.}
@@ -262,9 +283,20 @@ We verify that the geometric path handles extended context correctly:
 \end{itemize}
 The higher loss is expected due to reduced batch size; the key observation is stable training with RoPE on 64 dimensions.
 
+\subsection{Memory-Quality Trade-off}
+
+Figure~\ref{fig:pareto} shows the Pareto frontier of memory usage vs. validation loss. The Decoupled Bottleneck with Q4 quantization achieves a unique position: dramatically lower memory with acceptable quality degradation.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\textwidth]{assets/pareto_curve.png}
+\caption{Memory-quality Pareto curve. Decoupled Bottleneck (Q4) achieves 168$\times$ compression with +9.6\% perplexity gap---a trade-off justified for inference-constrained deployments.}
+\label{fig:pareto}
+\end{figure}
+
 \subsection{Memory Footprint Analysis}
 
-For a 128k context at Llama-7B scale (32 layers, $d = 4096$):
+Table~\ref{tab:memory} shows the KV-cache memory requirements for a 128k context at Llama-7B scale (32 layers, $d = 4096$):
 
 \begin{table}[htbp]
 \centering
@@ -286,7 +318,7 @@ Bottleneck (FP16) & 1.5 GB & 43$\times$ \\
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{assets/memory_footprint.png}
+\includegraphics[width=0.85\textwidth]{assets/memory_footprint.png}
 \caption{KV-cache memory comparison at 128k context. The Decoupled Bottleneck with Q4 quantization reduces memory from 64 GB to 0.38 GB---enabling 128k context on consumer GPUs.}
 \label{fig:memory}
 \end{figure}
@@ -345,6 +377,20 @@ Our Decoupled Bottleneck Attention separates semantic matching from positional g
 
 \paragraph{Future Work.}
 We plan to: (1) validate at 7B+ scale where the efficiency gains compound; (2) explore learned mixing weights between semantic and geometric paths; (3) investigate whether the FineWeb gap closes with longer training or larger models; and (4) benchmark inference latency on production hardware.
+
+% ============================================================================
+% STATEMENTS
+% ============================================================================
+\section*{Statements and Declarations}
+
+\paragraph{Conflict of Interest.}
+The author declares no competing interests. This research was conducted independently without corporate affiliation or funding from entities with financial interests in the outcomes.
+
+\paragraph{Data Availability.}
+All datasets used in this study are publicly available: WikiText-2 \cite{merity2016pointer} is available from Salesforce Research, and FineWeb-Edu is available from Hugging Face. The code, trained model checkpoints, and all experimental logs are available at \url{https://github.com/theapemachine/experiments}.
+
+\paragraph{Funding.}
+This research was conducted without external funding. All computational resources were provided by the author.
 
 % ============================================================================
 % REFERENCES

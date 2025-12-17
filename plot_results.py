@@ -15,6 +15,7 @@ Generates:
 import matplotlib.pyplot as plt
 import re
 import os
+import json
 from pathlib import Path
 
 # ============================================================================
@@ -22,34 +23,36 @@ from pathlib import Path
 # ============================================================================
 
 # WikiText-2 Experiments
+# Format: "label": ("path", "format") where format is "log" or "jsonl"
 WIKITEXT_LOGS = {
-    "⭐ Combined 96": "runs/v21_combined_baseline_96/train.log",
-    "GQA (kv=2)": "runs/v21_gqa_kv2_parammatch/train.log",
-    "Small Model (d=128)": "runs/v21_small_d128_standard/train.log",
-    "Decoupled 1024 ctx": "runs/v21_decoupled_sem32_geo64_block1024/train.log",
-    "Decoupled 2048 ctx": "runs/v21_decoupled_sem32_geo64_block2048/train.log",
-    "Bottleneck (RoPE)": "runs/v21_bottleneck_rope/train.log",
+    "Standard 512 (v19)": ("runs/v19_baseline/train.jsonl", "jsonl"),
+    "⭐ Combined 96": ("runs/v21_combined_baseline_96/train.log", "log"),
+    "GQA (kv=2)": ("runs/v21_gqa_kv2_parammatch/train.log", "log"),
+    "Small Model (d=128)": ("runs/v21_small_d128_standard/train.log", "log"),
+    # Note: The below are SHORT RUNS (not 6000 steps) - shown for reference only
+    "Decoupled 1024 ctx*": ("runs/v21_decoupled_sem32_geo64_block1024/train.log", "log"),
+    "Decoupled 2048 ctx*": ("runs/v21_decoupled_sem32_geo64_block2048/train.log", "log"),
 }
 
 # FineWeb-Edu Experiments (100M tokens, 1024 context)
 FINEWEB_LOGS = {
-    "Baseline (512)": "runs/v21_fineweb_baseline/train.log",
-    "Decoupled (32/64)": "runs/v21_fineweb_decoupled/train.log",
+    "Baseline (512)": ("runs/v21_fineweb_baseline/train.log", "log"),
+    "Decoupled (32/64)": ("runs/v21_fineweb_decoupled/train.log", "log"),
 }
 
 # Pareto Data: (attn_dim, final_val_loss, label, dataset)
-# WikiText-2 results
+# Values verified from actual experiment logs
 PARETO_DATA = [
-    # WikiText-2
-    (512, 5.37, "Standard 512 (WT2)", "wikitext"),
-    (96, 5.33, "⭐ Combined 96 (WT2)", "wikitext"),
-    (128, 5.48, "Bottleneck 128 (WT2)", "wikitext"),
-    (96, 5.59, "Decoupled 32/64 (WT2)", "wikitext"),
-    (128, 5.63, "GQA kv=2 (WT2)", "wikitext"),
-    (128, 5.74, "Small d=128 (WT2)", "wikitext"),
-    # FineWeb-Edu
-    (512, 4.099, "Baseline 512 (FW)", "fineweb"),
-    (96, 4.492, "Decoupled 32/64 (FW)", "fineweb"),
+    # WikiText-2 (verified)
+    (512, 5.3687, "Standard 512 (WT2)", "wikitext"),      # v19_baseline
+    (96, 5.3272, "⭐ Combined 96 (WT2)", "wikitext"),     # v21_combined_baseline_96
+    # (128, 5.48, "Bottleneck 128 (WT2)", "wikitext"),   # NOT YET RUN
+    # (96, 5.59, "Decoupled 32/64 (WT2)", "wikitext"),   # NEEDS RE-RUN (was short/wrong params)
+    (128, 5.6320, "GQA kv=2 (WT2)", "wikitext"),         # v21_gqa_kv2_parammatch
+    (128, 5.7428, "Small d=128 (WT2)", "wikitext"),      # v21_small_d128_standard
+    # FineWeb-Edu (verified)
+    (512, 4.0989, "Baseline 512 (FW)", "fineweb"),       # v21_fineweb_baseline
+    (96, 4.4915, "Decoupled 32/64 (FW)", "fineweb"),     # v21_fineweb_decoupled
 ]
 
 # Output paths
@@ -63,12 +66,19 @@ COLORS = {
 }
 
 
-def parse_log(filepath: str) -> tuple[list[int], list[float]]:
+def parse_log(filepath: str, fmt: str = "log") -> tuple[list[int], list[float]]:
     """
     Parse training log to extract eval steps and validation losses.
     
+    Args:
+        filepath: Path to log file
+        fmt: "log" for text format, "jsonl" for v19-style JSONL format
+    
     Expected log format:
         == eval step 200 | train 5.3370 | val 5.8770 | val_ppl 356.74 | 203.3s
+    
+    Expected JSONL format:
+        {"type": "eval", "step": 200, "val_loss": 5.8770, ...}
     """
     steps = []
     val_losses = []
@@ -78,11 +88,24 @@ def parse_log(filepath: str) -> tuple[list[int], list[float]]:
         return [], []
     
     with open(filepath, 'r') as f:
-        for line in f:
-            match = re.search(r"== eval step (\d+) .* val (\d+\.\d+)", line)
-            if match:
-                steps.append(int(match.group(1)))
-                val_losses.append(float(match.group(2)))
+        if fmt == "jsonl":
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("type") == "eval" and "step" in data and "val_loss" in data:
+                        steps.append(int(data["step"]))
+                        val_losses.append(float(data["val_loss"]))
+                except json.JSONDecodeError:
+                    continue
+        else:
+            for line in f:
+                match = re.search(r"== eval step (\d+) .* val (\d+\.\d+)", line)
+                if match:
+                    steps.append(int(match.group(1)))
+                    val_losses.append(float(match.group(2)))
     
     return steps, val_losses
 
@@ -92,11 +115,18 @@ def plot_convergence_wikitext():
     plt.figure(figsize=(12, 7))
     
     found_any = False
-    for label, path in WIKITEXT_LOGS.items():
-        steps, losses = parse_log(path)
+    for label, (path, fmt) in WIKITEXT_LOGS.items():
+        steps, losses = parse_log(path, fmt)
         if steps:
-            marker = '⭐' if '⭐' in label else 'o'
-            plt.plot(steps, losses, label=label, marker='o', markersize=4, linewidth=2)
+            # Highlight baseline and best model
+            if "Standard" in label:
+                plt.plot(steps, losses, label=label, marker='s', markersize=4, 
+                        linewidth=2.5, linestyle='--', color='#333333')
+            elif '⭐' in label:
+                plt.plot(steps, losses, label=label, marker='o', markersize=4, 
+                        linewidth=2.5, color='#4CAF50')
+            else:
+                plt.plot(steps, losses, label=label, marker='o', markersize=3, linewidth=1.5)
             found_any = True
             print(f"  ✓ {label}: {len(steps)} points, best = {min(losses):.4f}")
     
@@ -123,8 +153,8 @@ def plot_convergence_fineweb():
     found_any = False
     colors = ['#2196F3', '#FF5722', '#4CAF50', '#9C27B0']  # Blue, Orange, Green, Purple
     
-    for i, (label, path) in enumerate(FINEWEB_LOGS.items()):
-        steps, losses = parse_log(path)
+    for i, (label, (path, fmt)) in enumerate(FINEWEB_LOGS.items()):
+        steps, losses = parse_log(path, fmt)
         if steps:
             plt.plot(steps, losses, label=label, marker='o', markersize=4, 
                      linewidth=2.5, color=colors[i % len(colors)])
@@ -160,8 +190,8 @@ def plot_combined_convergence():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
     # WikiText-2 (left panel)
-    for label, path in WIKITEXT_LOGS.items():
-        steps, losses = parse_log(path)
+    for label, (path, fmt) in WIKITEXT_LOGS.items():
+        steps, losses = parse_log(path, fmt)
         if steps:
             ax1.plot(steps, losses, label=label, marker='o', markersize=3, linewidth=2)
     
@@ -173,8 +203,8 @@ def plot_combined_convergence():
     
     # FineWeb-Edu (right panel)
     colors_fw = ['#2196F3', '#FF5722']
-    for i, (label, path) in enumerate(FINEWEB_LOGS.items()):
-        steps, losses = parse_log(path)
+    for i, (label, (path, fmt)) in enumerate(FINEWEB_LOGS.items()):
+        steps, losses = parse_log(path, fmt)
         if steps:
             ax2.plot(steps, losses, label=label, marker='o', markersize=4, 
                      linewidth=2.5, color=colors_fw[i])
@@ -253,8 +283,8 @@ def plot_comparison_bar():
     # WikiText-2 comparison
     wt_labels = []
     wt_values = []
-    for label, path in WIKITEXT_LOGS.items():
-        steps, losses = parse_log(path)
+    for label, (path, fmt) in WIKITEXT_LOGS.items():
+        steps, losses = parse_log(path, fmt)
         if steps:
             wt_labels.append(label.replace("⭐ ", ""))
             wt_values.append(min(losses))
@@ -274,8 +304,8 @@ def plot_comparison_bar():
     # FineWeb comparison
     fw_labels = []
     fw_values = []
-    for label, path in FINEWEB_LOGS.items():
-        steps, losses = parse_log(path)
+    for label, (path, fmt) in FINEWEB_LOGS.items():
+        steps, losses = parse_log(path, fmt)
         if steps:
             fw_labels.append(label)
             fw_values.append(min(losses))

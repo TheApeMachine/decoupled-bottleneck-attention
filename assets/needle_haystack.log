@@ -1,0 +1,58 @@
+make needle_haystack
+>>> Running Needle-in-a-Haystack test...
+python3.12 test_needle_haystack.py \
+		--ckpt runs/context_1024/best.pt \
+		--depths 0.1 0.25 0.5 0.75 0.9 \
+		--context-lengths 512 1024 2048 4096 \
+		--output assets/needle_haystack.png
+Using device: mps
+
+Loading checkpoint: runs/context_1024/best.pt
+Model trained at context: 1024
+Attention mode: decoupled
+Extending block_size: 1024 -> 4106
+
+============================================================
+Needle-in-a-Haystack Test
+============================================================
+Context lengths: [512, 1024, 2048, 4096]
+Depths: ['10%', '25%', '50%', '75%', '90%']
+Trials per cell: 20
+
+  ctx=512, depth=10.0%: acc=0%, conf=0.000
+  ctx=512, depth=25.0%: acc=0%, conf=0.000
+  ctx=512, depth=50.0%: acc=0%, conf=0.000
+  ctx=512, depth=75.0%: acc=0%, conf=0.000
+  ctx=512, depth=90.0%: acc=0%, conf=0.000
+  ctx=1024, depth=10.0%: acc=0%, conf=0.000
+  ctx=1024, depth=25.0%: acc=0%, conf=0.000
+  ctx=1024, depth=50.0%: acc=0%, conf=0.000
+  ctx=1024, depth=75.0%: acc=0%, conf=0.000
+  ctx=1024, depth=90.0%: acc=0%, conf=0.000
+  ctx=2048, depth=10.0%: acc=0%, conf=0.000
+  ctx=2048, depth=25.0%: acc=0%, conf=0.000
+  ctx=2048, depth=50.0%: acc=0%, conf=0.000
+  ctx=2048, depth=75.0%: acc=0%, conf=0.000
+  ctx=2048, depth=90.0%: acc=0%, conf=0.000
+  ctx=4096, depth=10.0%: acc=0%, conf=0.000
+  ctx=4096, depth=25.0%: acc=0%, conf=0.000
+  ctx=4096, depth=50.0%: acc=0%, conf=0.000
+  ctx=4096, depth=75.0%: acc=0%, conf=0.000
+  ctx=4096, depth=90.0%: acc=0%, conf=0.000
+
+============================================================
+Results Summary (Accuracy %)
+============================================================
+Context      10%       25%       50%       75%       90%    
+------------------------------------------------------------
+512            0%        0%        0%        0%        0%   
+1024           0%        0%        0%        0%        0%   
+2048           0%        0%        0%        0%        0%   
+4096           0%        0%        0%        0%        0%   
+------------------------------------------------------------
+
+Trained context: 4106
+Avg accuracy (within train): 0%
+
+✓ Saved plot: assets/needle_haystack.png
+✓ Saved data: assets/needle_haystack.csv

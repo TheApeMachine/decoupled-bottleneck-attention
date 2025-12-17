@@ -16,6 +16,7 @@ Data format: whitespace-separated integer token IDs in a single file.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import time
@@ -31,6 +32,14 @@ try:
     import tiktoken
 except ImportError:
     tiktoken = None
+
+# Import instrumentation (optional, for deep analysis)
+try:
+    from instrumentation import InstrumentationConfig, Analyzer, register_hooks
+    HAS_INSTRUMENTATION = True
+except ImportError:
+    HAS_INSTRUMENTATION = False
+    print("Note: instrumentation.py not found. Run with --instrument off or create the file.")
 
 
 # -----------------------------
@@ -908,6 +917,9 @@ class DecoupledBottleneckAttention(nn.Module):
         if cache is None:
             sem = torch.matmul(qsh, ksh.transpose(-2, -1)) / math.sqrt(self.sem_head_dim)
             geo = torch.matmul(qgh, kgh.transpose(-2, -1)) / math.sqrt(self.geo_head_dim)
+            # Cache path scores for instrumentation
+            self.last_sem_scores = sem
+            self.last_geo_scores = geo
             scores = self._apply_logit_scale(sem + geo)
 
             if cfg.null_attn:
@@ -954,6 +966,9 @@ class DecoupledBottleneckAttention(nn.Module):
 
         sem = torch.matmul(qsh, ksh_all.transpose(-2, -1)) / math.sqrt(self.sem_head_dim)
         geo = torch.matmul(qgh, kgh_all.transpose(-2, -1)) / math.sqrt(self.geo_head_dim)
+        # Cache path scores for instrumentation
+        self.last_sem_scores = sem
+        self.last_geo_scores = geo
         scores = self._apply_logit_scale(sem + geo)
 
         if T > 1:
@@ -1217,6 +1232,13 @@ def main() -> None:
     ap.add_argument("--kv-cache", type=str, default="fp16", choices=["fp16", "fp32", "q8_0", "q4_0"])
     ap.add_argument("--kv-qblock", type=int, default=32)
     ap.add_argument("--tokenizer", type=str, default="word", choices=["word", "tiktoken"])
+    
+    # Instrumentation
+    ap.add_argument("--instrument", type=str, default="medium", 
+                    choices=["off", "light", "medium", "heavy"],
+                    help="Instrumentation level for deep analysis")
+    ap.add_argument("--analysis-every", type=int, default=100,
+                    help="Steps between deep analysis (for medium/heavy)")
 
     args = ap.parse_args()
 
@@ -1355,7 +1377,25 @@ def main() -> None:
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    # Initialize deep instrumentation (if available)
+    analyzer = None
+    hooks = []
+    if HAS_INSTRUMENTATION and args.instrument != "off":
+        inst_config = InstrumentationConfig(
+            level=args.instrument,
+            analysis_every=args.analysis_every,
+        )
+        analyzer = Analyzer(inst_config, args.out_dir, asdict(cfg), args)
+        hooks = register_hooks(model, analyzer)
+        print(f"Instrumentation: {args.instrument} (analysis every {args.analysis_every} steps)")
+        
+        # Measure actual memory usage
+        analyzer.measure_memory(model, args.batch_size, cfg.block_size)
+    else:
+        print("Instrumentation: off")
+    
     best_val = float("inf")
+    t_start = time.time()
     t_eval0 = time.time()
     tok_count = 0
     dt_acc = 0.0
@@ -1372,10 +1412,18 @@ def main() -> None:
                 device=device,
             )
             ppl = math.exp(va) if va < 20 else float("inf")
-            print(f"== eval step {step} | train {tr:.4f} | val {va:.4f} | val_ppl {ppl:.2f} | {(time.time()-t_eval0):.1f}s")
-            if va < best_val:
+            elapsed = time.time() - t_eval0
+            is_best = va < best_val
+            
+            print(f"== eval step {step} | train {tr:.4f} | val {va:.4f} | val_ppl {ppl:.2f} | {elapsed:.1f}s")
+            if analyzer:
+                analyzer.log_eval(step, tr, va, ppl, elapsed, is_best)
+            
+            if is_best:
                 best_val = va
                 save_ckpt(args.out_dir, "best.pt", model, cfg, step, best_val)
+                if analyzer:
+                    analyzer.log_best(step, best_val)
                 print(f"   (new best) {best_val:.4f}")
             t_eval0 = time.time()
 
@@ -1388,6 +1436,11 @@ def main() -> None:
         loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
         opt.zero_grad(set_to_none=True)
         loss.backward()
+        
+        # Run deep analysis (attention, gradients, representations)
+        if analyzer:
+            analyzer.analyze_step(step, model)
+        
         if args.grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         opt.step()
@@ -1399,11 +1452,23 @@ def main() -> None:
             tok_s = tok_count / max(dt_acc, 1e-9)
             ppl = math.exp(loss.item()) if loss.item() < 20 else float("inf")
             print(f"step {step:6d}/{args.steps} | loss {loss.item():.4f} | ppl {ppl:8.2f} | tok/s {tok_s:8.0f}")
+            if analyzer:
+                analyzer.log_train_step(step, loss.item(), ppl, tok_s, args.lr)
             tok_count = 0
             dt_acc = 0.0
 
     save_ckpt(args.out_dir, "last.pt", model, cfg, args.steps, best_val)
-    print(f"Done. best_val={best_val:.4f}")
+    
+    # Finalize instrumentation with auto-visualization
+    total_time = time.time() - t_start
+    if analyzer:
+        analyzer.finalize(best_val)
+    
+    # Remove hooks
+    for h in hooks:
+        h.remove()
+    
+    print(f"Done. best_val={best_val:.4f} | total_time={total_time:.1f}s")
 
 
 if __name__ == "__main__":

@@ -12,3 +12,7 @@ docs/raw/
 __pycache__/
 .venv/
 docs/RESEARCH_MASTER_PLAN.md
+EXPERIMENT_AUDIT.md
+fineweb_100m.npy
+.gitignore
+fineweb_100m.npy.meta

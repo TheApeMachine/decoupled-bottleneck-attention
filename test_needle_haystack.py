@@ -192,12 +192,25 @@ def main():
     ckpt = torch.load(args.ckpt, map_location=device)
     cfg = ModelConfig(**ckpt['config'])
     
-    print(f"Model trained at context: {cfg.block}")
+    print(f"Model trained at context: {cfg.block_size}")
     print(f"Attention mode: {cfg.attn_mode}")
     
     model = GPT(cfg).to(device)
     model.load_state_dict(ckpt['model'])
     model.eval()
+    
+    # Extend block_size to handle the largest context we'll test
+    max_ctx = max(args.context_lengths) + 10  # +10 for query tokens
+    if cfg.block_size < max_ctx:
+        print(f"Extending block_size: {cfg.block_size} -> {max_ctx}")
+        model.cfg.block_size = max_ctx
+        # Update causal mask (only if it's not too large for INT_MAX)
+        if max_ctx <= 16384:  # Safe limit for dense mask
+            model.register_buffer(
+                "causal_mask",
+                torch.tril(torch.ones(max_ctx, max_ctx, dtype=torch.bool, device=device)).view(1, 1, max_ctx, max_ctx),
+                persistent=False,
+            )
     
     # Run needle-haystack test
     print("\n" + "=" * 60)
@@ -234,7 +247,7 @@ def main():
     print("-" * 60)
     
     # Analyze
-    train_context = cfg.block
+    train_context = cfg.block_size
     print(f"\nTrained context: {train_context}")
     
     within_train = [ctx for ctx in args.context_lengths if ctx <= train_context]

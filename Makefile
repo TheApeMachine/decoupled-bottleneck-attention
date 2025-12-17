@@ -1,4 +1,4 @@
-.PHONY: train v20 bottleneck_attention decoupled_bottleneck prepare_fineweb suggestions support bigboy replicate_paper visualize visualize_plots visualize_heatmaps heatmap setup prepare_wikitext install_deps replicate_ablations replicate_fineweb replicate_wikitext ablation_sem_geo multiseed_validation analyze_ablation long_context_scaling rope_extrapolation needle_haystack analyze_long_context benchmark_128k benchmark_128k_compare benchmark_128k_quick long_context_full run_v22_survive_scale run_v23_fused run_v24_flash2pass
+.PHONY: train paper_all paper_data paper_experiments paper_analyze paper_baseline paper_bottleneck paper_decoupled paper_gqa paper_deep paper_smoke print_config install_deps
 
 train:
 	# python3 v1_gradient_grouping.py --mode baseline 
@@ -370,223 +370,357 @@ suggestions:
 		--null-attn
 
 # =============================================================================
-# SETUP & DATA PREPARATION
+# PAPER EXPERIMENTS - FINEWEB-EDU ONLY (NO WIKITEXT)
+# =============================================================================
+# All experiments use FineWeb-Edu for realistic, non-overfit training.
+# Deep instrumentation enabled for understanding attention mechanics.
+#
+# MODEL SIZE PRESETS (choose one):
+#   make paper_all SIZE=tiny    ~25M params  - Fast iteration (MPS friendly)
+#   make paper_all SIZE=small   ~125M params - Respectable (MPS feasible)
+#   make paper_all SIZE=medium  ~350M params - Production-relevant (needs GPU)
+#   make paper_all SIZE=large   ~760M params - Serious scale (needs A100)
+#
+# Each experiment produces:
+#   - train.jsonl      (JSONL log with all metrics)
+#   - analysis.h5      (Tensor data: attention matrices, SVD, etc.)
+#   - analysis.png     (Auto-generated analysis plots)
+#   - summary.md       (Human-readable results)
+#   - best.pt, last.pt (Checkpoints)
+#
+# Run: make paper_all SIZE=small
 # =============================================================================
 
-setup: prepare_wikitext
+# -----------------------------------------------------------------------------
+# MODEL SIZE CONFIGURATIONS
+# -----------------------------------------------------------------------------
+# Default to small - respectable but MPS-feasible
+SIZE ?= small
+
+# Tiny: ~25M params (fast iteration, MPS friendly)
+ifeq ($(SIZE),tiny)
+D_MODEL := 512
+N_LAYER := 6
+N_HEAD := 8
+D_FF := 2048
+BLOCK := 1024
+BATCH := 16
+STEPS := 6000
+EVAL_EVERY := 200
+endif
+
+# Small: ~125M params (respectable results)
+ifeq ($(SIZE),small)
+D_MODEL := 768
+N_LAYER := 12
+N_HEAD := 12
+D_FF := 3072
+BLOCK := 1024
+BATCH := 8
+STEPS := 10000
+EVAL_EVERY := 500
+endif
+
+# Medium: ~350M params (production-relevant)
+ifeq ($(SIZE),medium)
+D_MODEL := 1024
+N_LAYER := 24
+N_HEAD := 16
+D_FF := 4096
+BLOCK := 2048
+BATCH := 4
+STEPS := 15000
+EVAL_EVERY := 500
+endif
+
+# Large: ~760M params (serious scale, needs A100+)
+ifeq ($(SIZE),large)
+D_MODEL := 1536
+N_LAYER := 24
+N_HEAD := 16
+D_FF := 6144
+BLOCK := 2048
+BATCH := 2
+STEPS := 20000
+EVAL_EVERY := 1000
+endif
+
+# Derived dimensions for decoupled attention (scale with model)
+SEM_DIM := $(shell echo "$(D_MODEL) / 16" | bc)
+GEO_DIM := $(shell echo "$(D_MODEL) / 8" | bc)
+ATTN_DIM := $(shell echo "$(SEM_DIM) + $(GEO_DIM)" | bc)
+KV_HEAD := $(shell echo "$(N_HEAD) / 4" | bc)
+
+# Print config
+print_config:
 	@echo "=============================================="
-	@echo "Setup complete! WikiText-2 ready."
-	@echo "Run 'make prepare_fineweb' for FineWeb-Edu (optional, ~2GB download)"
+	@echo "Model Size: $(SIZE)"
+	@echo "=============================================="
+	@echo "  d_model:    $(D_MODEL)"
+	@echo "  n_layer:    $(N_LAYER)"
+	@echo "  n_head:     $(N_HEAD)"
+	@echo "  d_ff:       $(D_FF)"
+	@echo "  block:      $(BLOCK)"
+	@echo "  batch:      $(BATCH)"
+	@echo "  steps:      $(STEPS)"
+	@echo "----------------------------------------------"
+	@echo "  sem_dim:    $(SEM_DIM)"
+	@echo "  geo_dim:    $(GEO_DIM)"
+	@echo "  attn_dim:   $(ATTN_DIM)"
+	@echo "  kv_head:    $(KV_HEAD)"
 	@echo "=============================================="
 
-prepare_wikitext:
-	@echo ">>> Preparing WikiText-2 dataset..."
-	@if [ ! -f wiki.train.tokens ]; then \
-		echo "Downloading and tokenizing WikiText-2..."; \
-		python3.12 -c "import urllib.request; urllib.request.urlretrieve('https://raw.githubusercontent.com/wojzaremba/lstm/master/data/ptb.train.txt', 'ptb.train.txt')" 2>/dev/null || true; \
-		python3.12 v21_transformer_decoupled_bottleneck_gqa.py --data wiki.train.tokens --steps 0 2>/dev/null || \
-		echo "Note: WikiText-2 will be auto-downloaded on first training run."; \
-	else \
-		echo "wiki.train.tokens already exists."; \
+# Master target: Run ALL paper experiments with instrumentation
+paper_all: print_config paper_data paper_experiments paper_analyze
+	@echo ""
+	@echo "=============================================="
+	@echo "  ALL PAPER EXPERIMENTS COMPLETE! (SIZE=$(SIZE))"
+	@echo "=============================================="
+	@echo ""
+	@echo "Results saved in runs/$(SIZE)_*/"
+	@echo "Analysis plots in assets/analysis/"
+	@echo ""
+	@echo "To re-analyze: make paper_analyze"
+	@echo "=============================================="
+
+# Prepare FineWeb dataset (scale with model size)
+paper_data:
+ifeq ($(SIZE),tiny)
+	@echo ">>> Preparing FineWeb-Edu dataset (100M tokens)..."
+	@if [ ! -f fineweb_100m.tokens ]; then \
+		python3.12 prepare_fineweb.py --tokens 100M --output fineweb_100m.tokens; \
 	fi
+FINEWEB_DATA := fineweb_100m.tokens
+else ifeq ($(SIZE),small)
+	@echo ">>> Preparing FineWeb-Edu dataset (500M tokens)..."
+	@if [ ! -f fineweb_500m.tokens ]; then \
+		python3.12 prepare_fineweb.py --tokens 500M --output fineweb_500m.tokens; \
+	fi
+FINEWEB_DATA := fineweb_500m.tokens
+else
+	@echo ">>> Preparing FineWeb-Edu dataset (1B tokens)..."
+	@if [ ! -f fineweb_1b.tokens ]; then \
+		python3.12 prepare_fineweb.py --tokens 1B --output fineweb_1b.tokens; \
+	fi
+FINEWEB_DATA := fineweb_1b.tokens
+endif
+
+# Data file selection based on size
+ifeq ($(SIZE),tiny)
+DATA_FILE := fineweb_100m.tokens
+else ifeq ($(SIZE),small)
+DATA_FILE := fineweb_500m.tokens
+else
+DATA_FILE := fineweb_1b.tokens
+endif
+
+# Run all core experiments
+paper_experiments: paper_baseline paper_bottleneck paper_decoupled paper_gqa
+	@echo ""
+	@echo "[Paper Experiments] All 4 experiments complete! (SIZE=$(SIZE))"
+	@echo ""
+
+# Post-training analysis
+paper_analyze:
+	@echo ">>> Running post-training analysis..."
+	python3.12 analyze_run.py --all
+	python3.12 generate_paper_figures.py
+	@echo "Analysis complete! Check assets/analysis/"
+
+# -----------------------------------------------------------------------------
+# INDIVIDUAL EXPERIMENTS (using SIZE variables)
+# -----------------------------------------------------------------------------
+
+# Standard Baseline: Full-rank attention
+paper_baseline: 
+	@echo ""
+	@echo ">>> [1/4] Standard Baseline ($(SIZE): d=$(D_MODEL), L=$(N_LAYER))..."
+	@echo "=============================================="
+	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
+		--data $(DATA_FILE) \
+		--out-dir runs/$(SIZE)_baseline \
+		--seed 1337 \
+		--device mps \
+		--tokenizer tiktoken \
+		--attn-mode standard \
+		--d-model $(D_MODEL) \
+		--layers $(N_LAYER) \
+		--n-head $(N_HEAD) \
+		--d-ff $(D_FF) \
+		--block $(BLOCK) \
+		--embed-dim $(D_MODEL) \
+		--steps $(STEPS) \
+		--eval-every $(EVAL_EVERY) \
+		--eval-iters 25 \
+		--lr 3e-4 \
+		--batch-size $(BATCH) \
+		--instrument medium \
+		--analysis-every 100
+
+# Bottleneck: Compressed attention (d_attn = d_model/8)
+paper_bottleneck: 
+	@echo ""
+	@echo ">>> [2/4] Bottleneck ($(SIZE): d_attn=$(ATTN_DIM))..."
+	@echo "=============================================="
+	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
+		--data $(DATA_FILE) \
+		--out-dir runs/$(SIZE)_bottleneck \
+		--seed 1337 \
+		--device mps \
+		--tokenizer tiktoken \
+		--attn-mode bottleneck \
+		--attn-dim $(ATTN_DIM) \
+		--d-model $(D_MODEL) \
+		--layers $(N_LAYER) \
+		--n-head $(N_HEAD) \
+		--d-ff $(D_FF) \
+		--block $(BLOCK) \
+		--embed-dim $(D_MODEL) \
+		--null-attn \
+		--steps $(STEPS) \
+		--eval-every $(EVAL_EVERY) \
+		--eval-iters 25 \
+		--lr 3e-4 \
+		--batch-size $(BATCH) \
+		--instrument medium \
+		--analysis-every 100
+
+# Decoupled: Semantic + Geometric split
+paper_decoupled: 
+	@echo ""
+	@echo ">>> [3/4] Decoupled ($(SIZE): sem=$(SEM_DIM), geo=$(GEO_DIM))..."
+	@echo "=============================================="
+	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
+		--data $(DATA_FILE) \
+		--out-dir runs/$(SIZE)_decoupled \
+		--seed 1337 \
+		--device mps \
+		--tokenizer tiktoken \
+		--attn-mode decoupled \
+		--sem-dim $(SEM_DIM) \
+		--geo-dim $(GEO_DIM) \
+		--attn-dim $(ATTN_DIM) \
+		--d-model $(D_MODEL) \
+		--layers $(N_LAYER) \
+		--n-head $(N_HEAD) \
+		--d-ff $(D_FF) \
+		--block $(BLOCK) \
+		--embed-dim $(D_MODEL) \
+		--tie-qk \
+		--null-attn \
+		--steps $(STEPS) \
+		--eval-every $(EVAL_EVERY) \
+		--eval-iters 25 \
+		--lr 3e-4 \
+		--batch-size $(BATCH) \
+		--instrument medium \
+		--analysis-every 100
+
+# GQA: Grouped Query Attention
+paper_gqa: 
+	@echo ""
+	@echo ">>> [4/4] GQA ($(SIZE): $(N_HEAD)Q/$(KV_HEAD)KV heads)..."
+	@echo "=============================================="
+	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
+		--data $(DATA_FILE) \
+		--out-dir runs/$(SIZE)_gqa \
+		--seed 1337 \
+		--device mps \
+		--tokenizer tiktoken \
+		--attn-mode gqa \
+		--kv-head $(KV_HEAD) \
+		--attn-dim $(D_MODEL) \
+		--d-model $(D_MODEL) \
+		--layers $(N_LAYER) \
+		--n-head $(N_HEAD) \
+		--d-ff $(D_FF) \
+		--block $(BLOCK) \
+		--embed-dim $(D_MODEL) \
+		--steps $(STEPS) \
+		--eval-every $(EVAL_EVERY) \
+		--eval-iters 25 \
+		--lr 3e-4 \
+		--batch-size $(BATCH) \
+		--instrument medium \
+		--analysis-every 100
+
+# -----------------------------------------------------------------------------
+# HEAVY INSTRUMENTATION (for deep analysis, slower)
+# -----------------------------------------------------------------------------
+
+paper_deep: 
+	@echo ">>> Running with HEAVY instrumentation ($(SIZE))..."
+	@echo "This will be ~30% slower but capture full attention matrices."
+	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
+		--data $(DATA_FILE) \
+		--out-dir runs/$(SIZE)_decoupled_deep \
+		--seed 1337 \
+		--device mps \
+		--tokenizer tiktoken \
+		--attn-mode decoupled \
+		--sem-dim $(SEM_DIM) \
+		--geo-dim $(GEO_DIM) \
+		--attn-dim $(ATTN_DIM) \
+		--d-model $(D_MODEL) \
+		--layers $(N_LAYER) \
+		--n-head $(N_HEAD) \
+		--d-ff $(D_FF) \
+		--block $(BLOCK) \
+		--embed-dim $(D_MODEL) \
+		--tie-qk \
+		--null-attn \
+		--steps $(shell echo "$(STEPS) / 2" | bc) \
+		--eval-every $(EVAL_EVERY) \
+		--eval-iters 25 \
+		--lr 3e-4 \
+		--batch-size $(BATCH) \
+		--instrument heavy \
+		--analysis-every 50
+
+# -----------------------------------------------------------------------------
+# QUICK SMOKE TEST (verify setup works)
+# -----------------------------------------------------------------------------
+
+paper_smoke:
+	@echo ">>> Quick smoke test (100 steps)..."
+	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
+		--data $(DATA_FILE) \
+		--out-dir runs/smoke_test \
+		--seed 1337 \
+		--device mps \
+		--tokenizer tiktoken \
+		--attn-mode decoupled \
+		--sem-dim $(SEM_DIM) \
+		--geo-dim $(GEO_DIM) \
+		--attn-dim $(ATTN_DIM) \
+		--d-model $(D_MODEL) \
+		--layers $(N_LAYER) \
+		--n-head $(N_HEAD) \
+		--d-ff $(D_FF) \
+		--block $(BLOCK) \
+		--embed-dim $(D_MODEL) \
+		--tie-qk \
+		--null-attn \
+		--steps 100 \
+		--eval-every 50 \
+		--eval-iters 5 \
+		--lr 3e-4 \
+		--batch-size $(BATCH) \
+		--instrument light
+	@echo "Smoke test passed!"
+
+# =============================================================================
+# SETUP & DEPENDENCIES
+# =============================================================================
 
 install_deps:
 	@echo ">>> Installing Python dependencies..."
-	pip install torch numpy matplotlib seaborn tqdm
-	@echo ">>> Optional: For FineWeb experiments"
-	pip install datasets tiktoken || echo "Optional deps failed (ok if not using FineWeb)"
+	pip install torch numpy matplotlib tqdm h5py
+	@echo ">>> Installing FineWeb dependencies..."
+	pip install datasets tiktoken
+	@echo "Done!"
 
-# =============================================================================
-# PAPER REPLICATION
-# =============================================================================
-# Run `make replicate_paper` to reproduce all experiments from the paper.
-# Estimated time: 8-12 hours on M1/M2 Mac or CUDA GPU.
-# =============================================================================
-
-replicate_paper: setup replicate_wikitext replicate_ablations replicate_fineweb visualize
-	@echo "=============================================="
-	@echo "All paper experiments complete!"
-	@echo "Check runs/ for checkpoints and logs."
-	@echo "Check assets/ for generated figures."
-	@echo "=============================================="
-
-replicate_wikitext:
-	@echo ">>> [1/4] WikiText-2 Core Experiments"
-	# Standard Baseline (d=512)
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_baseline_512 \
-		--attn-mode standard \
-		--d-model 512 \
-		--layers 6 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 256 \
-		--embed-dim 512 \
-		--steps 6000 \
-		--eval-every 200 \
-		--lr 3e-4 \
-		--batch-size 64
-
-	# Combined Bottleneck 96 (BEST PERPLEXITY)
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_combined_baseline_96 \
-		--attn-mode bottleneck \
-		--attn-dim 96 \
-		--d-model 512 \
-		--layers 6 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 256 \
-		--embed-dim 512 \
-		--null-attn \
-		--steps 6000 \
-		--eval-every 200 \
-		--lr 3e-4 \
-		--batch-size 64
-
-	# Decoupled Bottleneck (32 sem + 64 geo)
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_decoupled_sem32_geo64 \
-		--attn-mode decoupled \
-		--sem-dim 32 \
-		--geo-dim 64 \
-		--attn-dim 128 \
-		--d-model 512 \
-		--layers 6 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 256 \
-		--embed-dim 512 \
-		--tie-qk \
-		--null-attn \
-		--steps 6000 \
-		--eval-every 200 \
-		--lr 3e-4 \
-		--batch-size 64
-
-replicate_ablations:
-	@echo ">>> [2/4] Ablation Studies"
-	# GQA Comparison (8Q/2KV heads)
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_gqa_kv2_parammatch \
-		--attn-mode gqa \
-		--kv-head 2 \
-		--d-model 512 \
-		--layers 6 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 256 \
-		--embed-dim 512 \
-		--attn-dim 128 \
-		--null-attn \
-		--steps 6000 \
-		--eval-every 200 \
-		--lr 3e-4 \
-		--batch-size 64
-
-	# Small Model Control (d_model=128)
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_small_d128_standard \
-		--attn-mode standard \
-		--d-model 128 \
-		--layers 6 \
-		--n-head 4 \
-		--d-ff 512 \
-		--block 256 \
-		--embed-dim 128 \
-		--steps 6000 \
-		--eval-every 200 \
-		--lr 3e-4 \
-		--batch-size 64 \
-		--null-attn
-
-	# Long Context 1024
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_decoupled_block1024 \
-		--attn-mode decoupled \
-		--sem-dim 32 \
-		--geo-dim 64 \
-		--d-model 512 \
-		--layers 6 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 1024 \
-		--embed-dim 512 \
-		--attn-dim 128 \
-		--tie-qk \
-		--null-attn \
-		--steps 1200 \
-		--eval-every 200 \
-		--eval-iters 25 \
-		--lr 3e-4 \
-		--batch-size 8
-
-	# Long Context 2048
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data wiki.train.tokens \
-		--out-dir runs/v21_decoupled_block2048 \
-		--attn-mode decoupled \
-		--sem-dim 32 \
-		--geo-dim 64 \
-		--d-model 512 \
-		--layers 6 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 2048 \
-		--embed-dim 512 \
-		--attn-dim 128 \
-		--tie-qk \
-		--null-attn \
-		--steps 800 \
-		--eval-every 200 \
-		--eval-iters 10 \
-		--lr 3e-4 \
-		--batch-size 4
-
-replicate_fineweb:
-	@echo ">>> [3/4] FineWeb-Edu Large Scale Validation"
-	@if [ ! -f fineweb_100m.tokens ]; then \
-		echo "FineWeb dataset not found. Preparing..."; \
-		python3.12 prepare_fineweb.py --out fineweb_100m.tokens; \
-	fi
-	# FineWeb Baseline
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data fineweb_100m.tokens \
-		--out-dir runs/v21_fineweb_baseline \
-		--attn-mode standard \
-		--d-model 512 \
-		--n-head 8 \
-		--d-ff 2048 \
-		--block 1024 \
-		--batch-size 16 \
-		--steps 6000 \
-		--eval-every 500 \
-		--lr 3e-4
-
-	# FineWeb Decoupled
-	python3.12 v21_transformer_decoupled_bottleneck_gqa.py \
-		--data fineweb_100m.tokens \
-		--out-dir runs/v21_fineweb_decoupled \
-		--attn-mode decoupled \
-		--d-model 512 \
-		--n-head 8 \
-		--sem-dim 32 \
-		--geo-dim 64 \
-		--attn-dim 128 \
-		--d-ff 2048 \
-		--block 1024 \
-		--batch-size 16 \
-		--tie-qk \
-		--null-attn \
-		--steps 6000 \
-		--eval-every 500 \
-		--lr 3e-4
+# (Old WikiText-based targets removed - use paper_all for FineWeb experiments)
 
 visualize: visualize_plots visualize_heatmaps
 	@echo "=============================================="

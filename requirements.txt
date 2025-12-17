@@ -4,3 +4,5 @@ tiktoken
 datasets
 tqdm
 matplotlib
+tensorboard
+rich
