@@ -218,6 +218,31 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-new-tokens", type=int, default=50)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--top-k", type=int, default=None)
+    ap.add_argument(
+        "--draft-ckpt",
+        type=str,
+        default=None,
+        help="v31: Optional draft checkpoint for speculative decoding (faster decode by proposing k tokens and verifying with the main model).",
+    )
+    ap.add_argument("--spec-k", type=int, default=4, help="v31: Draft proposal length for speculative decoding.")
+    ap.add_argument(
+        "--spec-method",
+        type=str,
+        default="reject_sampling",
+        choices=["reject_sampling", "greedy"],
+        help="v31: Speculative decoding accept/reject method. 'reject_sampling' is the proper p/q gate; 'greedy' accepts only if argmax matches (debug).",
+    )
+    ap.add_argument(
+        "--spec-extra-token",
+        action="store_true",
+        help="v31: If all k draft tokens are accepted, also sample one extra token from the verifier (more correct, slightly slower).",
+    )
+    ap.add_argument(
+        "--spec-disable-below-accept",
+        type=float,
+        default=0.0,
+        help="v31: Disable speculative decoding online if recent acceptance rate falls below this threshold (0 disables).",
+    )
 
     # ---- KV cache / decode (generation) ----
     ap.add_argument(
@@ -317,6 +342,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--self-opt-quality-ppl-ratio-tol", type=float, default=1.02, help="Quality gate: max allowed ppl_cand/ppl_base on calibration tokens. Default 1.02 (~2%% ppl hit).")
     ap.add_argument("--self-opt-quality-kl-tol", type=float, default=None, help="Optional quality gate: max allowed KL(p_base||p_cand) in nats/token on calibration tokens.")
     ap.add_argument("--self-opt-quality-kl", action="store_true", help="Compute and print KL(p_base||p_cand) even if --self-opt-quality-kl-tol is unset (slow).")
+    ap.add_argument(
+        "--self-opt-layerwise-cache",
+        action="store_true",
+        help="v31: If a chosen global cache policy fails quality gates, try a layerwise fallback (promote early layers to fp16, keep later layers quantized).",
+    )
     ap.add_argument("--kv-cache-k", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override K cache kind (standard/bottleneck/gqa).")
     ap.add_argument("--kv-cache-v", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override V cache kind (standard/bottleneck/gqa and decoupled).")
     ap.add_argument("--kv-cache-k-sem", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override semantic K cache kind (decoupled only).")

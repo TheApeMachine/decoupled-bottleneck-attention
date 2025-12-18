@@ -106,6 +106,16 @@ Run it:
 python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --run
 ```
 
+You can also specify a **token budget** and let the launcher solve for steps:
+
+```bash
+# Train for ~10B tokens (Chinchilla-ish “decent” for 1B)
+python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --target-tokens 10B --run
+
+# Train for ~20B tokens (Chinchilla-ish “well trained” for 1B)
+python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --target-tokens 20B --run
+```
+
 ### Google Colab quickstart
 In a Colab notebook:
 

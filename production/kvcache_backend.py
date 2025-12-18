@@ -314,6 +314,45 @@ class SeqCacheTensor:
         self.pos += Tn
         return old
 
+    def truncate(self, new_pos: int) -> None:
+        """Rollback the logical cache length to `new_pos` (does not clear underlying storage).
+
+        This is used by speculative decoding, which may temporarily append draft tokens and then
+        rollback if the verifier rejects them.
+        """
+        new_pos = int(new_pos)
+        if new_pos < 0 or new_pos > int(self.pos):
+            raise ValueError(f"Invalid truncate new_pos={new_pos} for pos={self.pos}")
+        if new_pos == int(self.pos):
+            return
+        self.pos = new_pos
+
+        # Rebuild residual ring to match the new tail. This keeps get_slice() correct for newest tokens.
+        if self._residual is None:
+            return
+        rlen = int(self._residual_len_eff)
+        if rlen <= 0:
+            return
+        start = max(0, self.pos - rlen)
+        end = self.pos
+        if start >= end:
+            return
+
+        # Gather tail from authoritative storage (buf or quant buffers) without using the residual fast-path.
+        if self.kind in ("fp16", "fp32"):
+            tail = self.buf[:, start:end].to(torch.float16)  # type: ignore[index]
+        elif self.kind == "q8_0":
+            tail = dequantize_q8_0(self.q[:, start:end], self.s[:, start:end], self.spec).to(torch.float16)  # type: ignore[index]
+        elif self.kind == "q4_0":
+            tail = dequantize_q4_0(self.q[:, start:end], self.s[:, start:end], self.spec).to(torch.float16)  # type: ignore[index]
+        elif self.kind == "nf4":
+            tail = dequantize_nf4(self.q[:, start:end], self.s[:, start:end], self.spec).to(torch.float16)  # type: ignore[index]
+        else:
+            raise ValueError(self.kind)
+
+        idx = torch.arange(start, end, device=self.device, dtype=torch.long) % rlen
+        self._residual[:, idx] = tail
+
     def get_slice(self, start: int, end: int, *, dtype: torch.dtype = torch.float32) -> torch.Tensor:
         start = int(start)
         end = int(end)
@@ -382,6 +421,12 @@ class LayerKVCache:
     def get(self, *, dtype: torch.dtype = torch.float32) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.k.get(dtype=dtype), self.v.get(dtype=dtype)
 
+    def truncate(self, new_pos: int) -> None:
+        self.k.truncate(new_pos)
+        self.v.truncate(new_pos)
+        if self.k.pos != self.v.pos:
+            raise RuntimeError("K/V cache desync after truncate")
+
 
 class DecoupledLayerKVCache:
     def __init__(
@@ -415,5 +460,12 @@ class DecoupledLayerKVCache:
 
     def get(self, *, dtype: torch.dtype = torch.float32) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.k_sem.get(dtype=dtype), self.k_geo.get(dtype=dtype), self.v.get(dtype=dtype)
+
+    def truncate(self, new_pos: int) -> None:
+        self.k_sem.truncate(new_pos)
+        self.k_geo.truncate(new_pos)
+        self.v.truncate(new_pos)
+        if not (self.k_sem.pos == self.k_geo.pos == self.v.pos):
+            raise RuntimeError("Decoupled cache desync after truncate")
 
 

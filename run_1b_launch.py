@@ -21,7 +21,7 @@ import argparse
 import os
 import shlex
 import subprocess
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 V29_SCRIPT = "v29_transformer_decoupled_bottleneck_instrumented.py"
@@ -83,6 +83,23 @@ def _seq_len_for_step(step_idx: int, *, default_seq_len: int, schedule: List[Tup
     return int(cur)
 
 
+def _parse_token_count(s: str) -> int:
+    """
+    Parse token-count strings like '500M', '10B', '2000000000'.
+    Mirrors prepare_fineweb.py behavior.
+    """
+    s = str(s).strip().upper()
+    if not s:
+        raise ValueError("empty token count")
+    if s.endswith("B"):
+        return int(float(s[:-1]) * 1_000_000_000)
+    if s.endswith("M"):
+        return int(float(s[:-1]) * 1_000_000)
+    if s.endswith("K"):
+        return int(float(s[:-1]) * 1_000)
+    return int(s)
+
+
 def _estimate_total_tokens(
     *,
     steps: int,
@@ -116,6 +133,42 @@ def _estimate_total_tokens(
     return int(total)
 
 
+def _steps_for_target_tokens(
+    *,
+    target_tokens: int,
+    global_batch: int,
+    default_seq_len: int,
+    schedule: List[Tuple[int, int]],
+    lo: int = 1,
+    hi: int = 5_000_000,
+) -> int:
+    """
+    Find smallest steps such that planned_tokens(steps) >= target_tokens.
+    """
+    target_tokens = int(target_tokens)
+    if target_tokens <= 0:
+        raise ValueError("target_tokens must be > 0")
+
+    lo = int(max(1, lo))
+    hi = int(max(lo, hi))
+
+    # Expand hi if needed (rare, but safe).
+    while _estimate_total_tokens(steps=hi, global_batch=global_batch, default_seq_len=default_seq_len, schedule=schedule) < target_tokens:
+        hi *= 2
+        if hi > 50_000_000:
+            raise RuntimeError("target token budget too large; refusing to search >50M steps")
+
+    # Binary search
+    while lo < hi:
+        mid = (lo + hi) // 2
+        got = _estimate_total_tokens(steps=mid, global_batch=global_batch, default_seq_len=default_seq_len, schedule=schedule)
+        if got >= target_tokens:
+            hi = mid
+        else:
+            lo = mid + 1
+    return int(lo)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--python", type=str, default="python3.12")
@@ -140,6 +193,12 @@ def main() -> None:
 
     # Training knobs
     ap.add_argument("--steps", type=int, default=20_000)
+    ap.add_argument(
+        "--target-tokens",
+        type=str,
+        default=None,
+        help="Optional token budget like '10B' or '500M'. If set, overrides --steps by solving for steps.",
+    )
     ap.add_argument("--optimizer", type=str, default="lion", choices=["lion", "adamw"])
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--batch-size", type=int, default=1, help="Micro-batch size")
@@ -201,6 +260,15 @@ def main() -> None:
 
     global_batch = int(args.batch_size) * int(args.grad_accum)
     sched = _parse_seq_schedule(args.seq_schedule) if args.seq_schedule else []
+    target_tokens: Optional[int] = None
+    if args.target_tokens:
+        target_tokens = _parse_token_count(str(args.target_tokens))
+        args.steps = _steps_for_target_tokens(
+            target_tokens=target_tokens,
+            global_batch=int(global_batch),
+            default_seq_len=int(args.train_seq_len),
+            schedule=sched,
+        )
     planned_tokens = _estimate_total_tokens(
         steps=int(args.steps),
         global_batch=int(global_batch),
@@ -208,7 +276,10 @@ def main() -> None:
         schedule=sched,
     )
     planned_tokens_b = planned_tokens / 1e9
-    print(f"[plan] global_batch={global_batch} | steps={int(args.steps)} | planned_tokens≈{planned_tokens_b:.3f}B")
+    extra = ""
+    if target_tokens is not None:
+        extra = f" (target={target_tokens/1e9:.3f}B)"
+    print(f"[plan] global_batch={global_batch} | steps={int(args.steps)} | planned_tokens≈{planned_tokens_b:.3f}B{extra}")
     if sched:
         print(f"[plan] seq_schedule={args.seq_schedule}")
 

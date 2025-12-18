@@ -1383,15 +1383,31 @@ class DecoupledBottleneckAttention(nn.Module):
             cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
             return y, cache
 
-        # General cached path: append, then attend over full cache.
-        cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
-        L = cache.pos
+        # General cached path:
+        # - T==1: decode (streaming or fused)
+        # - T>1: prefer a sequential streaming path when caches are quantized (avoids dequantizing the full prefix),
+        #        otherwise fall back to the materialized path.
 
         if T == 1:
+            cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
             decode_block = getattr(cache, "decode_block", 1024)
             fused = getattr(cache, "fused", "none")
             if fused == "auto":
-                fused = "triton2pass" if (_triton_decoupled_q4q8q4_available() and cache.k_sem.kind == "q4_0" and cache.k_geo.kind == "q8_0" and cache.v.kind == "q4_0" and cache.k_sem.spec.qblock == 32 and cache.k_geo.spec.qblock == 32 and cache.v.spec.qblock == 32 and (not cfg.null_attn) and x.device.type == "cuda") else "none"
+                fused = (
+                    "triton2pass"
+                    if (
+                        _triton_decoupled_q4q8q4_available()
+                        and cache.k_sem.kind == "q4_0"
+                        and cache.k_geo.kind == "q8_0"
+                        and cache.v.kind == "q4_0"
+                        and cache.k_sem.spec.qblock == 32
+                        and cache.k_geo.spec.qblock == 32
+                        and cache.v.spec.qblock == 32
+                        and (not cfg.null_attn)
+                        and x.device.type == "cuda"
+                    )
+                    else "none"
+                )
 
             if fused in ("triton1pass", "triton2pass"):
                 if fused == "triton1pass":
@@ -1446,7 +1462,52 @@ class DecoupledBottleneckAttention(nn.Module):
             y = self.out_proj(self._merge(out))
             return y, cache
 
+        # T > 1
+        decode_block = getattr(cache, "decode_block", 1024)
+        quantized_cache = bool(cache.k_sem.is_quantized or cache.k_geo.is_quantized or cache.v.is_quantized)
+        if quantized_cache and old_len > 0:
+            # Sequential streaming prefill: append token-by-token and use streaming decode for each token.
+            # This avoids materializing/dequantizing the full prefix for every token in the chunk.
+            if cfg.null_attn:
+                ksn = self._shape(self.k_sem_null.expand(B, 1, -1), self.sem_head_dim)
+                kgn = self._shape(self.k_geo_null.expand(B, 1, -1), self.geo_head_dim)
+                vn = self._shape(self.v_null.expand(B, 1, -1), self.v_head_dim)
+            else:
+                ksn = kgn = vn = None
+
+            outs: List[torch.Tensor] = []
+            for t in range(T):
+                # Append one token worth of KV to the cache.
+                cache.append(
+                    self._merge(ksh[:, :, t : t + 1, :]),
+                    self._merge(kgh[:, :, t : t + 1, :]),
+                    self._merge(vh[:, :, t : t + 1, :]),
+                )
+                out_t = self._streaming_decode_attn_decoupled(
+                    q_sem=qsh[:, :, t : t + 1, :],
+                    q_geo=qgh[:, :, t : t + 1, :],
+                    k_sem_cache=cache.k_sem,
+                    k_geo_cache=cache.k_geo,
+                    v_cache=cache.v,
+                    sem_head_dim=self.sem_head_dim,
+                    geo_head_dim=self.geo_head_dim,
+                    v_head_dim=self.v_head_dim,
+                    decode_block=decode_block,
+                    sem_scale=float(sem_scale),
+                    geo_scale=float(geo_scale),
+                    k_sem_null=ksn,
+                    k_geo_null=kgn,
+                    v_null=vn,
+                )
+                outs.append(out_t)
+
+            out = torch.cat(outs, dim=2)  # (B,H,T,hd_v)
+            y = self.out_proj(self._merge(out))
+            return y, cache
+
         # Prefill/chunked attention (materialize).
+        cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
+        L = cache.pos
         k_sem_all, k_geo_all, v_all = cache.get(dtype=x.dtype)
         ksh_all = self._shape(k_sem_all, self.sem_head_dim)
         kgh_all = self._shape(k_geo_all, self.geo_head_dim)

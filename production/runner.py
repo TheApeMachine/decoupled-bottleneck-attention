@@ -129,6 +129,7 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
                 quality_ppl_ratio_tol=getattr(args, "self_opt_quality_ppl_ratio_tol", None),
                 quality_kl_tol=getattr(args, "self_opt_quality_kl_tol", None),
                 quality_compute_kl=bool(getattr(args, "self_opt_quality_kl", False)),
+                layerwise_cache=bool(getattr(args, "self_opt_layerwise_cache", False)),
             )
 
         logger = None
@@ -145,27 +146,73 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
 
         print(f"Generating {args.max_new_tokens} tokens...")
         try:
-            out = model.generate(
-                prompt,
-                max_new_tokens=int(args.max_new_tokens),
-                temperature=float(args.temperature),
-                top_k=(None if args.top_k is None else int(args.top_k)),
-                kv_cache=str(args.kv_cache),
-                kv_qblock=int(args.kv_qblock),
-                kv_residual=int(args.kv_residual),
-                kv_decode_block=int(args.kv_decode_block),
-                kv_fused=str(args.kv_fused),
-                self_opt=self_opt_cfg,
-                kv_cache_k=getattr(args, "kv_cache_k", None),
-                kv_cache_v=getattr(args, "kv_cache_v", None),
-                kv_cache_k_sem=getattr(args, "kv_cache_k_sem", None),
-                kv_cache_k_geo=getattr(args, "kv_cache_k_geo", None),
-                kv_qblock_k=getattr(args, "kv_qblock_k", None),
-                kv_qblock_v=getattr(args, "kv_qblock_v", None),
-                kv_qblock_k_sem=getattr(args, "kv_qblock_k_sem", None),
-                kv_qblock_k_geo=getattr(args, "kv_qblock_k_geo", None),
-                log_callback=(logger.log if logger is not None else None),
-            )
+            if getattr(args, "draft_ckpt", None):
+                dckpt = torch.load(str(args.draft_ckpt), map_location=device)
+                dcfg_dict = dckpt.get("config", None)
+                if dcfg_dict is None:
+                    raise ValueError("Draft checkpoint missing 'config'. Can't reconstruct draft model safely.")
+                dcfg = ModelConfig(**dcfg_dict)
+                draft = GPT(dcfg).to(device)
+                incompatible_d = draft.load_state_dict(dckpt["model"], strict=False)
+                bad_missing_d = [k for k in incompatible_d.missing_keys if "decoupled_gate_logit" not in k]
+                bad_unexpected_d = [k for k in incompatible_d.unexpected_keys if "decoupled_gate_logit" not in k]
+                if bad_missing_d or bad_unexpected_d:
+                    draft.load_state_dict(dckpt["model"], strict=True)
+                if incompatible_d.missing_keys or incompatible_d.unexpected_keys:
+                    print(f"[warn] Non-strict draft checkpoint load. Missing={incompatible_d.missing_keys} Unexpected={incompatible_d.unexpected_keys}")
+
+                # Basic safety: vocab size must match for token IDs to be meaningful.
+                if int(dcfg.vocab_size) != int(cfg.vocab_size):
+                    raise ValueError(f"Draft vocab_size {dcfg.vocab_size} != main vocab_size {cfg.vocab_size}")
+
+                out = model.generate_speculative(
+                    prompt,
+                    draft_model=draft,
+                    max_new_tokens=int(args.max_new_tokens),
+                    temperature=float(args.temperature),
+                    top_k=(None if args.top_k is None else int(args.top_k)),
+                    kv_cache=str(args.kv_cache),
+                    kv_qblock=int(args.kv_qblock),
+                    kv_residual=int(args.kv_residual),
+                    kv_decode_block=int(args.kv_decode_block),
+                    kv_fused=str(args.kv_fused),
+                    self_opt=self_opt_cfg,
+                    kv_cache_k=getattr(args, "kv_cache_k", None),
+                    kv_cache_v=getattr(args, "kv_cache_v", None),
+                    kv_cache_k_sem=getattr(args, "kv_cache_k_sem", None),
+                    kv_cache_k_geo=getattr(args, "kv_cache_k_geo", None),
+                    kv_qblock_k=getattr(args, "kv_qblock_k", None),
+                    kv_qblock_v=getattr(args, "kv_qblock_v", None),
+                    kv_qblock_k_sem=getattr(args, "kv_qblock_k_sem", None),
+                    kv_qblock_k_geo=getattr(args, "kv_qblock_k_geo", None),
+                    spec_k=int(getattr(args, "spec_k", 4)),
+                    spec_method=str(getattr(args, "spec_method", "reject_sampling")),
+                    spec_extra_token=bool(getattr(args, "spec_extra_token", False)),
+                    spec_disable_below_accept=float(getattr(args, "spec_disable_below_accept", 0.0)),
+                    log_callback=(logger.log if logger is not None else None),
+                )
+            else:
+                out = model.generate(
+                    prompt,
+                    max_new_tokens=int(args.max_new_tokens),
+                    temperature=float(args.temperature),
+                    top_k=(None if args.top_k is None else int(args.top_k)),
+                    kv_cache=str(args.kv_cache),
+                    kv_qblock=int(args.kv_qblock),
+                    kv_residual=int(args.kv_residual),
+                    kv_decode_block=int(args.kv_decode_block),
+                    kv_fused=str(args.kv_fused),
+                    self_opt=self_opt_cfg,
+                    kv_cache_k=getattr(args, "kv_cache_k", None),
+                    kv_cache_v=getattr(args, "kv_cache_v", None),
+                    kv_cache_k_sem=getattr(args, "kv_cache_k_sem", None),
+                    kv_cache_k_geo=getattr(args, "kv_cache_k_geo", None),
+                    kv_qblock_k=getattr(args, "kv_qblock_k", None),
+                    kv_qblock_v=getattr(args, "kv_qblock_v", None),
+                    kv_qblock_k_sem=getattr(args, "kv_qblock_k_sem", None),
+                    kv_qblock_k_geo=getattr(args, "kv_qblock_k_geo", None),
+                    log_callback=(logger.log if logger is not None else None),
+                )
         finally:
             if logger is not None:
                 logger.close()

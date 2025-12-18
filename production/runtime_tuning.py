@@ -86,6 +86,17 @@ class KVSelfOptConfig:
     quality_kl_tol: Optional[float] = None
     quality_compute_kl: bool = False
 
+    # v31: optional "repair" path for cache-policy tuning.
+    # If a globally-chosen policy violates quality gates, allow promoting early layers to fp16 while
+    # keeping later layers quantized (reduces memory vs full fp16 fallback).
+    layerwise_cache: bool = False
+
+    # v31: speculative decoding control loop (optional; used by generation code, not cache tuning itself).
+    spec_enabled: bool = False
+    spec_k: Tuple[int, ...] = (2, 4, 6, 8)
+    spec_min_accept: float = 0.6
+    spec_probe_every: int = 64
+
 
 def load_token_ids_spec(spec: str) -> List[int]:
     """Load token IDs from either:

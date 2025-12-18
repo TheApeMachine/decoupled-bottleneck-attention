@@ -1,22 +1,22 @@
 # Run Summary
 
-- Created: `2025-12-18T02:34:30+01:00`
-- Out dir: `runs/m4max_long12k_baseline_seed1337`
+- Created: `2025-12-18T02:34:32+01:00`
+- Out dir: `runs/m4max_long12k_decoupled_48_96_seed1337`
 - Device: `mps`
-- Command: `v29_transformer_decoupled_bottleneck_instrumented.py --mode train --device mps --data fineweb_100m.npy --data-format npy --vocab-size 50257 --steps 12000 --d-model 768 --layers 12 --n-head 12 --d-ff 3072 --embed-dim 512 --optimizer lion --lr 3e-4 --batch-size 8 --grad-accum 2 --train-seq-len 512 --seq-schedule 256@0,512@500,1024@2000 --eval-every 200 --eval-iters 20 --log-every 10 --instrument full --analysis-every 100 --live rich --param-dtype bf16 --amp --amp-dtype bf16 --seed 1337 --out-dir runs/m4max_long12k_baseline_seed1337 --attn-mode standard`
+- Command: `v29_transformer_decoupled_bottleneck_instrumented.py --mode train --device mps --data fineweb_100m.npy --data-format npy --vocab-size 50257 --steps 12000 --d-model 768 --layers 12 --n-head 12 --d-ff 3072 --embed-dim 512 --optimizer lion --lr 3e-4 --batch-size 8 --grad-accum 2 --train-seq-len 512 --seq-schedule 256@0,512@500,1024@2000 --eval-every 200 --eval-iters 20 --log-every 10 --instrument full --analysis-every 100 --live rich --param-dtype bf16 --amp --amp-dtype bf16 --seed 1337 --out-dir runs/m4max_long12k_decoupled_48_96_seed1337 --attn-mode decoupled --attn-dim 144 --sem-dim 48 --geo-dim 96`
 
 ## Model Config
 
 ```json
 {
-  "attn_dim": 512,
-  "attn_mode": "standard",
+  "attn_dim": 144,
+  "attn_mode": "decoupled",
   "block_size": 256,
   "d_ff": 3072,
   "d_model": 768,
   "dropout": 0.0,
   "embed_dim": 512,
-  "geo_dim": 64,
+  "geo_dim": 96,
   "kv_head": null,
   "learned_temp": true,
   "mlp": "swiglu",
@@ -25,7 +25,7 @@
   "null_attn": false,
   "rope": true,
   "rope_base": 10000.0,
-  "sem_dim": 32,
+  "sem_dim": 48,
   "tie_qk": false,
   "vocab_size": 50257
 }
@@ -46,8 +46,8 @@
   "analysis_max_tokens": 256,
   "analysis_save_scores": false,
   "analysis_topk": 8,
-  "attn_dim": 512,
-  "attn_mode": "standard",
+  "attn_dim": 144,
+  "attn_mode": "decoupled",
   "batch_size": 8,
   "block": 256,
   "ckpt": null,
@@ -65,7 +65,7 @@
   "eval_iters": 20,
   "eval_seq_len": 0,
   "exp": null,
-  "geo_dim": 64,
+  "geo_dim": 96,
   "grad_accum": 2,
   "grad_checkpoint": false,
   "grad_clip": 1.0,
@@ -106,7 +106,7 @@
   "opt_foreach": false,
   "opt_fused": false,
   "optimizer": "lion",
-  "out_dir": "runs/m4max_long12k_baseline_seed1337",
+  "out_dir": "runs/m4max_long12k_decoupled_48_96_seed1337",
   "param_dtype": "bf16",
   "print_config": false,
   "prompt_tokens": "0",
@@ -151,7 +151,7 @@
   "self_opt_verify_tol": 0.005,
   "self_opt_warmup": 1,
   "self_opt_warps": "4,8",
-  "sem_dim": 32,
+  "sem_dim": 48,
   "seq_schedule": "256@0,512@500,1024@2000",
   "size": null,
   "steps": 12000,
@@ -168,17 +168,4 @@
   "weight_decay": 0.1
 }
 ```
-
-## Results
-
-- Last step: `12000`
-- Best val loss: `6.133316` (ppl `460.96`)
-- Files: `train.jsonl`, `analysis.h5` (if enabled), `analysis.png`, `best.pt`, `last.pt`
-
-## KV Cache Memory (batch=1)
-
-- Baseline fp16 (standard attn) @ ctx=256: `9.00MB`
-- This run policy @ ctx=256: `9.00MB`
-- Compression vs fp16 baseline: `1.00×`
-- This run policy @ 128k: `4.39GB`
 

@@ -188,6 +188,288 @@ class GPT(nn.Module):
         return logits, new_caches
 
     @torch.no_grad()
+    def _policy_quality_metrics_decoupled(
+        self,
+        tokens: torch.Tensor,
+        *,
+        policy: KVCachePolicy,
+        prefill: int,
+        decode_steps: int,
+        kv_decode_block: int,
+        compute_kl: bool = False,
+    ) -> dict[str, float]:
+        """Importance-aware quality metrics for cache-policy tuning.
+
+        Computes over a short teacher-forced decode window (vs fp16-cache baseline):
+        - max_abs_logit: max(|Δlogit|) (safety fuse)
+        - delta_nll: ΔNLL (nats/token)
+        - ppl_ratio: exp(delta_nll)
+        - kl_base_cand: KL(p_base || p_cand) averaged over tokens (optional)
+        """
+        if tokens.numel() == 0:
+            return {"max_abs_logit": 0.0, "delta_nll": float("nan"), "ppl_ratio": float("nan"), "kl_base_cand": float("nan")}
+
+        if tokens.dim() == 1:
+            tokens = tokens.unsqueeze(0)
+        tokens = tokens[:1].contiguous()
+
+        device = tokens.device
+        B, L = tokens.shape
+        if L < 2:
+            return {"max_abs_logit": 0.0, "delta_nll": float("nan"), "ppl_ratio": float("nan"), "kl_base_cand": float("nan")}
+
+        prefill = int(max(1, min(int(prefill), L - 1)))
+        decode_steps = int(max(1, min(int(decode_steps), L - prefill)))
+        max_seq = int(prefill + decode_steps)
+
+        was_training = self.training
+        self.eval()
+        try:
+            # Baseline: fp16 caches everywhere.
+            fp16_cfg = KVCacheTensorConfig(kind="fp16", qblock=32, residual_len=0)
+            caches_base: list[Any] = []
+            for _ in range(self.cfg.n_layer):
+                c = DecoupledLayerKVCache(
+                    batch_size=B,
+                    max_seq_len=max_seq,
+                    k_sem_dim=self.cfg.sem_dim,
+                    k_geo_dim=self.cfg.geo_dim,
+                    v_dim=self.cfg.attn_dim,
+                    k_sem_cfg=fp16_cfg,
+                    k_geo_cfg=fp16_cfg,
+                    v_cfg=fp16_cfg,
+                    device=device,
+                )
+                c.decode_block = int(kv_decode_block)
+                c.fused = "none"
+                caches_base.append(c)
+
+            # Candidate caches: chosen policy (quantized).
+            k_sem_cfg, k_geo_cfg, v_cfg = policy.to_tensor_cfgs()
+            caches_cand: list[Any] = []
+            for _ in range(self.cfg.n_layer):
+                c = DecoupledLayerKVCache(
+                    batch_size=B,
+                    max_seq_len=max_seq,
+                    k_sem_dim=self.cfg.sem_dim,
+                    k_geo_dim=self.cfg.geo_dim,
+                    v_dim=self.cfg.attn_dim,
+                    k_sem_cfg=k_sem_cfg,
+                    k_geo_cfg=k_geo_cfg,
+                    v_cfg=v_cfg,
+                    device=device,
+                )
+                c.decode_block = int(kv_decode_block)
+                # Ensure we don't mix kernel numeric differences into the quant check.
+                c.fused = "none"
+                caches_cand.append(c)
+
+            # Prefill
+            prompt = tokens[:, :prefill]
+            logits_base, caches_base = self(prompt, caches=caches_base, pos_offset=0)
+            logits_cand, caches_cand = self(prompt, caches=caches_cand, pos_offset=0)
+
+            max_err = 0.0
+            nll_sum_base = 0.0
+            nll_sum_cand = 0.0
+            nll_count = 0
+            kl_sum = 0.0
+            kl_count = 0
+
+            for i in range(prefill, prefill + decode_steps):
+                x = tokens[:, i : i + 1]
+                logits_base, caches_base = self(x, caches=caches_base, pos_offset=i)
+                logits_cand, caches_cand = self(x, caches=caches_cand, pos_offset=i)
+
+                lb = logits_base[:, -1, :].float()
+                lc = logits_cand[:, -1, :].float()
+
+                err = (lc - lb).abs().max().item()
+                if err > max_err:
+                    max_err = float(err)
+
+                if (i + 1) < L:
+                    tgt = tokens[:, i + 1].reshape(-1)
+                    nll_sum_base += float(F.cross_entropy(lb.reshape(-1, lb.size(-1)), tgt, reduction="sum").item())
+                    nll_sum_cand += float(F.cross_entropy(lc.reshape(-1, lc.size(-1)), tgt, reduction="sum").item())
+                    nll_count += int(tgt.numel())
+
+                    if compute_kl:
+                        logp_b = F.log_softmax(lb, dim=-1)
+                        p_b = logp_b.exp()
+                        logp_c = F.log_softmax(lc, dim=-1)
+                        kl_tok = (p_b * (logp_b - logp_c)).sum(-1)
+                        kl_sum += float(kl_tok.sum().item())
+                        kl_count += int(kl_tok.numel())
+
+            if nll_count > 0:
+                ce_base = nll_sum_base / float(nll_count)
+                ce_cand = nll_sum_cand / float(nll_count)
+                delta_nll = float(ce_cand - ce_base)
+                ppl_ratio = float(math.exp(delta_nll))
+            else:
+                delta_nll = float("nan")
+                ppl_ratio = float("nan")
+
+            if compute_kl and kl_count > 0:
+                kl_avg = float(kl_sum / float(kl_count))
+            else:
+                kl_avg = float("nan")
+
+            return {
+                "max_abs_logit": float(max_err),
+                "delta_nll": float(delta_nll),
+                "ppl_ratio": float(ppl_ratio),
+                "kl_base_cand": float(kl_avg),
+            }
+        finally:
+            if was_training:
+                self.train()
+
+    @torch.no_grad()
+    def _policy_quality_metrics_decoupled_layerwise(
+        self,
+        tokens: torch.Tensor,
+        *,
+        low_policy: KVCachePolicy,
+        promote_layers: int,
+        prefill: int,
+        decode_steps: int,
+        kv_decode_block: int,
+        compute_kl: bool = False,
+    ) -> dict[str, float]:
+        """Quality metrics for a layerwise policy: early layers fp16, later layers `low_policy`.
+
+        Baseline is fp16 caches everywhere (same as `_policy_quality_metrics_decoupled`).
+        """
+        promote_layers = int(max(0, min(int(promote_layers), int(self.cfg.n_layer))))
+        if promote_layers <= 0:
+            return self._policy_quality_metrics_decoupled(
+                tokens,
+                policy=low_policy,
+                prefill=prefill,
+                decode_steps=decode_steps,
+                kv_decode_block=kv_decode_block,
+                compute_kl=compute_kl,
+            )
+
+        if tokens.dim() == 1:
+            tokens = tokens.unsqueeze(0)
+        tokens = tokens[:1].contiguous()
+        device = tokens.device
+        B, L = tokens.shape
+        if L < 2:
+            return {"max_abs_logit": 0.0, "delta_nll": float("nan"), "ppl_ratio": float("nan"), "kl_base_cand": float("nan")}
+
+        prefill = int(max(1, min(int(prefill), L - 1)))
+        decode_steps = int(max(1, min(int(decode_steps), L - prefill)))
+        max_seq = int(prefill + decode_steps)
+
+        was_training = self.training
+        self.eval()
+        try:
+            fp16_cfg = KVCacheTensorConfig(kind="fp16", qblock=32, residual_len=0)
+
+            caches_base: list[Any] = []
+            for _ in range(self.cfg.n_layer):
+                c = DecoupledLayerKVCache(
+                    batch_size=B,
+                    max_seq_len=max_seq,
+                    k_sem_dim=self.cfg.sem_dim,
+                    k_geo_dim=self.cfg.geo_dim,
+                    v_dim=self.cfg.attn_dim,
+                    k_sem_cfg=fp16_cfg,
+                    k_geo_cfg=fp16_cfg,
+                    v_cfg=fp16_cfg,
+                    device=device,
+                )
+                c.decode_block = int(kv_decode_block)
+                c.fused = "none"
+                caches_base.append(c)
+
+            low_k_sem_cfg, low_k_geo_cfg, low_v_cfg = low_policy.to_tensor_cfgs()
+            caches_cand: list[Any] = []
+            for li in range(self.cfg.n_layer):
+                if li < promote_layers:
+                    k_sem_cfg = fp16_cfg
+                    k_geo_cfg = fp16_cfg
+                    v_cfg = fp16_cfg
+                else:
+                    k_sem_cfg = low_k_sem_cfg
+                    k_geo_cfg = low_k_geo_cfg
+                    v_cfg = low_v_cfg
+                c = DecoupledLayerKVCache(
+                    batch_size=B,
+                    max_seq_len=max_seq,
+                    k_sem_dim=self.cfg.sem_dim,
+                    k_geo_dim=self.cfg.geo_dim,
+                    v_dim=self.cfg.attn_dim,
+                    k_sem_cfg=k_sem_cfg,
+                    k_geo_cfg=k_geo_cfg,
+                    v_cfg=v_cfg,
+                    device=device,
+                )
+                c.decode_block = int(kv_decode_block)
+                c.fused = "none"
+                caches_cand.append(c)
+
+            prompt = tokens[:, :prefill]
+            logits_base, caches_base = self(prompt, caches=caches_base, pos_offset=0)
+            logits_cand, caches_cand = self(prompt, caches=caches_cand, pos_offset=0)
+
+            max_err = 0.0
+            nll_sum_base = 0.0
+            nll_sum_cand = 0.0
+            nll_count = 0
+            kl_sum = 0.0
+            kl_count = 0
+
+            for i in range(prefill, prefill + decode_steps):
+                x = tokens[:, i : i + 1]
+                logits_base, caches_base = self(x, caches=caches_base, pos_offset=i)
+                logits_cand, caches_cand = self(x, caches=caches_cand, pos_offset=i)
+
+                lb = logits_base[:, -1, :].float()
+                lc = logits_cand[:, -1, :].float()
+
+                err = (lc - lb).abs().max().item()
+                if err > max_err:
+                    max_err = float(err)
+
+                if (i + 1) < L:
+                    tgt = tokens[:, i + 1].reshape(-1)
+                    nll_sum_base += float(F.cross_entropy(lb.reshape(-1, lb.size(-1)), tgt, reduction="sum").item())
+                    nll_sum_cand += float(F.cross_entropy(lc.reshape(-1, lc.size(-1)), tgt, reduction="sum").item())
+                    nll_count += int(tgt.numel())
+
+                    if compute_kl:
+                        logp_b = F.log_softmax(lb, dim=-1)
+                        p_b = logp_b.exp()
+                        logp_c = F.log_softmax(lc, dim=-1)
+                        kl_tok = (p_b * (logp_b - logp_c)).sum(-1)
+                        kl_sum += float(kl_tok.sum().item())
+                        kl_count += int(kl_tok.numel())
+
+            if nll_count > 0:
+                ce_base = nll_sum_base / float(nll_count)
+                ce_cand = nll_sum_cand / float(nll_count)
+                delta_nll = float(ce_cand - ce_base)
+                ppl_ratio = float(math.exp(delta_nll))
+            else:
+                delta_nll = float("nan")
+                ppl_ratio = float("nan")
+
+            if compute_kl and kl_count > 0:
+                kl_avg = float(kl_sum / float(kl_count))
+            else:
+                kl_avg = float("nan")
+
+            return {"max_abs_logit": float(max_err), "delta_nll": float(delta_nll), "ppl_ratio": float(ppl_ratio), "kl_base_cand": float(kl_avg)}
+        finally:
+            if was_training:
+                self.train()
+
+    @torch.no_grad()
     def generate(
         self,
         prompt: torch.Tensor,
@@ -240,6 +522,7 @@ class GPT(nn.Module):
         k_sem_cfg = make_cfg(kv_cache_k_sem, kv_qblock_k_sem)
         k_geo_cfg = make_cfg(kv_cache_k_geo, kv_qblock_k_geo)
         v_dec_cfg = make_cfg(kv_cache_v, kv_qblock_v)
+        layerwise_promote_layers: Optional[int] = None
 
         if (
             self_opt is not None
@@ -278,31 +561,133 @@ class GPT(nn.Module):
                     else:
                         calib = prompt.detach()
 
-                    # NOTE: Quality check implementation is wired in runner/instrumentation; here we only warn on rejection.
-                    # We keep the hooks so the CLI flow stays compatible.
-                    # (Downstream: `production.runner` will compute metrics and use these helpers.)
-                    _ = calib
+                    compute_kl = bool(getattr(self_opt, "quality_compute_kl", False)) or (getattr(self_opt, "quality_kl_tol", None) is not None)
+                    qm = self._policy_quality_metrics_decoupled(
+                        calib,
+                        policy=chosen,
+                        prefill=int(getattr(self_opt, "calib_prefill", 128)),
+                        decode_steps=int(getattr(self_opt, "calib_decode_steps", 32)),
+                        kv_decode_block=int(kv_decode_block),
+                        compute_kl=compute_kl,
+                    )
+                    reasons = policy_quality_reject_reasons(
+                        qm,
+                        max_abs_logit_tol=getattr(self_opt, "quality_tol", None),
+                        delta_nll_tol=getattr(self_opt, "quality_delta_nll_tol", None),
+                        ppl_ratio_tol=getattr(self_opt, "quality_ppl_ratio_tol", None),
+                        kl_tol=getattr(self_opt, "quality_kl_tol", None),
+                    )
+                    if reasons:
+                        # v31: optional layerwise fallback - promote early layers to fp16 and keep later layers quantized.
+                        if bool(getattr(self_opt, "layerwise_cache", False)) and self.cfg.n_layer > 1:
+                            low = chosen
+                            pre = int(getattr(self_opt, "calib_prefill", 128))
+                            dec = int(getattr(self_opt, "calib_decode_steps", 32))
 
-                k_sem_cfg, k_geo_cfg, v_dec_cfg = chosen.to_tensor_cfgs()
-                kv_residual = int(chosen.residual_len)
+                            cand_ns: List[int] = []
+                            n = 1
+                            while n < int(self.cfg.n_layer):
+                                cand_ns.append(n)
+                                n *= 2
+                            cand_ns.append(int(self.cfg.n_layer))
+                            cand_ns = sorted(set(cand_ns))
+
+                            found = False
+                            for n_promote in cand_ns:
+                                qm2 = self._policy_quality_metrics_decoupled_layerwise(
+                                    calib,
+                                    low_policy=low,
+                                    promote_layers=n_promote,
+                                    prefill=pre,
+                                    decode_steps=dec,
+                                    kv_decode_block=int(kv_decode_block),
+                                    compute_kl=compute_kl,
+                                )
+                                reasons2 = policy_quality_reject_reasons(
+                                    qm2,
+                                    max_abs_logit_tol=getattr(self_opt, "quality_tol", None),
+                                    delta_nll_tol=getattr(self_opt, "quality_delta_nll_tol", None),
+                                    ppl_ratio_tol=getattr(self_opt, "quality_ppl_ratio_tol", None),
+                                    kl_tol=getattr(self_opt, "quality_kl_tol", None),
+                                )
+                                if not reasons2:
+                                    layerwise_promote_layers = int(n_promote)
+                                    dnll = float(qm2.get("delta_nll", float("nan")))
+                                    pr = float(qm2.get("ppl_ratio", float("nan")))
+                                    klv = float(qm2.get("kl_base_cand", float("nan")))
+                                    mx = float(qm2.get("max_abs_logit", float("nan")))
+                                    print(
+                                        f"[selfopt] layerwise cache-policy OK: promote_layers={layerwise_promote_layers}/{self.cfg.n_layer} "
+                                        f"low={low.short()} ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}"
+                                    )
+                                    found = True
+                                    break
+
+                            if not found:
+                                warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons)
+                                chosen = base_policy
+                        else:
+                            warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons)
+                            chosen = base_policy
+                    else:
+                        dnll = float(qm.get("delta_nll", float("nan")))
+                        pr = float(qm.get("ppl_ratio", float("nan")))
+                        klv = float(qm.get("kl_base_cand", float("nan")))
+                        mx = float(qm.get("max_abs_logit", float("nan")))
+                        print(f"[selfopt] cache-policy quality OK: ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}")
+
+                # If layerwise fallback was selected, we apply it at cache construction time below.
+                if layerwise_promote_layers is None:
+                    k_sem_cfg, k_geo_cfg, v_dec_cfg = chosen.to_tensor_cfgs()
+                    kv_residual = int(chosen.residual_len)
+                else:
+                    # Store low-policy configs; fp16 layers use fp16_cfg at construction time.
+                    k_sem_cfg, k_geo_cfg, v_dec_cfg = chosen.to_tensor_cfgs()
+                    kv_residual = int(chosen.residual_len)
             except Exception:
                 pass
 
         if self.cfg.attn_mode == "decoupled":
-            caches: List[Any] = [
-                DecoupledLayerKVCache(
-                    batch_size=B,
-                    max_seq_len=max_seq,
-                    k_sem_dim=self.cfg.sem_dim,
-                    k_geo_dim=self.cfg.geo_dim,
-                    v_dim=self.cfg.attn_dim,
-                    k_sem_cfg=k_sem_cfg,
-                    k_geo_cfg=k_geo_cfg,
-                    v_cfg=v_dec_cfg,
-                    device=device,
-                )
-                for _ in range(self.cfg.n_layer)
-            ]
+            if layerwise_promote_layers is None:
+                caches = [
+                    DecoupledLayerKVCache(
+                        batch_size=B,
+                        max_seq_len=max_seq,
+                        k_sem_dim=self.cfg.sem_dim,
+                        k_geo_dim=self.cfg.geo_dim,
+                        v_dim=self.cfg.attn_dim,
+                        k_sem_cfg=k_sem_cfg,
+                        k_geo_cfg=k_geo_cfg,
+                        v_cfg=v_dec_cfg,
+                        device=device,
+                    )
+                    for _ in range(self.cfg.n_layer)
+                ]
+            else:
+                fp16_cfg = KVCacheTensorConfig(kind="fp16", qblock=32, residual_len=0)
+                caches = []
+                for li in range(self.cfg.n_layer):
+                    if li < int(layerwise_promote_layers):
+                        ks = fp16_cfg
+                        kg = fp16_cfg
+                        vv = fp16_cfg
+                    else:
+                        ks = k_sem_cfg
+                        kg = k_geo_cfg
+                        vv = v_dec_cfg
+                    caches.append(
+                        DecoupledLayerKVCache(
+                            batch_size=B,
+                            max_seq_len=max_seq,
+                            k_sem_dim=self.cfg.sem_dim,
+                            k_geo_dim=self.cfg.geo_dim,
+                            v_dim=self.cfg.attn_dim,
+                            k_sem_cfg=ks,
+                            k_geo_cfg=kg,
+                            v_cfg=vv,
+                            device=device,
+                        )
+                    )
         else:
             caches = [
                 LayerKVCache(
@@ -317,9 +702,13 @@ class GPT(nn.Module):
                 for _ in range(self.cfg.n_layer)
             ]
 
-        for c in caches:
+        for li, c in enumerate(caches):
             c.decode_block = int(kv_decode_block)
-            c.fused = str(kv_fused)
+            # Layerwise fp16 promotion: never force fused kernels on fp16 layers (they are quant-specialized).
+            if layerwise_promote_layers is not None and self.cfg.attn_mode == "decoupled" and li < int(layerwise_promote_layers):
+                c.fused = "none"
+            else:
+                c.fused = str(kv_fused)
 
         decode_tuner: Optional[KVDecodeSelfOptimizer] = None
         if (
@@ -370,5 +759,470 @@ class GPT(nn.Module):
         if was_training:
             self.train()
         return out
+
+    @torch.no_grad()
+    def generate_speculative(
+        self,
+        prompt: torch.Tensor,
+        *,
+        draft_model: "GPT",
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+        # KV-cache controls
+        kv_cache: KVCacheKind = "fp16",
+        kv_qblock: int = 32,
+        kv_residual: int = 128,
+        kv_decode_block: int = 1024,
+        kv_fused: str = "auto",
+        self_opt: Optional[KVSelfOptConfig] = None,
+        # Optional heterogeneous overrides
+        kv_cache_k: Optional[KVCacheKind] = None,
+        kv_cache_v: Optional[KVCacheKind] = None,
+        kv_cache_k_sem: Optional[KVCacheKind] = None,
+        kv_cache_k_geo: Optional[KVCacheKind] = None,
+        kv_qblock_k: Optional[int] = None,
+        kv_qblock_v: Optional[int] = None,
+        kv_qblock_k_sem: Optional[int] = None,
+        kv_qblock_k_geo: Optional[int] = None,
+        # Spec knobs
+        spec_k: int = 4,
+        spec_method: str = "reject_sampling",  # {"reject_sampling","greedy"}
+        spec_extra_token: bool = False,
+        spec_disable_below_accept: float = 0.0,
+        log_callback: Optional[Any] = None,
+    ) -> torch.Tensor:
+        """Speculative decoding (draft proposes, main verifies).
+
+        Notes:
+        - Currently optimized for batch_size=1.
+        - For decoupled quantized caches, the attention code uses a sequential streaming prefill for T>1 to avoid
+          dequantizing the full prefix during verification.
+        """
+        if prompt.dim() != 2:
+            raise ValueError(f"prompt must be (B,T), got {tuple(prompt.shape)}")
+        if int(prompt.size(0)) != 1:
+            raise ValueError("generate_speculative currently supports batch_size=1 (B==1).")
+
+        if int(max_new_tokens) <= 0:
+            return prompt
+
+        if kv_fused not in ("none", "auto", "triton1pass", "triton2pass"):
+            raise ValueError("kv_fused must be one of: none, auto, triton1pass, triton2pass")
+
+        spec_k = int(spec_k)
+        if spec_k <= 0:
+            spec_k = 1
+        spec_method = str(spec_method)
+        if spec_method not in ("reject_sampling", "greedy"):
+            raise ValueError("spec_method must be 'reject_sampling' or 'greedy'")
+
+        device = prompt.device
+
+        was_training_main = self.training
+        was_training_draft = draft_model.training
+        self.eval()
+        draft_model.eval()
+        try:
+            # --------------- helpers ---------------
+            def _filter_logits(logits: torch.Tensor) -> torch.Tensor:
+                x = logits / max(float(temperature), 1e-8)
+                if top_k is not None:
+                    k = int(top_k)
+                    if k > 0 and k < x.size(-1):
+                        v, _ = torch.topk(x, k, dim=-1)
+                        x = x.masked_fill(x < v[:, [-1]], -float("inf"))
+                return x
+
+            def _probs(logits: torch.Tensor) -> torch.Tensor:
+                return F.softmax(_filter_logits(logits), dim=-1)
+
+            def _sample_from_probs(p: torch.Tensor) -> torch.Tensor:
+                # p: (B,V) -> (B,1)
+                return torch.multinomial(p, num_samples=1)
+
+            def _sample_token(logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+                # returns (token_ids (B,1), probs (B,V))
+                p = _probs(logits)
+                if spec_method == "greedy":
+                    tok = torch.argmax(p, dim=-1, keepdim=True)
+                else:
+                    tok = _sample_from_probs(p)
+                return tok, p
+
+            def _truncate_all(caches: List[Any], new_pos: int) -> None:
+                for c in caches:
+                    c.truncate(new_pos)
+
+            # --------------- cache init ---------------
+            # Main caches: reuse the same logic as `generate` (including cache-policy self-opt if enabled).
+            # We do this by calling the regular generate path up to cache construction; since code is monolithic,
+            # we replicate the minimal cache construction inline here for both models.
+
+            def _make_cfgs_for(model: "GPT") -> Tuple[Any, Any, Any, Any, Any, Any, Optional[int]]:
+                B, T0 = prompt.shape
+                max_seq = int(T0 + max_new_tokens)
+
+                # Default decoupled hetero for q4_0.
+                _kv_cache_k_geo = kv_cache_k_geo
+                _kv_cache_k_sem = kv_cache_k_sem
+                _kv_cache_v = kv_cache_v
+                if model.cfg.attn_mode == "decoupled" and kv_cache == "q4_0":
+                    if _kv_cache_k_geo is None:
+                        _kv_cache_k_geo = "q8_0"
+                    if _kv_cache_k_sem is None:
+                        _kv_cache_k_sem = "q4_0"
+                    if _kv_cache_v is None:
+                        _kv_cache_v = "q4_0"
+
+                def make_cfg(kind_override: Optional[KVCacheKind], qblock_override: Optional[int]) -> KVCacheTensorConfig:
+                    kind = kind_override if kind_override is not None else kv_cache
+                    qblock = qblock_override if qblock_override is not None else kv_qblock
+                    residual_len = kv_residual if kind not in ("fp16", "fp32") else 0
+                    return KVCacheTensorConfig(kind=kind, qblock=qblock, residual_len=residual_len)
+
+                k_cfg = make_cfg(kv_cache_k, kv_qblock_k)
+                v_cfg = make_cfg(_kv_cache_v, kv_qblock_v)
+                k_sem_cfg = make_cfg(_kv_cache_k_sem, kv_qblock_k_sem)
+                k_geo_cfg = make_cfg(_kv_cache_k_geo, kv_qblock_k_geo)
+                v_dec_cfg = make_cfg(_kv_cache_v, kv_qblock_v)
+                layerwise_promote_layers: Optional[int] = None
+
+                # Cache-policy tuner only on the main model (draft model should be cheap/simple).
+                if model is self and model.cfg.attn_mode == "decoupled":
+                    if (
+                        self_opt is not None
+                        and getattr(self_opt, "mode", "none") != "none"
+                        and getattr(self_opt, "scope", "all") in ("cache", "all")
+                    ):
+                        try:
+                            base_policy = KVCachePolicy(
+                                k_sem_kind=k_sem_cfg.kind,
+                                k_geo_kind=k_geo_cfg.kind,
+                                v_kind=v_dec_cfg.kind,
+                                k_sem_qblock=k_sem_cfg.qblock,
+                                k_geo_qblock=k_geo_cfg.qblock,
+                                v_qblock=v_dec_cfg.qblock,
+                                residual_len=int(kv_residual),
+                            )
+                            pol_tuner = KVCachePolicySelfOptimizer(
+                                self_opt,
+                                device=device,
+                                attn=model.blocks[0].attn,
+                                model_cfg=model.cfg,
+                                batch_size=int(B),
+                                max_seq_len=int(max_seq),
+                                base_policy=base_policy,
+                                base_decode_block=int(kv_decode_block),
+                                base_fused=str(kv_fused),
+                            )
+                            chosen = pol_tuner.choose_policy(prompt_len=int(T0))
+
+                            if getattr(self_opt, "policy_quality", False):
+                                calib_spec = getattr(self_opt, "calib_tokens", None)
+                                if calib_spec:
+                                    calib_ids = load_token_ids_spec(str(calib_spec))
+                                    calib = torch.tensor([calib_ids], device=device, dtype=torch.long)
+                                else:
+                                    calib = prompt.detach()
+
+                                compute_kl = bool(getattr(self_opt, "quality_compute_kl", False)) or (getattr(self_opt, "quality_kl_tol", None) is not None)
+                                qm = model._policy_quality_metrics_decoupled(
+                                    calib,
+                                    policy=chosen,
+                                    prefill=int(getattr(self_opt, "calib_prefill", 128)),
+                                    decode_steps=int(getattr(self_opt, "calib_decode_steps", 32)),
+                                    kv_decode_block=int(kv_decode_block),
+                                    compute_kl=compute_kl,
+                                )
+                                reasons = policy_quality_reject_reasons(
+                                    qm,
+                                    max_abs_logit_tol=getattr(self_opt, "quality_tol", None),
+                                    delta_nll_tol=getattr(self_opt, "quality_delta_nll_tol", None),
+                                    ppl_ratio_tol=getattr(self_opt, "quality_ppl_ratio_tol", None),
+                                    kl_tol=getattr(self_opt, "quality_kl_tol", None),
+                                )
+                                if reasons:
+                                    if bool(getattr(self_opt, "layerwise_cache", False)) and model.cfg.n_layer > 1:
+                                        low = chosen
+                                        pre = int(getattr(self_opt, "calib_prefill", 128))
+                                        dec = int(getattr(self_opt, "calib_decode_steps", 32))
+                                        cand_ns: List[int] = []
+                                        n = 1
+                                        while n < int(model.cfg.n_layer):
+                                            cand_ns.append(n)
+                                            n *= 2
+                                        cand_ns.append(int(model.cfg.n_layer))
+                                        cand_ns = sorted(set(cand_ns))
+                                        for n_promote in cand_ns:
+                                            qm2 = model._policy_quality_metrics_decoupled_layerwise(
+                                                calib,
+                                                low_policy=low,
+                                                promote_layers=n_promote,
+                                                prefill=pre,
+                                                decode_steps=dec,
+                                                kv_decode_block=int(kv_decode_block),
+                                                compute_kl=compute_kl,
+                                            )
+                                            reasons2 = policy_quality_reject_reasons(
+                                                qm2,
+                                                max_abs_logit_tol=getattr(self_opt, "quality_tol", None),
+                                                delta_nll_tol=getattr(self_opt, "quality_delta_nll_tol", None),
+                                                ppl_ratio_tol=getattr(self_opt, "quality_ppl_ratio_tol", None),
+                                                kl_tol=getattr(self_opt, "quality_kl_tol", None),
+                                            )
+                                            if not reasons2:
+                                                layerwise_promote_layers = int(n_promote)
+                                                print(f"[selfopt] layerwise cache-policy enabled for speculative decode: promote_layers={layerwise_promote_layers}/{model.cfg.n_layer} low={low.short()}")
+                                                chosen = low
+                                                break
+                                        if layerwise_promote_layers is None:
+                                            warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons)
+                                            chosen = base_policy
+                                    else:
+                                        warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons)
+                                        chosen = base_policy
+                                else:
+                                    dnll = float(qm.get("delta_nll", float("nan")))
+                                    pr = float(qm.get("ppl_ratio", float("nan")))
+                                    klv = float(qm.get("kl_base_cand", float("nan")))
+                                    mx = float(qm.get("max_abs_logit", float("nan")))
+                                    print(f"[selfopt] cache-policy quality OK (spec): ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}")
+
+                            if layerwise_promote_layers is None:
+                                k_sem_cfg, k_geo_cfg, v_dec_cfg = chosen.to_tensor_cfgs()
+                            else:
+                                k_sem_cfg, k_geo_cfg, v_dec_cfg = chosen.to_tensor_cfgs()
+                        except Exception:
+                            pass
+
+                return max_seq, k_cfg, v_cfg, k_sem_cfg, k_geo_cfg, v_dec_cfg, layerwise_promote_layers
+
+            def _make_caches(model: "GPT", *, max_seq: int, k_cfg: Any, v_cfg: Any, k_sem_cfg: Any, k_geo_cfg: Any, v_dec_cfg: Any, layerwise_promote_layers: Optional[int]) -> List[Any]:
+                B, _T0 = prompt.shape
+                if model.cfg.attn_mode == "decoupled":
+                    if layerwise_promote_layers is None:
+                        caches = [
+                            DecoupledLayerKVCache(
+                                batch_size=int(B),
+                                max_seq_len=int(max_seq),
+                                k_sem_dim=model.cfg.sem_dim,
+                                k_geo_dim=model.cfg.geo_dim,
+                                v_dim=model.cfg.attn_dim,
+                                k_sem_cfg=k_sem_cfg,
+                                k_geo_cfg=k_geo_cfg,
+                                v_cfg=v_dec_cfg,
+                                device=device,
+                            )
+                            for _ in range(model.cfg.n_layer)
+                        ]
+                    else:
+                        fp16_cfg = KVCacheTensorConfig(kind="fp16", qblock=32, residual_len=0)
+                        caches = []
+                        for li in range(model.cfg.n_layer):
+                            if li < int(layerwise_promote_layers):
+                                ks = fp16_cfg
+                                kg = fp16_cfg
+                                vv = fp16_cfg
+                            else:
+                                ks = k_sem_cfg
+                                kg = k_geo_cfg
+                                vv = v_dec_cfg
+                            caches.append(
+                                DecoupledLayerKVCache(
+                                    batch_size=int(B),
+                                    max_seq_len=int(max_seq),
+                                    k_sem_dim=model.cfg.sem_dim,
+                                    k_geo_dim=model.cfg.geo_dim,
+                                    v_dim=model.cfg.attn_dim,
+                                    k_sem_cfg=ks,
+                                    k_geo_cfg=kg,
+                                    v_cfg=vv,
+                                    device=device,
+                                )
+                            )
+                else:
+                    caches = [
+                        LayerKVCache(
+                            batch_size=int(B),
+                            max_seq_len=int(max_seq),
+                            k_dim=(model.cfg.d_model if model.cfg.attn_mode == "standard" else model.cfg.attn_dim),
+                            v_dim=(model.cfg.d_model if model.cfg.attn_mode == "standard" else model.cfg.attn_dim),
+                            k_cfg=k_cfg,
+                            v_cfg=v_cfg,
+                            device=device,
+                        )
+                        for _ in range(model.cfg.n_layer)
+                    ]
+
+                for li, c in enumerate(caches):
+                    c.decode_block = int(kv_decode_block)
+                    if layerwise_promote_layers is not None and model.cfg.attn_mode == "decoupled" and li < int(layerwise_promote_layers):
+                        c.fused = "none"
+                    else:
+                        c.fused = str(kv_fused)
+                return caches
+
+            max_seq_m, k_cfg_m, v_cfg_m, k_sem_cfg_m, k_geo_cfg_m, v_dec_cfg_m, layerwise_m = _make_cfgs_for(self)
+            caches_main = _make_caches(self, max_seq=max_seq_m, k_cfg=k_cfg_m, v_cfg=v_cfg_m, k_sem_cfg=k_sem_cfg_m, k_geo_cfg=k_geo_cfg_m, v_dec_cfg=v_dec_cfg_m, layerwise_promote_layers=layerwise_m)
+
+            max_seq_d, k_cfg_d, v_cfg_d, k_sem_cfg_d, k_geo_cfg_d, v_dec_cfg_d, layerwise_d = _make_cfgs_for(draft_model)
+            caches_draft = _make_caches(draft_model, max_seq=max_seq_d, k_cfg=k_cfg_d, v_cfg=v_cfg_d, k_sem_cfg=k_sem_cfg_d, k_geo_cfg=k_geo_cfg_d, v_dec_cfg=v_dec_cfg_d, layerwise_promote_layers=layerwise_d)
+
+            # Prefill both models
+            logits_main, caches_main = self(prompt, caches=caches_main, pos_offset=0)
+            logits_draft, caches_draft = draft_model(prompt, caches=caches_draft, pos_offset=0)
+            main_next_logits = logits_main[:, -1, :]
+            draft_next_logits = logits_draft[:, -1, :]
+
+            out = prompt
+            pos_cur = int(out.size(1))
+            generated = 0
+
+            ema_accept = 1.0
+            ema_decay = 0.9
+
+            def _finish_without_spec() -> torch.Tensor:
+                nonlocal out, pos_cur, generated, main_next_logits, caches_main
+                remaining = int(max_new_tokens) - int(generated)
+                for _ in range(remaining):
+                    tok, _p = _sample_token(main_next_logits)
+                    out = torch.cat([out, tok], dim=1)
+                    logits_main2, caches_main2 = self(tok, caches=caches_main, pos_offset=pos_cur)
+                    caches_main = caches_main2
+                    main_next_logits = logits_main2[:, -1, :]
+                    pos_cur += 1
+                    generated += 1
+                return out
+
+            while generated < int(max_new_tokens):
+                remaining = int(max_new_tokens) - int(generated)
+
+                # Optional online disable if acceptance drops.
+                if float(spec_disable_below_accept) > 0.0 and ema_accept < float(spec_disable_below_accept):
+                    print(f"[spec] disabling speculative decode (ema_accept={ema_accept:.3f} < {spec_disable_below_accept})")
+                    return _finish_without_spec()
+
+                k = min(int(spec_k), remaining)
+                if k <= 0:
+                    break
+
+                pos0 = int(caches_main[0].pos)
+                if pos0 != pos_cur:
+                    # Keep in sync with actual length (defensive).
+                    pos0 = pos_cur
+
+                # ---- Draft proposes k tokens ----
+                proposed: List[torch.Tensor] = []
+                q_probs: List[torch.Tensor] = []
+
+                for j in range(k):
+                    tok_j, qj = _sample_token(draft_next_logits)
+                    proposed.append(tok_j)
+                    q_probs.append(qj)
+                    # advance draft
+                    logits_draft, caches_draft = draft_model(tok_j, caches=caches_draft, pos_offset=pos_cur + j)
+                    draft_next_logits = logits_draft[:, -1, :]
+
+                proposed_blk = torch.cat(proposed, dim=1)  # (1,k)
+
+                # ---- Main verifies the block (one forward over k tokens) ----
+                logits_block, caches_main = self(proposed_blk, caches=caches_main, pos_offset=pos0)
+
+                accepted = k
+                rejected = False
+                for i in range(k):
+                    yi = proposed_blk[:, i : i + 1]
+                    if i == 0:
+                        p_logits_i = main_next_logits
+                    else:
+                        p_logits_i = logits_block[:, i - 1, :]
+
+                    p_i = _probs(p_logits_i)
+                    q_i = q_probs[i]
+
+                    if spec_method == "greedy":
+                        yi_hat = torch.argmax(p_i, dim=-1, keepdim=True)
+                        if int(yi_hat.item()) != int(yi.item()):
+                            accepted = i
+                            rejected = True
+                            # fallback token: sample from p
+                            z = yi_hat
+                            break
+                        continue
+
+                    # reject_sampling
+                    p_tok = p_i.gather(-1, yi).clamp(min=1e-12)
+                    q_tok = q_i.gather(-1, yi).clamp(min=1e-12)
+                    ratio = (p_tok / q_tok).clamp(max=1.0)
+                    u = torch.rand_like(ratio)
+                    if bool((u <= ratio).item()):
+                        continue
+
+                    accepted = i
+                    rejected = True
+                    # Sample from r ∝ [p - q]+
+                    r = torch.relu(p_i - q_i)
+                    z_probs = r
+                    z_sum = float(z_probs.sum().item())
+                    if not (z_sum > 0.0) or math.isnan(z_sum):
+                        z_probs = p_i
+                    z = _sample_from_probs(z_probs)
+                    break
+
+                if rejected:
+                    # Roll back caches to accepted prefix.
+                    new_pos = pos0 + int(accepted)
+                    _truncate_all(caches_main, new_pos)
+                    _truncate_all(caches_draft, new_pos)
+
+                    # Append accepted draft tokens (if any) to output.
+                    if accepted > 0:
+                        out = torch.cat([out, proposed_blk[:, :accepted]], dim=1)
+                        pos_cur += int(accepted)
+                        generated += int(accepted)
+
+                    # Append replacement token z, advance both models.
+                    out = torch.cat([out, z], dim=1)
+                    logits_main, caches_main = self(z, caches=caches_main, pos_offset=pos_cur)
+                    logits_draft, caches_draft = draft_model(z, caches=caches_draft, pos_offset=pos_cur)
+                    main_next_logits = logits_main[:, -1, :]
+                    draft_next_logits = logits_draft[:, -1, :]
+                    pos_cur += 1
+                    generated += 1
+
+                    # Update accept EMA (accepted/(proposed))
+                    step_accept = float(accepted) / float(max(1, k))
+                    ema_accept = ema_decay * ema_accept + (1.0 - ema_decay) * step_accept
+                    continue
+
+                # All accepted.
+                out = torch.cat([out, proposed_blk], dim=1)
+                pos_cur += int(k)
+                generated += int(k)
+
+                # Next-token logits after the last accepted token.
+                main_next_logits = logits_block[:, -1, :]
+                # draft_next_logits already updated during proposal loop.
+
+                # Optionally sample one extra verifier token (paper-style).
+                if spec_extra_token and generated < int(max_new_tokens):
+                    z_tok, _ = _sample_token(main_next_logits)
+                    out = torch.cat([out, z_tok], dim=1)
+                    logits_main, caches_main = self(z_tok, caches=caches_main, pos_offset=pos_cur)
+                    logits_draft, caches_draft = draft_model(z_tok, caches=caches_draft, pos_offset=pos_cur)
+                    main_next_logits = logits_main[:, -1, :]
+                    draft_next_logits = logits_draft[:, -1, :]
+                    pos_cur += 1
+                    generated += 1
+
+                ema_accept = ema_decay * ema_accept + (1.0 - ema_decay) * 1.0
+
+            return out
+        finally:
+            if was_training_main:
+                self.train()
+            if was_training_draft:
+                draft_model.train()
 
 
