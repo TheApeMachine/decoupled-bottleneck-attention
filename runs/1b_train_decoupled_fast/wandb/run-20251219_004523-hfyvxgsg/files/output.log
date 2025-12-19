@@ -1,0 +1,15 @@
+[wandb] run: https://wandb.ai/p4n0p71c0n/1b_decoupled/runs/hfyvxgsg
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 493, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 489, in main
+    return int(run(args))
+               ^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 481, in run
+    run_single(args, device)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/runner.py", line 887, in run_single
+    raise RuntimeError(
+RuntimeError: Non-finite gradients detected at optimizer step 1. Try: --nan-policy reduce_lr, --no-learned-temp, --no-decoupled-gate, or disable --compile on MPS.

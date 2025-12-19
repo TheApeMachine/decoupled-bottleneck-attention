@@ -134,7 +134,7 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
             )
 
         logger = None
-        if args.instrument != "off" or args.live_plot or args.tb:
+        if args.instrument != "off" or args.live_plot or args.tb or bool(getattr(args, "wandb", False)):
             logger = RunLogger(
                 args.out_dir,
                 instrument=args.instrument,
@@ -143,6 +143,7 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
                 device=device,
                 live_plot=bool(args.live_plot),
                 tb=bool(args.tb),
+                wandb=bool(getattr(args, "wandb", False)),
             )
 
         print(f"Generating {args.max_new_tokens} tokens...")
@@ -165,6 +166,9 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
                 # Basic safety: vocab size must match for token IDs to be meaningful.
                 if int(dcfg.vocab_size) != int(cfg.vocab_size):
                     raise ValueError(f"Draft vocab_size {dcfg.vocab_size} != main vocab_size {cfg.vocab_size}")
+
+                # Match main model's inference behavior (disable dropout, etc.)
+                draft.eval()
 
                 out = model.generate_speculative(
                     prompt,
@@ -418,6 +422,55 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
             opt_kwargs.pop("fused", None)
             opt = torch.optim.AdamW(model.parameters(), **opt_kwargs)
 
+    def _first_nonfinite_grad(model: torch.nn.Module) -> Optional[str]:
+        """Return a short description of the first parameter with a non-finite grad, if any."""
+        try:
+            for name, p in model.named_parameters():
+                g = p.grad
+                if g is None:
+                    continue
+                finite = torch.isfinite(g.detach())
+                if bool(finite.all()):
+                    continue
+                # keep it cheap: just a few summary stats
+                g_det = g.detach()
+                num = int(g_det.numel())
+                n_finite = int(finite.sum().to("cpu").item()) if num > 0 else 0
+                # avoid nan in max by filtering if possible
+                try:
+                    max_abs = float(torch.nan_to_num(g_det.float(), nan=0.0, posinf=0.0, neginf=0.0).abs().max().to("cpu").item())
+                except Exception:
+                    max_abs = float("nan")
+                return f"{name} grad dtype={g_det.dtype} finite={n_finite}/{num} max|g|~{max_abs:.3g}"
+        except Exception:
+            return None
+        return None
+
+    def _clip_grad_norm_fp32(params, max_norm: float) -> torch.Tensor:
+        """MPS-friendly grad clipping: accumulate norm in fp32 to avoid bf16 overflow in norm."""
+        grads: List[torch.Tensor] = []
+        for p in params:
+            g = getattr(p, "grad", None)
+            if g is None:
+                continue
+            grads.append(g)
+        if not grads:
+            return torch.zeros([], device=device, dtype=torch.float32)
+        total_sq = torch.zeros([], device=grads[0].device, dtype=torch.float32)
+        for g in grads:
+            gd = g.detach()
+            if not torch.isfinite(gd).all():
+                return torch.tensor(float("nan"), device=gd.device, dtype=torch.float32)
+            total_sq = total_sq + (gd.float() * gd.float()).sum()
+        total_norm = torch.sqrt(total_sq)
+        # scale in-place
+        denom = total_norm + 1e-6
+        clip_coef = float(max_norm) / float(denom.to("cpu").item())
+        if clip_coef < 1.0:
+            for g in grads:
+                g.mul_(clip_coef)
+        return total_norm
+
     def lr_for_step(step: int, *, base_lr: float, total_steps: int, schedule: str, warmup_steps: int = 0, min_lr: float = 0.0) -> float:
         schedule = str(schedule).lower()
         total_steps = max(int(total_steps), 1)
@@ -436,15 +489,26 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
         return base_lr
 
     # Logger
-    logger = RunLogger(
-        str(args.out_dir),
-        instrument=str(args.instrument),
-        cfg=cfg,
-        args=args,
-        device=device,
-        live_plot=bool(args.live_plot),
-        tb=bool(args.tb),
-    ) if str(args.instrument) != "off" else None
+    want_logger = (
+        str(args.instrument) != "off"
+        or bool(getattr(args, "live_plot", False))
+        or bool(getattr(args, "tb", False))
+        or bool(getattr(args, "wandb", False))
+    )
+    logger = (
+        RunLogger(
+            str(args.out_dir),
+            instrument=str(args.instrument),
+            cfg=cfg,
+            args=args,
+            device=device,
+            live_plot=bool(args.live_plot),
+            tb=bool(args.tb),
+            wandb=bool(getattr(args, "wandb", False)),
+        )
+        if want_logger
+        else None
+    )
 
     best_val = float("inf")
     last_step = 0
@@ -861,7 +925,12 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
         else:
             grad_clip = float(getattr(args, "grad_clip", 0.0) or 0.0)
             if grad_clip > 0:
-                gn = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                # On MPS + bf16 params, PyTorch's clip_grad_norm_ can produce a non-finite norm
+                # due to bf16 overflow during the norm reduction even when grads are finite.
+                if device.type == "mps":
+                    gn = _clip_grad_norm_fp32(model.parameters(), grad_clip)
+                else:
+                    gn = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 if not torch.isfinite(gn.detach()).all():
                     nonfinite = True
             if nonfinite:
@@ -872,9 +941,11 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
                 elif nan_policy == "skip":
                     print(f"[warn] non-finite grads detected @ step {opt_step}; skipping optimizer step")
                 else:
+                    extra = _first_nonfinite_grad(model)
                     raise RuntimeError(
                         f"Non-finite gradients detected at optimizer step {opt_step}. "
                         f"Try: --nan-policy reduce_lr, --no-learned-temp, --no-decoupled-gate, or disable --compile on MPS."
+                        + (f" First bad grad: {extra}" if extra else "")
                     )
             else:
                 opt.step()

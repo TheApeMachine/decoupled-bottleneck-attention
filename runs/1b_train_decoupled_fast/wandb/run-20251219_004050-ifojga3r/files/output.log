@@ -1,0 +1,53 @@
+[wandb] run: https://wandb.ai/p4n0p71c0n/1b_decoupled/runs/ifojga3r
+[warn] non-finite grads detected @ step 1; skipping step and reducing lr_mult -> 0.5
+step 1/20000 loss=9.9188 ppl=20307.92 lr=5e-07 tok/s=1295 seq=512 gbs=64 ms/step=25307
+[warn] non-finite loss detected @ step 3; skipping step and reducing lr_mult -> 0.25
+[warn] non-finite loss detected @ step 4; skipping step and reducing lr_mult -> 0.125
+[warn] non-finite loss detected @ step 5; skipping step and reducing lr_mult -> 0.0625
+[warn] non-finite loss detected @ step 6; skipping step and reducing lr_mult -> 0.0312
+[warn] non-finite loss detected @ step 7; skipping step and reducing lr_mult -> 0.0156
+[warn] non-finite loss detected @ step 8; skipping step and reducing lr_mult -> 0.00781
+[warn] non-finite loss detected @ step 9; skipping step and reducing lr_mult -> 0.00391
+[warn] non-finite loss detected @ step 10; skipping step and reducing lr_mult -> 0.00195
+step 10/20000 loss=0.0000 ppl=1.00 lr=1.95e-08 tok/s=2071 seq=512 gbs=64 ms/step=3736
+[warn] non-finite loss detected @ step 11; skipping step and reducing lr_mult -> 0.000977
+[warn] non-finite loss detected @ step 12; skipping step and reducing lr_mult -> 0.000488
+[warn] non-finite loss detected @ step 13; skipping step and reducing lr_mult -> 0.000244
+[warn] non-finite loss detected @ step 14; skipping step and reducing lr_mult -> 0.000122
+[warn] non-finite loss detected @ step 15; skipping step and reducing lr_mult -> 6.1e-05
+[warn] non-finite loss detected @ step 16; skipping step and reducing lr_mult -> 3.05e-05
+[warn] non-finite loss detected @ step 17; skipping step and reducing lr_mult -> 1.53e-05
+[warn] non-finite loss detected @ step 18; skipping step and reducing lr_mult -> 7.63e-06
+[warn] non-finite loss detected @ step 19; skipping step and reducing lr_mult -> 3.81e-06
+[warn] non-finite loss detected @ step 20; skipping step and reducing lr_mult -> 1.91e-06
+step 20/20000 loss=0.0000 ppl=1.00 lr=3.81e-11 tok/s=4756 seq=512 gbs=64 ms/step=861
+[warn] non-finite loss detected @ step 21; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 22; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 23; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 24; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 25; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 26; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 27; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 28; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 29; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 30; skipping step and reducing lr_mult -> 1e-06
+step 30/20000 loss=0.0000 ppl=1.00 lr=1.5e-11 tok/s=4785 seq=512 gbs=64 ms/step=856
+[warn] non-finite loss detected @ step 31; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 32; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 33; skipping step and reducing lr_mult -> 1e-06
+[warn] non-finite loss detected @ step 34; skipping step and reducing lr_mult -> 1e-06
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 493, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 489, in main
+    return int(run(args))
+               ^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 481, in run
+    run_single(args, device)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/runner.py", line 859, in run_single
+    t3 = time.perf_counter()
+         ^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

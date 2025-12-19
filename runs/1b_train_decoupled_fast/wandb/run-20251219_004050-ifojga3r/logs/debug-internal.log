@@ -1,0 +1,11 @@
+{"time":"2025-12-19T00:40:51.459049+01:00","level":"INFO","msg":"stream: starting","core version":"0.23.1"}
+{"time":"2025-12-19T00:40:52.187857+01:00","level":"INFO","msg":"stream: created new stream","id":"ifojga3r"}
+{"time":"2025-12-19T00:40:52.188+01:00","level":"INFO","msg":"handler: started","stream_id":"ifojga3r"}
+{"time":"2025-12-19T00:40:52.188191+01:00","level":"INFO","msg":"writer: started","stream_id":"ifojga3r"}
+{"time":"2025-12-19T00:40:52.188213+01:00","level":"INFO","msg":"stream: started","id":"ifojga3r"}
+{"time":"2025-12-19T00:40:52.188248+01:00","level":"INFO","msg":"sender: started","stream_id":"ifojga3r"}
+{"time":"2025-12-19T00:42:12.979046+01:00","level":"INFO","msg":"stream: closing","id":"ifojga3r"}
+{"time":"2025-12-19T00:42:13.742024+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-19T00:42:14.250109+01:00","level":"INFO","msg":"handler: closed","stream_id":"ifojga3r"}
+{"time":"2025-12-19T00:42:14.250609+01:00","level":"INFO","msg":"sender: closed","stream_id":"ifojga3r"}
+{"time":"2025-12-19T00:42:14.250638+01:00","level":"INFO","msg":"stream: closed","id":"ifojga3r"}

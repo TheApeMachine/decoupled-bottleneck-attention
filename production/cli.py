@@ -259,6 +259,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--sync-timing", action="store_true", help="Synchronize device before timing/memory reads (more accurate, slightly slower).")
     ap.add_argument("--live-plot", action="store_true", help="Realtime matplotlib plots (dev only).")
     ap.add_argument("--tb", action="store_true", help="Write TensorBoard scalars (requires `tensorboard` package).")
+    ap.add_argument("--wandb", action="store_true", help="Write Weights & Biases scalars (requires `wandb` package).")
+    ap.add_argument("--wandb-project", type=str, default="experiments", help="W&B project name.")
+    ap.add_argument("--wandb-entity", type=str, default=None, help="W&B entity/team (optional).")
+    ap.add_argument("--wandb-name", type=str, default=None, help="W&B run name (optional). Defaults to out-dir basename.")
+    ap.add_argument("--wandb-group", type=str, default=None, help="W&B group name (optional).")
+    ap.add_argument("--wandb-tags", type=str, default=None, help="Comma-separated W&B tags (optional).")
+    ap.add_argument("--wandb-mode", type=str, default="disabled", choices=["disabled", "online", "offline"],
+                    help="W&B mode. 'offline' writes locally; 'online' syncs; 'disabled' no-op.")
 
     # ---- Mode ----
     ap.add_argument("--mode", type=str, default="train", choices=["train", "sample"])
@@ -416,10 +424,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> int:
     """Execute the CLI request with v30-compatible behavior."""
     import copy
+    import math
     import torch
 
     from production.config import apply_exp_preset, apply_size_preset, default_out_dir
     from production.config import pick_device, set_seed
+
+    # ---- CLI validations (fail fast before heavy init) ----
+    sdb = getattr(args, "spec_disable_below_accept", None)
+    if sdb is not None and (not math.isfinite(float(sdb)) or float(sdb) < 0.0 or float(sdb) > 1.0):
+        raise ValueError("--spec-disable-below-accept must be between 0.0 and 1.0")
 
     # Apply paper suite presets (only when provided)
     apply_size_preset(args)
@@ -476,8 +490,16 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Module entrypoint so `python -m production.cli ...` works."""
+    import math
+
     ap = build_arg_parser()
     args = ap.parse_args()
+
+    # Validate args immediately after parsing so invalid values fail fast (before any device/model init).
+    sdb = getattr(args, "spec_disable_below_accept", None)
+    if sdb is not None and (not math.isfinite(float(sdb)) or float(sdb) < 0.0 or float(sdb) > 1.0):
+        raise ValueError("--spec-disable-below-accept must be between 0.0 and 1.0")
+
     return int(run(args))
 
 

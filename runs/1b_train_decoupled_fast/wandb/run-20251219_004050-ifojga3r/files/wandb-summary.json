@@ -1,0 +1,1 @@
+{"_runtime":80.39508575,"seq_len":512,"tok_s":4784.9080309249375,"_step":30,"ms_bwd":0,"mps_mem_alloc_bytes":9.626610176e+09,"ppl":1,"ms_opt":0,"ms_fwd":523.8191958982497,"gbs":64,"ms_step":856.0248124995269,"mps_mem_driver_bytes":1.66219776e+10,"_wandb":{"runtime":80},"lr":1.5e-11,"_timestamp":1.7661013287332952e+09,"loss":0}

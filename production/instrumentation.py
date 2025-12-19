@@ -98,6 +98,112 @@ class TensorBoardWriter:
             pass
 
 
+class WandBWriter:
+    """Optional scalar logging via Weights & Biases (requires `wandb` package)."""
+
+    def __init__(self, out_dir: str, *, project: str, entity: Optional[str], name: Optional[str], group: Optional[str], tags: Optional[List[str]], mode: str, cfg: Any, args: argparse.Namespace):
+        self.run = None
+        try:
+            import wandb  # type: ignore
+
+            # Make `--wandb` behave like `--tb`: if you enable it, it actually logs.
+            # The CLI defaults wandb-mode to "disabled" to avoid surprises, but when --wandb is set
+            # we treat "disabled" as "online" (unless the user explicitly asked for offline).
+            mode = str(mode or "disabled").lower()
+            if mode not in ("disabled", "online", "offline"):
+                mode = "disabled"
+            if mode == "disabled":
+                mode = "online"
+
+            if name is None:
+                try:
+                    name = os.path.basename(str(out_dir).rstrip("/"))
+                except Exception:
+                    name = None
+
+            # Config: merge CLI args + model cfg (wandb will flatten/pretty-print).
+            cfg_dict: Dict[str, Any] = {}
+            try:
+                cfg_dict["args"] = vars(args)
+            except Exception:
+                pass
+            try:
+                cfg_dict["config"] = asdict(cfg) if hasattr(cfg, "__dataclass_fields__") else getattr(cfg, "__dict__", {})
+            except Exception:
+                pass
+
+            self.run = wandb.init(
+                project=str(project),
+                entity=(str(entity) if entity else None),
+                name=(str(name) if name else None),
+                group=(str(group) if group else None),
+                tags=tags,
+                dir=str(out_dir),
+                mode=mode,
+                config=cfg_dict,
+            )
+            # One-time breadcrumb so it's obvious where the run went.
+            try:
+                url = getattr(self.run, "url", None)
+                if url:
+                    print(f"[wandb] run: {url}", file=sys.stderr)
+            except Exception:
+                pass
+        except Exception as e:
+            # If the user asked for W&B, fail loudly when the package is missing; otherwise we'd
+            # silently log only locally and it looks like "nothing happens".
+            if isinstance(e, ModuleNotFoundError) and "wandb" in str(e):
+                raise ImportError(
+                    "W&B logging requested (--wandb) but the `wandb` package is not installed. "
+                    "Install it with `pip install wandb` (or `pip install -r requirements.txt`)."
+                ) from e
+            print(f"[warn] W&B not available: {e}. Disable with --wandb=0 or install wandb.", file=sys.stderr)
+            self.run = None
+
+    def maybe_log(self, event: Dict[str, Any]) -> None:
+        if self.run is None:
+            return
+        try:
+            step = int(event.get("step", 0))
+            etype = str(event.get("type", ""))
+            payload: Dict[str, Any] = {}
+
+            if etype == "train":
+                for k in ("loss", "ppl", "lr", "tok_s", "seq_len", "gbs", "ms_step", "ms_fwd", "ms_bwd", "ms_opt"):
+                    if k in event:
+                        payload[k] = float(event[k]) if isinstance(event[k], (int, float)) else event[k]
+                # device mem (if present)
+                for k in ("mps_mem_alloc_bytes", "mps_mem_driver_bytes", "cuda_mem_alloc_bytes", "cuda_mem_reserved_bytes"):
+                    if k in event:
+                        payload[k] = float(event[k])
+
+            elif etype == "eval":
+                for k in ("train_loss", "val_loss"):
+                    if k in event:
+                        payload[k] = float(event[k])
+
+            elif etype == "analysis":
+                for k, v in event.items():
+                    if k in ("type", "step", "wall_time"):
+                        continue
+                    if isinstance(v, (int, float)):
+                        payload[f"analysis/{k}"] = float(v)
+
+            if payload:
+                # wandb uses `step=` as the x-axis control for charts
+                self.run.log(payload, step=step)
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        if self.run is None:
+            return
+        try:
+            self.run.finish()
+        except Exception:
+            pass
+
+
 class LivePlotter:
     """Dev-only matplotlib plots. Safe to keep disabled by default."""
 
@@ -177,6 +283,7 @@ class RunLogger:
         device: torch.device,
         live_plot: bool = False,
         tb: bool = False,
+        wandb: bool = False,
     ):
         self.out_dir = str(out_dir)
         self.instrument = str(instrument)
@@ -196,6 +303,7 @@ class RunLogger:
         self._h5 = None
         self._live = None
         self._tb = None
+        self._wandb = None
 
         if self.instrument != "off":
             self._jsonl_f = open(self.train_jsonl_path, "w", encoding="utf-8")
@@ -211,10 +319,30 @@ class RunLogger:
                 print(f"[warn] Could not open HDF5 at {self.h5_path}: {e}")
                 self._h5 = None
 
-        if live_plot and self.instrument != "off":
+        if live_plot:
             self._live = LivePlotter()
-        if tb and self.instrument != "off":
+        if tb:
             self._tb = TensorBoardWriter(self.out_dir)
+        if wandb:
+            # Best-effort wandb init: defaults are safe and require only --wandb.
+            tags = None
+            try:
+                raw_tags = getattr(args, "wandb_tags", None)
+                if raw_tags:
+                    tags = [t.strip() for t in str(raw_tags).split(",") if t.strip()]
+            except Exception:
+                tags = None
+            self._wandb = WandBWriter(
+                self.out_dir,
+                project=str(getattr(args, "wandb_project", "experiments")),
+                entity=getattr(args, "wandb_entity", None),
+                name=getattr(args, "wandb_name", None),
+                group=getattr(args, "wandb_group", None),
+                tags=tags,
+                mode=str(getattr(args, "wandb_mode", "disabled")),
+                cfg=cfg,
+                args=args,
+            )
 
         self._write_summary(initial_only=True)
 
@@ -237,20 +365,28 @@ class RunLogger:
         except Exception:
             pass
         try:
+            if self._wandb is not None:
+                self._wandb.close()
+        except Exception:
+            pass
+        try:
             if self._live is not None:
                 self._live.close()
         except Exception:
             pass
 
     def log(self, event: Dict[str, Any]) -> None:
-        if self._jsonl_f is None:
+        if self._jsonl_f is None and self._tb is None and self._wandb is None and self._live is None:
             return
         event = dict(event)
         event.setdefault("wall_time", _now_iso())
-        self._jsonl_f.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
-        self._jsonl_f.flush()
+        if self._jsonl_f is not None:
+            self._jsonl_f.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
+            self._jsonl_f.flush()
         if self._tb is not None:
             self._tb.maybe_log(event)
+        if self._wandb is not None:
+            self._wandb.maybe_log(event)
         if self._live is not None:
             self._live.maybe_update(event)
 

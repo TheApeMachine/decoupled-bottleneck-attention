@@ -4137,18 +4137,40 @@ def estimate_loss(
     return out["train"], out["val"]
 
 
-def save_ckpt(out_dir: str, name: str, model: GPT, cfg: ModelConfig, step: int, best_val: float) -> str:
+def save_ckpt(
+    out_dir: str,
+    name: str,
+    model: GPT,
+    cfg: ModelConfig,
+    step: int,
+    best_val: float,
+    *,
+    opt: Optional[torch.optim.Optimizer] = None,
+    scaler: Optional[object] = None,
+    save_optim: bool = False,
+) -> str:
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, name)
-    torch.save(
-        {
-            "config": asdict(cfg),
-            "model": model.state_dict(),
-            "step": step,
-            "best_val": best_val,
-        },
-        path,
-    )
+    payload: Dict[str, Any] = {
+        "config": asdict(cfg),
+        "model": model.state_dict(),
+        "step": int(step),
+        "best_val": float(best_val),
+    }
+    # For long runs (e.g. Vast/spot instances), it is useful to resume with optimizer state.
+    # Keep best.pt lightweight by default (evaluation artifact).
+    if bool(save_optim) and str(name) != "best.pt":
+        if opt is not None:
+            try:
+                payload["opt"] = opt.state_dict()
+            except Exception:
+                pass
+        if scaler is not None and hasattr(scaler, "state_dict"):
+            try:
+                payload["scaler"] = scaler.state_dict()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+    torch.save(payload, path)
     return path
 
 
@@ -4514,6 +4536,8 @@ class RunLogger:
         device: torch.device,
         live_plot: bool = False,
         tb: bool = False,
+        wandb: bool = False,
+        append: bool = False,
     ):
         self.out_dir = str(out_dir)
         self.instrument = str(instrument)
@@ -4521,6 +4545,7 @@ class RunLogger:
         self.args = args
         self.device = device
         self.start_time = time.time()
+        self.append = bool(append)
 
         os.makedirs(self.out_dir, exist_ok=True)
 
@@ -4534,17 +4559,23 @@ class RunLogger:
 
         self._live = None
         self._tb = None
+        self._wandb = None
 
         if self.instrument != "off":
-            self._jsonl_f = open(self.train_jsonl_path, "w", encoding="utf-8")
-            self.log({"type": "meta", "step": 0, "env": _env_info(device), "argv": sys.argv, "args": vars(args), "config": asdict(cfg)})
+            jsonl_mode = "a" if (self.append and os.path.exists(self.train_jsonl_path)) else "w"
+            self._jsonl_f = open(self.train_jsonl_path, jsonl_mode, encoding="utf-8")
+            if jsonl_mode == "w":
+                self.log({"type": "meta", "step": 0, "env": _env_info(device), "argv": sys.argv, "args": vars(args), "config": asdict(cfg)})
+            else:
+                self.log({"type": "resume_meta", "step": int(getattr(args, "resume_step", 0)), "ckpt": getattr(args, "ckpt", None), "argv": sys.argv})
 
         # HDF5 only in "full"
         if self.instrument == "full" and _h5py is not None:
             try:
-                self._h5 = _h5py.File(self.h5_path, "w")
-                meta = self._h5.create_group("meta")
-                meta.attrs["created"] = _now_iso()
+                h5_mode = "a" if (self.append and os.path.exists(self.h5_path)) else "w"
+                self._h5 = _h5py.File(self.h5_path, h5_mode)
+                meta = self._h5.require_group("meta")
+                meta.attrs["last_opened"] = _now_iso()
                 meta.attrs["argv"] = " ".join(sys.argv)
                 meta.attrs["config_json"] = json.dumps(asdict(cfg), separators=(",", ":"), sort_keys=True)
             except Exception as e:
@@ -4552,11 +4583,50 @@ class RunLogger:
                 self._h5 = None
 
         # Optional live plot (matplotlib)
-        if live_plot and self.instrument != "off":
+        if live_plot:
             self._live = LivePlotter()
         # Optional tensorboard (requires tensorboard package)
-        if tb and self.instrument != "off":
+        if tb:
             self._tb = TensorBoardWriter(self.out_dir)
+        # Optional wandb (requires wandb package)
+        if wandb:
+            tags = None
+            try:
+                raw_tags = getattr(args, "wandb_tags", None)
+                if raw_tags:
+                    tags = [t.strip() for t in str(raw_tags).split(",") if t.strip()]
+            except Exception:
+                tags = None
+
+            run_id = getattr(args, "wandb_id", None)
+            wandb_id_path = os.path.join(self.out_dir, "wandb_id.txt")
+            if not run_id:
+                try:
+                    if (self.append or bool(getattr(args, "resume", False))) and os.path.exists(wandb_id_path):
+                        run_id = Path(wandb_id_path).read_text(encoding="utf-8").strip() or None
+                except Exception:
+                    run_id = None
+
+            self._wandb = WandBWriter(
+                self.out_dir,
+                project=str(getattr(args, "wandb_project", "experiments")),
+                entity=getattr(args, "wandb_entity", None),
+                name=getattr(args, "wandb_name", None),
+                group=getattr(args, "wandb_group", None),
+                tags=tags,
+                mode=str(getattr(args, "wandb_mode", "disabled")),
+                run_id=run_id,
+                resume=bool(self.append or bool(getattr(args, "resume", False))),
+                cfg=cfg,
+                args=args,
+            )
+            try:
+                if self._wandb is not None and getattr(self._wandb, "run", None) is not None:
+                    rid = getattr(self._wandb.run, "id", None)
+                    if rid:
+                        Path(wandb_id_path).write_text(str(rid).strip() + "\n", encoding="utf-8")
+            except Exception:
+                pass
 
         # Write initial summary.md with config so runs are self-describing immediately.
         self._write_summary(initial_only=True)
@@ -4580,22 +4650,29 @@ class RunLogger:
         except Exception:
             pass
         try:
+            if self._wandb is not None:
+                self._wandb.close()
+        except Exception:
+            pass
+        try:
             if self._live is not None:
                 self._live.close()
         except Exception:
             pass
 
     def log(self, event: Dict[str, Any]) -> None:
-        if self._jsonl_f is None:
-            return
         # Add time info for every line.
         event = dict(event)
         event.setdefault("wall_time", _now_iso())
-        self._jsonl_f.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
-        self._jsonl_f.flush()
+        if self._jsonl_f is not None:
+            self._jsonl_f.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
+            self._jsonl_f.flush()
 
         if self._tb is not None:
             self._tb.maybe_log(event)
+
+        if self._wandb is not None:
+            self._wandb.maybe_log(event)
 
         if self._live is not None:
             self._live.maybe_update(event)
@@ -4642,6 +4719,9 @@ class RunLogger:
             lines.append(f"- Out dir: `{self.out_dir}`")
             lines.append(f"- Device: `{_device_summary(self.device)}`")
             lines.append(f"- Command: `{(' '.join(sys.argv))}`")
+            if bool(getattr(self.args, "resume", False)) and getattr(self.args, "ckpt", None):
+                lines.append(f"- Resumed from: `{getattr(self.args, 'ckpt', None)}`")
+                lines.append(f"- Resume step: `{int(getattr(self.args, 'resume_step', 0))}`")
             if getattr(self.args, "size", None):
                 lines.append(f"- Size preset: `{self.args.size}`")
             if getattr(self.args, "exp", None):
@@ -4774,6 +4854,125 @@ class TensorBoardWriter:
                 self.writer.close()
             except Exception:
                 pass
+
+
+class WandBWriter:
+    """Optional scalar logging via Weights & Biases (requires `wandb` package)."""
+
+    def __init__(
+        self,
+        out_dir: str,
+        *,
+        project: str,
+        entity: Optional[str],
+        name: Optional[str],
+        group: Optional[str],
+        tags: Optional[List[str]],
+        mode: str,
+        run_id: Optional[str],
+        resume: bool,
+        cfg: ModelConfig,
+        args: argparse.Namespace,
+    ):
+        self.run = None
+        try:
+            import wandb  # type: ignore
+
+            mode = str(mode or "disabled").lower()
+            if mode not in ("disabled", "online", "offline"):
+                mode = "disabled"
+            if mode == "disabled":
+                mode = "online"
+
+            if name is None:
+                try:
+                    name = os.path.basename(str(out_dir).rstrip("/"))
+                except Exception:
+                    name = None
+
+            cfg_dict: Dict[str, Any] = {}
+            try:
+                cfg_dict["args"] = vars(args)
+            except Exception:
+                pass
+            try:
+                cfg_dict["config"] = asdict(cfg)
+            except Exception:
+                pass
+
+            init_kwargs: Dict[str, Any] = dict(
+                project=str(project),
+                entity=(str(entity) if entity else None),
+                name=(str(name) if name else None),
+                group=(str(group) if group else None),
+                tags=tags,
+                dir=str(out_dir),
+                mode=mode,
+                config=cfg_dict,
+            )
+            if run_id:
+                init_kwargs["id"] = str(run_id)
+            if resume and run_id:
+                init_kwargs["resume"] = "allow"
+
+            self.run = wandb.init(**init_kwargs)
+
+            try:
+                url = getattr(self.run, "url", None)
+                if url:
+                    print(f"[wandb] run: {url}", file=sys.stderr)
+            except Exception:
+                pass
+        except Exception as e:
+            if isinstance(e, ModuleNotFoundError) and "wandb" in str(e):
+                raise ImportError(
+                    "W&B logging requested (--wandb) but the `wandb` package is not installed. "
+                    "Install it with `pip install wandb` (or `pip install -r requirements_runtime.txt`)."
+                ) from e
+            print(f"[warn] W&B not available: {e}. Disable with --wandb=0 or install wandb.", file=sys.stderr)
+            self.run = None
+
+    def maybe_log(self, event: Dict[str, Any]) -> None:
+        if self.run is None:
+            return
+        try:
+            step = int(event.get("step", 0))
+            etype = str(event.get("type", ""))
+            payload: Dict[str, Any] = {}
+
+            if etype == "train":
+                # Keep names consistent with v29 JSONL keys.
+                for k in ("loss", "ppl", "lr", "tok_s", "seq_len", "global_batch", "step_ms", "data_ms", "fwd_ms", "bwd_ms", "opt_ms"):
+                    if k in event and isinstance(event[k], (int, float)):
+                        payload[k] = float(event[k])
+                for k in ("cuda_mem_alloc_bytes", "cuda_mem_reserved_bytes", "mps_mem_alloc_bytes", "mps_mem_driver_bytes"):
+                    if k in event and isinstance(event[k], (int, float)):
+                        payload[k] = float(event[k])
+
+            elif etype == "eval":
+                for k in ("train_loss", "val_loss", "val_ppl"):
+                    if k in event and isinstance(event[k], (int, float)):
+                        payload[k] = float(event[k])
+
+            elif etype == "analysis":
+                for k, v in event.items():
+                    if k in ("type", "step", "wall_time"):
+                        continue
+                    if isinstance(v, (int, float)):
+                        payload[f"analysis/{k}"] = float(v)
+
+            if payload:
+                self.run.log(payload, step=step)
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        if self.run is None:
+            return
+        try:
+            self.run.finish()
+        except Exception:
+            pass
 
 
 class LivePlotter:
@@ -6021,6 +6220,9 @@ def main() -> None:
     ap.add_argument("--weight-decay", type=float, default=0.1)
     ap.add_argument("--grad-clip", type=float, default=1.0)
     ap.add_argument("--save-every", type=int, default=0, help="Checkpoint interval (steps). 0 disables.")
+    ap.add_argument("--save-optim", action="store_true",
+                    help="Include optimizer/scaler state in checkpoints (for resuming long runs). "
+                         "Note: best.pt is kept lightweight even when enabled.")
     ap.add_argument("--eval-every", type=int, default=200, help="Eval interval (steps). 0 disables eval (including step-0 eval).")
     ap.add_argument("--eval-iters", type=int, default=20)
     ap.add_argument("--log-every", type=int, default=100, help="Train-step logging interval (JSONL + console).")
@@ -6041,10 +6243,23 @@ def main() -> None:
     ap.add_argument("--sync-timing", action="store_true", help="Synchronize device before timing/memory reads (more accurate, slightly slower).")
     ap.add_argument("--live-plot", action="store_true", help="Realtime matplotlib plots (dev only).")
     ap.add_argument("--tb", action="store_true", help="Write TensorBoard scalars (requires `tensorboard` package).")
+    ap.add_argument("--wandb", action="store_true", help="Write Weights & Biases scalars (requires `wandb` package).")
+    ap.add_argument("--wandb-project", type=str, default="experiments", help="W&B project name.")
+    ap.add_argument("--wandb-entity", type=str, default=None, help="W&B entity/team (optional).")
+    ap.add_argument("--wandb-name", type=str, default=None, help="W&B run name (optional). Defaults to out-dir basename.")
+    ap.add_argument("--wandb-group", type=str, default=None, help="W&B group name (optional).")
+    ap.add_argument("--wandb-tags", type=str, default=None, help="Comma-separated W&B tags (optional).")
+    ap.add_argument("--wandb-mode", type=str, default="disabled", choices=["disabled", "online", "offline"],
+                    help="W&B mode. Default is disabled unless --wandb is set; 'offline' writes locally for later sync.")
+    ap.add_argument("--wandb-id", type=str, default=None, help="Optional W&B run id (for resume).")
 
     # ---- Mode ----
     ap.add_argument("--mode", type=str, default="train", choices=["train", "sample"])
-    ap.add_argument("--ckpt", type=str, default=None)
+    ap.add_argument("--ckpt", type=str, default=None,
+                    help="Checkpoint path. Required for --mode sample; optional for --mode train (init/resume).")
+    ap.add_argument("--resume", action="store_true",
+                    help="(train) Resume step/best_val (and optimizer/scaler if present) from --ckpt. "
+                         "Appends logs into an existing --out-dir.")
 
     # ---- Sampling ----
     ap.add_argument("--prompt-tokens", type=str, default="0")
@@ -6298,9 +6513,9 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
                 quality_compute_kl=bool(getattr(args, "self_opt_quality_kl", False)),
             )
 
-        # Logger for sampling (enable if --instrument/--live-plot/--tb used)
+        # Logger for sampling (enable if any reporting is requested)
         logger = None
-        if args.instrument != "off" or args.live_plot or args.tb:
+        if args.instrument != "off" or args.live_plot or args.tb or bool(getattr(args, "wandb", False)):
             logger = RunLogger(
                 args.out_dir, 
                 instrument=args.instrument, 
@@ -6308,7 +6523,8 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
                 args=args, 
                 device=device,
                 live_plot=bool(args.live_plot), 
-                tb=bool(args.tb)
+                tb=bool(args.tb),
+                wandb=bool(getattr(args, "wandb", False)),
             )
 
         print(f"Generating {args.max_new_tokens} tokens...")
@@ -6540,12 +6756,39 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
             print(f"[warn] KV memory estimate failed: {e}")
         return
 
+    # ---- Optional init/resume from checkpoint (train mode) ----
+    resume_ckpt: Optional[Dict[str, Any]] = None
+    resume_step: int = 0
+    if getattr(args, "ckpt", None):
+        if bool(getattr(args, "resume", False)) and not getattr(args, "ckpt", None):
+            raise ValueError("--resume requires --ckpt")
+        resume_ckpt = torch.load(str(args.ckpt), map_location="cpu")
+        cfg_ckpt = resume_ckpt.get("config", None)
+        if cfg_ckpt is None:
+            raise ValueError("Checkpoint missing 'config'. Can't safely resume/init training.")
+        # Require exact config match for safety.
+        if dict(cfg_ckpt) != asdict(cfg):
+            raise ValueError("Checkpoint config does not match current CLI config. "
+                             "For resuming, run with identical model flags (or regenerate via --print-config).")
+        if bool(getattr(args, "resume", False)):
+            resume_step = int(resume_ckpt.get("step", 0))
+        # Stash for logger/summary.
+        setattr(args, "resume_step", int(resume_step))
+
     model = GPT(cfg).to(device)
 
     # Parameter dtype (memory / speed). fp32 is default; bf16/fp16 cut memory ~2x.
     param_dtype = resolve_dtype(device, args.param_dtype, default=torch.float32)
     if param_dtype != torch.float32:
         model = model.to(dtype=param_dtype)
+
+    # Load weights (init/resume) before compile so compilation sees the real graph.
+    if resume_ckpt is not None:
+        try:
+            model.load_state_dict(resume_ckpt["model"], strict=True)
+            print(f"[ckpt] loaded model weights from {args.ckpt}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load checkpoint weights from {args.ckpt}: {e}")
 
     # Training-only toggle: gradient checkpointing (activation recompute).
     try:
@@ -6631,8 +6874,17 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
 
 
     # Logger (instrumentation)
-    logger = RunLogger(args.out_dir, instrument=args.instrument, cfg=cfg, args=args, device=device,
-                       live_plot=bool(args.live_plot), tb=bool(args.tb)) if args.instrument != "off" else None
+    logger = RunLogger(
+        args.out_dir,
+        instrument=args.instrument,
+        cfg=cfg,
+        args=args,
+        device=device,
+        live_plot=bool(args.live_plot),
+        tb=bool(args.tb),
+        wandb=bool(getattr(args, "wandb", False)),
+        append=bool(getattr(args, "resume", False)),
+    ) if (args.instrument != "off" or args.live_plot or args.tb or bool(getattr(args, "wandb", False))) else None
 
     # Log KV cache memory probes up front
     if logger is not None:
@@ -6712,6 +6964,23 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
         autocast_ctx = contextlib.nullcontext()
         scaler = None
 
+    # Resume optimizer/scaler state if requested and present in checkpoint.
+    if bool(getattr(args, "resume", False)):
+        if resume_ckpt is None:
+            raise ValueError("--resume requires --ckpt")
+        if "opt" in resume_ckpt:
+            try:
+                opt.load_state_dict(resume_ckpt["opt"])
+                print("[ckpt] loaded optimizer state")
+            except Exception as e:
+                print(f"[warn] failed to load optimizer state from checkpoint: {e}")
+        if scaler is not None and "scaler" in resume_ckpt and hasattr(scaler, "load_state_dict"):
+            try:
+                scaler.load_state_dict(resume_ckpt["scaler"])  # type: ignore[attr-defined]
+                print("[ckpt] loaded AMP scaler state")
+            except Exception as e:
+                print(f"[warn] failed to load scaler state from checkpoint: {e}")
+
     # analysis layers/heads parsing
     def _parse_csv_int_list(s: str) -> List[int]:
         s = s.strip()
@@ -6748,7 +7017,15 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
         pass
 
 
-    best_val = float("inf")
+    start_step = int(getattr(args, "resume_step", 0)) if bool(getattr(args, "resume", False)) else 0
+    best_val = float(resume_ckpt.get("best_val", float("inf"))) if (resume_ckpt is not None and bool(getattr(args, "resume", False))) else float("inf")
+    if start_step > 0:
+        dashboard.message(f"resuming: start_step={start_step} best_val={best_val:.6f}")
+        if logger is not None:
+            logger.log({"type": "resume", "step": int(start_step), "best_val": float(best_val), "ckpt": getattr(args, "ckpt", None)})
+        if int(start_step) >= int(args.steps):
+            dashboard.message("[resume] checkpoint step >= requested --steps; nothing to do.")
+            return
 
     # Interval accumulators for stable perf readouts
     tok_count = 0
@@ -6784,7 +7061,8 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
 
     try:
         # Baseline eval at step 0 (optional; disable via --eval-every 0 for pure perf/mem sweeps).
-        if int(getattr(args, "eval_every", 0)) > 0:
+        # If resuming, we skip step-0 eval and trust the checkpoint's best_val.
+        if int(getattr(args, "eval_every", 0)) > 0 and int(start_step) == 0:
             eval0 = do_eval(0, seq_len_hint=base_seq_len)
             best_val = min(best_val, eval0["val_loss"])
             eval0["best_val"] = best_val
@@ -6793,7 +7071,7 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
             dashboard.update_eval(eval0)
             dashboard.message(f"eval@0: val_loss={eval0['val_loss']:.6f} val_ppl={eval0['val_ppl']:.2f}")
 
-        for step in range(1, args.steps + 1):
+        for step in range(int(start_step) + 1, args.steps + 1):
             step_idx = step - 1
 
             # LR schedule
@@ -6902,7 +7180,7 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
                 val_loss = ev["val_loss"]
                 if val_loss < best_val:
                     best_val = val_loss
-                    save_ckpt(args.out_dir, "best.pt", model, cfg, step, best_val)
+                    save_ckpt(args.out_dir, "best.pt", model, cfg, step, best_val, opt=opt, scaler=scaler, save_optim=bool(getattr(args, "save_optim", False)))
                     dashboard.message(f"new best @ step {step}: val_loss={best_val:.6f}")
                 ev["best_val"] = best_val
                 if logger is not None:
@@ -7011,10 +7289,10 @@ def _run_single(args: argparse.Namespace, device: torch.device) -> None:
 
             # Periodic checkpoint
             if args.save_every and (step % args.save_every) == 0:
-                save_ckpt(args.out_dir, f"step{step}.pt", model, cfg, step, best_val)
+                save_ckpt(args.out_dir, f"step{step}.pt", model, cfg, step, best_val, opt=opt, scaler=scaler, save_optim=bool(getattr(args, "save_optim", False)))
 
         # Save final checkpoint
-        save_ckpt(args.out_dir, "last.pt", model, cfg, args.steps, best_val)
+        save_ckpt(args.out_dir, "last.pt", model, cfg, args.steps, best_val, opt=opt, scaler=scaler, save_optim=bool(getattr(args, "save_optim", False)))
 
         if logger is not None:
             logger.finalize(best_val=best_val, last_step=args.steps)

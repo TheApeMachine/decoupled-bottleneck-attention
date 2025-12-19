@@ -1,0 +1,82 @@
+{
+  "os": "macOS-15.6-arm64-arm-64bit",
+  "python": "CPython 3.12.12",
+  "startedAt": "2025-12-18T23:40:50.704445Z",
+  "args": [
+    "--mode",
+    "train",
+    "--size",
+    "1b",
+    "--exp",
+    "train_decoupled_fast",
+    "--data",
+    "fineweb_1b.npy",
+    "--data-format",
+    "npy",
+    "--vocab-size",
+    "50257",
+    "--block",
+    "4096",
+    "--train-seq-len",
+    "2048",
+    "--seq-schedule",
+    "512@0,1024@200,2048@600,3072@1200,4096@2000",
+    "--steps",
+    "20000",
+    "--log-every",
+    "10",
+    "--eval-every",
+    "200",
+    "--eval-iters",
+    "5",
+    "--eval-seq-len",
+    "512",
+    "--analysis-every",
+    "0",
+    "--instrument",
+    "basic",
+    "--batch-size",
+    "8",
+    "--grad-accum",
+    "8",
+    "--wandb",
+    "--wandb-entity",
+    "p4n0p71c0n",
+    "--wandb-project",
+    "1b_decoupled",
+    "--wandb-name",
+    "1b_decoupled",
+    "--wandb-mode",
+    "online"
+  ],
+  "program": "-m production.cli",
+  "git": {
+    "remote": "https://github.com/TheApeMachine/experiments.git",
+    "commit": "334a0fa88c9532ee6ea0f289a51f3243926fc5f2"
+  },
+  "email": "theapemachine@gmail.com",
+  "root": "runs/1b_train_decoupled_fast",
+  "host": "marvin-2.localdomain",
+  "executable": "/Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/bin/python3.12",
+  "cpu_count": 16,
+  "cpu_count_logical": 16,
+  "disk": {
+    "/": {
+      "total": "1995218165760",
+      "used": "1013152264192"
+    }
+  },
+  "memory": {
+    "total": "137438953472"
+  },
+  "apple": {
+    "name": "Apple M4 Max",
+    "ecpuCores": 4,
+    "pcpuCores": 12,
+    "gpuCores": 40,
+    "memoryGb": 128,
+    "swapTotalBytes": "7516192768",
+    "ramTotalBytes": "137438953472"
+  },
+  "writerId": "v7db5ax05mbmabv8e43kn9o9qjwfbt66"
+}

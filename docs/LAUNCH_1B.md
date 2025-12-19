@@ -27,25 +27,25 @@ Below are “it should run” settings for the included `run_1b_launch.py` launc
 - **80GB (A100/H100 80G)**:
 
 ```bash
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 2048 --grad-accum 8 --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --variant gqa --kv-head 8 --train-seq-len 2048 --grad-accum 8 --run
 ```
 
 - **40–48GB (A100 40G / L40S 48G)**:
 
 ```bash
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 1024 --seq-schedule "512@0,1024@2000,2048@12000" --grad-accum 16 --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 1024 --seq-schedule "512@0,1024@2000,2048@12000" --grad-accum 16 --run
 ```
 
 - **24GB (L4 / 4090 / 3090)**:
 
 ```bash
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 512 --seq-schedule "512@0,1024@12000" --grad-accum 32 --instrument off --analysis-every 0 --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 512 --seq-schedule "512@0,1024@12000" --grad-accum 32 --instrument off --analysis-every 0 --run
 ```
 
 - **16GB (T4)**: not recommended for 1B. If you must try, start with:
 
 ```bash
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 256 --seq-schedule "256@0,512@12000" --grad-accum 64 --instrument off --analysis-every 0 --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --train-seq-len 256 --seq-schedule "256@0,512@12000" --grad-accum 64 --instrument off --analysis-every 0 --run
 ```
 
 If that OOMs, you’ll need to reduce model size (e.g. use the repo’s `--size medium` style configs instead of 1B).
@@ -73,13 +73,13 @@ You have three options:
 - **Generate it on the machine** (slow, but simplest):
 
 ```bash
-python3.12 prepare_fineweb.py --tokens 1B --output fineweb_1b.npy
+pythono prepare_fineweb.py --tokens 1B --output fineweb_1b.npy
 ```
 
 - **Generate a smaller file first** (recommended sanity check):
 
 ```bash
-python3.12 prepare_fineweb.py --tokens 100M --output fineweb_100m.npy
+pythono prepare_fineweb.py --tokens 100M --output fineweb_100m.npy
 ```
 
 ### Install deps (avoid breaking CUDA torch)
@@ -88,39 +88,91 @@ On most rented GPU images and Colab, **CUDA-enabled PyTorch is already installed
 Use the torch-free requirements:
 
 ```bash
-python3.12 -m pip install -r requirements_runtime.txt
+pythono -m pip install -r requirements_runtime.txt
 ```
+
+### Weights & Biases (wandb) logging (optional)
+If you want remote, live charts:
+
+```bash
+wandb login
+# then add --wandb to any launcher command:
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --wandb --wandb-project experiments --run
+```
+
+You can also use `--wandb-group` and `--wandb-tags "oneb,decoupled"` to keep runs organized.
 
 ### One-command launcher (recommended)
 Use the repo helper script `run_1b_launch.py` (added in this repo) to avoid a 40-flag command line.
 
+By default the launcher **disables the Rich/TUI dashboard** for throughput. If you want it, add `--live rich` (or `--live basic`).
+
 Dry-run (prints the command):
 
 ```bash
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy
 ```
 
 Run it:
 
 ```bash
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --run
 ```
 
 By default, the launcher keeps optional stabilizers \textbf{off}. You can opt in if desired:
 
 ```bash
 # Optional: enable null token / tie Q-K (workload-dependent)
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --null-attn --tie-qk --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --null-attn --tie-qk --run
 ```
+
+### Long runs (Vast/spot): checkpoint + resume
+For long multi-day runs, enable periodic checkpoints and save optimizer state so you can resume:
+
+```bash
+# Save a checkpoint every 500 optimizer steps (step*.pt) and keep last.pt resume-able
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --save-every 500 --run
+```
+
+If you need to resume (same tag/variant/seed), point to the last checkpoint:
+
+```bash
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy \\
+  --tag oneb_decoupled --variant decoupled --seed 1337 \\
+  --ckpt runs/oneb_decoupled_decoupled_seed1337/last.pt --resume --run
+```
+
+### Large context length training (4k / 8k)
+If you want the model to *actually* learn long-context behavior, you need:
+- `--block` **>=** your max context
+- `--seq-schedule` that eventually reaches that context (or just set it at step 0)
+
+Example: ramp up to **4096** context:
+
+```bash
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy \\
+  --block 4096 --seq-schedule "1024@0,2048@10000,4096@80000" \\
+  --target-tokens 10B --run
+```
+
+Example: ramp up to **8192** context (much more compute; consider a smaller token budget or a shorter “context extension” tail):
+
+```bash
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy \\
+  --block 8192 --seq-schedule "2048@0,4096@60000,8192@140000" \\
+  --target-tokens 10B --run
+```
+
+Run the same context schedule for both **baseline (GQA)** and **decoupled** so the comparison is fair.
 
 You can also specify a **token budget** and let the launcher solve for steps:
 
 ```bash
 # Train for ~10B tokens (Chinchilla-ish “decent” for 1B)
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --target-tokens 10B --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --target-tokens 10B --run
 
 # Train for ~20B tokens (Chinchilla-ish “well trained” for 1B)
-python3.12 run_1b_launch.py --device cuda --data fineweb_1b.npy --target-tokens 20B --run
+pythono run_1b_launch.py --device cuda --data fineweb_1b.npy --target-tokens 20B --run
 ```
 
 ### Google Colab quickstart

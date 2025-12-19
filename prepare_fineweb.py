@@ -115,14 +115,28 @@ def download_and_tokenize(
             return False
     
     # Collect tokens
-    all_tokens = []
     total_tokens = 0
     doc_count = 0
+    writer = None
+    write_pos = 0
     
     print("Tokenizing documents...")
     pbar = tqdm(total=target_tokens, unit="tok", desc="Tokens") if HAS_TQDM else None
     
     try:
+        # Streaming writers:
+        # - npy: write directly into a memmap-backed .npy (no giant Python list)
+        # - text: append chunks of space-separated ints
+        if output_format == "npy":
+            from numpy.lib.format import open_memmap  # type: ignore
+
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+            writer = open_memmap(output_path, mode="w+", dtype=np.uint16, shape=(int(target_tokens),))
+            write_pos = 0
+        else:
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+            writer = open(output_path, "w", encoding="utf-8")
+
         for doc in dataset:
             # Get text content
             text = doc.get("text", "")
@@ -131,15 +145,42 @@ def download_and_tokenize(
             
             # Tokenize
             tokens = enc.encode_ordinary(text)
+            if not tokens:
+                continue
             
-            # Add to collection
-            all_tokens.extend(tokens)
             new_tokens = len(tokens)
-            total_tokens += new_tokens
+            remaining = int(target_tokens) - int(total_tokens)
+            take = int(new_tokens if new_tokens <= remaining else remaining)
+            if take <= 0:
+                break
+
+            # Write
+            if output_format == "npy":
+                assert writer is not None
+                assert hasattr(writer, "__setitem__")
+                # Clip into uint16 range (GPT-2 vocab fits; this is defensive).
+                arr = np.asarray(tokens[:take], dtype=np.int64)
+                if arr.size > 0:
+                    arr = np.clip(arr, 0, 65535).astype(np.uint16, copy=False)
+                    writer[write_pos : write_pos + int(arr.size)] = arr
+                    write_pos += int(arr.size)
+            else:
+                assert writer is not None
+                # Write as space-separated integers (streaming)
+                # Avoid huge join by chunking.
+                chunk_size = 100_000
+                for i in range(0, take, chunk_size):
+                    chunk = tokens[i : i + chunk_size]
+                    writer.write(" ".join(map(str, chunk)))
+                    if i + chunk_size < take:
+                        writer.write(" ")
+                writer.write(" ")
+
+            total_tokens += take
             doc_count += 1
             
             if pbar:
-                pbar.update(new_tokens)
+                pbar.update(take)
             
             # Check if we have enough
             if total_tokens >= target_tokens:
@@ -160,27 +201,34 @@ def download_and_tokenize(
     if pbar:
         pbar.close()
     
-    # Truncate to exact target
-    all_tokens = all_tokens[:target_tokens]
-    
-    print(f"\nCollected {len(all_tokens):,} tokens from {doc_count:,} documents")
-    
-    # Save
-    print(f"Saving to {output_path}...")
+    # Finalize writer
     if output_format == "npy":
-        arr = np.array(all_tokens, dtype=np.uint16)
-        np.save(output_path, arr)
+        # If we didn't reach target_tokens (e.g., interruption), rewrite to exact length.
+        # Note: shrinking a .npy in-place isn't supported; we create a truncated copy.
+        if total_tokens < target_tokens:
+            print(f"[warn] Collected {total_tokens:,} < target {target_tokens:,} tokens; writing truncated file.")
+            tmp_path = output_path + ".partial.npy"
+            from numpy.lib.format import open_memmap  # type: ignore
+            mm_in = np.load(output_path, mmap_mode="r")
+            mm_out = open_memmap(tmp_path, mode="w+", dtype=np.uint16, shape=(int(total_tokens),))
+            mm_out[:] = mm_in[: int(total_tokens)]
+            del mm_out
+            del mm_in
+            os.replace(tmp_path, output_path)
     else:
-        # Save as space-separated integers
-        with open(output_path, 'w') as f:
-            # Write in chunks to avoid memory issues
-            chunk_size = 100_000
-            for i in range(0, len(all_tokens), chunk_size):
-                chunk = all_tokens[i:i + chunk_size]
-                f.write(' '.join(map(str, chunk)))
-                if i + chunk_size < len(all_tokens):
-                    f.write(' ')
+        if writer is not None:
+            try:
+                writer.flush()
+            except Exception:
+                pass
+            try:
+                writer.close()
+            except Exception:
+                pass
     
+    print(f"\nCollected {int(total_tokens):,} tokens from {doc_count:,} documents")
+    print(f"Saved to {output_path}")
+
     # Verify
     file_size = os.path.getsize(output_path)
     print(f"Done! File size: {file_size / 1e6:.1f} MB")
@@ -188,7 +236,7 @@ def download_and_tokenize(
     # Write metadata
     meta_path = output_path + ".meta"
     with open(meta_path, 'w') as f:
-        f.write(f"tokens: {len(all_tokens)}\n")
+        f.write(f"tokens: {int(total_tokens)}\n")
         f.write(f"documents: {doc_count}\n")
         f.write(f"encoding: gpt2\n")
         f.write(f"vocab_size: {enc.n_vocab}\n")
