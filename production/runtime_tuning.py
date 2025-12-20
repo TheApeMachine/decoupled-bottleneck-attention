@@ -42,6 +42,13 @@ class KVSelfOptConfig:
     warps: Tuple[int, ...] = (4, 8)
     stages: Tuple[int, ...] = (2, 3)
 
+    # v32: hierarchical decode tuning.
+    # By default we use a small set of internal kernel profiles (per device/fused/block) to avoid a
+    # combinatorial explosion of low-level launch parameters. To retain legacy behavior, enable
+    # expert launch space via CLI or set kernel_profiles="off".
+    kernel_profiles: Literal["auto", "small", "off"] = "auto"
+    expert_launch_space: bool = False
+
     warmup: int = 1
     iters: int = 3
 
@@ -85,6 +92,19 @@ class KVSelfOptConfig:
     quality_ppl_ratio_tol: Optional[float] = 1.02
     quality_kl_tol: Optional[float] = None
     quality_compute_kl: bool = False
+
+    # Optional *long-horizon* quality gate (final accept check; much slower).
+    # Motivation: short teacher-forced windows can miss accumulated quantization error that only appears
+    # after thousands of cached steps.
+    policy_quality_long: bool = False
+    calib_long_tokens: Optional[str] = None
+    calib_long_prefill: int = 4096
+    calib_long_decode_steps: int = 128
+    quality_long_tol: Optional[float] = None
+    quality_long_delta_nll_tol: Optional[float] = None
+    quality_long_ppl_ratio_tol: Optional[float] = None
+    quality_long_kl_tol: Optional[float] = None
+    quality_long_compute_kl: bool = False
 
     # v31: optional "repair" path for cache-policy tuning.
     # If a globally-chosen policy violates quality gates, allow promoting early layers to fp16 while
@@ -149,6 +169,102 @@ class KVDecodePlan:
         cache.num_stages_part = int(self.num_stages_part)
         cache.num_warps_reduce = int(self.num_warps_reduce)
         cache.num_stages_reduce = int(self.num_stages_reduce)
+
+
+@dataclass(frozen=True)
+class TritonKernelProfile:
+    """A small, named set of launch parameters for fused decode kernels.
+
+    The goal is not to encode every possible knob, but to provide a compact menu that yields
+    near-optimal performance on a given GPU architecture for common block sizes.
+    """
+    name: str
+    block_n: int
+    # 1-pass params
+    num_warps_1pass: int = 4
+    num_stages_1pass: int = 2
+    # 2-pass params
+    num_warps_part: int = 4
+    num_stages_part: int = 2
+    num_warps_reduce: int = 1
+    num_stages_reduce: int = 1
+
+
+def _parse_cc_from_device_sig(device_sig: str) -> Optional[int]:
+    """Parse compute capability from `_device_sig` string, returning e.g. 80 for cc80."""
+    s = str(device_sig)
+    if "cc" not in s:
+        return None
+    try:
+        tail = s.split("cc", 1)[1]
+        digs = ""
+        for ch in tail:
+            if ch.isdigit():
+                digs += ch
+            else:
+                break
+        if not digs:
+            return None
+        return int(digs)
+    except Exception:
+        return None
+
+
+def get_triton_kernel_profiles(
+    *,
+    mode: str,
+    device_sig: str,
+    fused: str,
+    decode_block: int,
+) -> List[TritonKernelProfile]:
+    """Return a small set of kernel profiles for fused decode."""
+    mode = str(mode)
+    fused = str(fused)
+    db = int(decode_block)
+
+    if mode == "off":
+        return []
+
+    cc = _parse_cc_from_device_sig(device_sig)
+    # Conservative defaults: work reasonably across architectures.
+    # For Hopper/Ada/Ampere we typically benefit from slightly higher warps/stages for throughput.
+    is_modern = bool(cc is not None and cc >= 80)
+
+    # Pick a BLOCK_N that divides the typical decode_block; keep it simple.
+    if db < 128:
+        bn = 64
+    elif db < 512:
+        bn = 128
+    else:
+        bn = 128
+
+    # Profiles: keep count small.
+    profs: List[TritonKernelProfile] = []
+    if fused == "triton1pass":
+        profs.append(TritonKernelProfile(name="latency", block_n=bn, num_warps_1pass=4, num_stages_1pass=2))
+        if mode == "auto":
+            profs.append(
+                TritonKernelProfile(
+                    name="throughput",
+                    block_n=bn,
+                    num_warps_1pass=(8 if is_modern else 4),
+                    num_stages_1pass=(3 if is_modern else 2),
+                )
+            )
+    elif fused == "triton2pass":
+        profs.append(TritonKernelProfile(name="latency", block_n=bn, num_warps_part=4, num_stages_part=2, num_warps_reduce=1, num_stages_reduce=1))
+        if mode == "auto":
+            profs.append(
+                TritonKernelProfile(
+                    name="throughput",
+                    block_n=bn,
+                    num_warps_part=(8 if is_modern else 4),
+                    num_stages_part=(3 if is_modern else 2),
+                    num_warps_reduce=(2 if is_modern else 1),
+                    num_stages_reduce=1,
+                )
+            )
+    return profs
 
 
 def _pow2_bucket(n: int) -> int:
@@ -269,6 +385,11 @@ class KVDecodeSelfOptimizer:
         decode_blocks = [int(x) for x in decode_blocks if int(x) > 0]
         decode_blocks.sort()
 
+        # Candidate generation strategy:
+        # - default: use a small internal set of kernel profiles (dramatically reduces search space)
+        # - expert: use the legacy cross-product of block_n/warps/stages
+        use_profiles = (not bool(getattr(cfg, "expert_launch_space", False))) and (str(getattr(cfg, "kernel_profiles", "auto")) != "off")
+
         block_ns = [int(x) for x in cfg.block_ns if int(x) > 0] or [128]
         warps = [int(x) for x in cfg.warps if int(x) > 0] or [4]
         stages = [int(x) for x in cfg.stages if int(x) > 0] or [2]
@@ -279,33 +400,67 @@ class KVDecodeSelfOptimizer:
                 if fused == "none":
                     plans.append(KVDecodePlan(fused="none", decode_block=db))
                     continue
-                for bn in block_ns:
-                    if db < bn:
-                        continue
-                    for w in warps:
-                        for st in stages:
-                            if fused == "triton1pass":
-                                plans.append(
-                                    KVDecodePlan(
-                                        fused=fused,
-                                        decode_block=db,
-                                        block_n=bn,
-                                        num_warps_1pass=w,
-                                        num_stages_1pass=st,
-                                    )
+                if use_profiles:
+                    profs = get_triton_kernel_profiles(
+                        mode=str(getattr(cfg, "kernel_profiles", "auto")),
+                        device_sig=_device_sig(self.device),
+                        fused=fused,
+                        decode_block=int(db),
+                    )
+                    for pr in profs:
+                        bn = int(pr.block_n)
+                        if db < bn:
+                            continue
+                        if fused == "triton1pass":
+                            plans.append(
+                                KVDecodePlan(
+                                    fused=fused,
+                                    decode_block=db,
+                                    block_n=bn,
+                                    num_warps_1pass=int(pr.num_warps_1pass),
+                                    num_stages_1pass=int(pr.num_stages_1pass),
                                 )
-                            else:
-                                plans.append(
-                                    KVDecodePlan(
-                                        fused=fused,
-                                        decode_block=db,
-                                        block_n=bn,
-                                        num_warps_part=w,
-                                        num_stages_part=st,
-                                        num_warps_reduce=1,
-                                        num_stages_reduce=1,
-                                    )
+                            )
+                        else:
+                            plans.append(
+                                KVDecodePlan(
+                                    fused=fused,
+                                    decode_block=db,
+                                    block_n=bn,
+                                    num_warps_part=int(pr.num_warps_part),
+                                    num_stages_part=int(pr.num_stages_part),
+                                    num_warps_reduce=int(pr.num_warps_reduce),
+                                    num_stages_reduce=int(pr.num_stages_reduce),
                                 )
+                            )
+                else:
+                    for bn in block_ns:
+                        if db < bn:
+                            continue
+                        for w in warps:
+                            for st in stages:
+                                if fused == "triton1pass":
+                                    plans.append(
+                                        KVDecodePlan(
+                                            fused=fused,
+                                            decode_block=db,
+                                            block_n=bn,
+                                            num_warps_1pass=w,
+                                            num_stages_1pass=st,
+                                        )
+                                    )
+                                else:
+                                    plans.append(
+                                        KVDecodePlan(
+                                            fused=fused,
+                                            decode_block=db,
+                                            block_n=bn,
+                                            num_warps_part=w,
+                                            num_stages_part=st,
+                                            num_warps_reduce=1,
+                                            num_stages_reduce=1,
+                                        )
+                                    )
         return plans
 
     def _time_ms(self, fn) -> float:
@@ -678,6 +833,20 @@ class KVCachePolicySelfOptimizer:
         except Exception:
             pass
 
+    def update_cached_policy(self, policy: "KVCachePolicy") -> None:
+        """Overwrite the persisted cache policy for this hardware/model key.
+
+        Used when a chosen policy is later rejected by model-level quality gates, to avoid repeatedly
+        selecting the same known-bad cached policy on subsequent runs.
+        """
+        try:
+            key = self._policy_key()
+            self._policy_cache[key] = asdict(policy)
+            self._save_policy_cache()
+        except Exception:
+            # Cache writes must never break inference.
+            pass
+
     def _policy_key(self) -> str:
         max_bucket = _pow2_bucket(self.max_seq_len)
         dims = f"sem={self.model_cfg.sem_dim},geo={self.model_cfg.geo_dim},v={self.model_cfg.attn_dim},H={self.model_cfg.n_head}"
@@ -842,6 +1011,23 @@ class KVCachePolicySelfOptimizer:
             return out
 
         out: List[KVCachePolicy] = []
+
+        # Hypothesis-challenging neighbor: swap semantic/geometric kinds.
+        # Motivation: RoPE (geometric path) is often more sensitive to quantization error; by explicitly
+        # testing the swap, the tuner can empirically validate (or invalidate) this assumption rather
+        # than only exploring monotonic kind tweaks.
+        if str(p.k_sem_kind) != str(p.k_geo_kind):
+            out.append(
+                KVCachePolicy(
+                    k_sem_kind=p.k_geo_kind,
+                    k_geo_kind=p.k_sem_kind,
+                    v_kind=p.v_kind,
+                    k_sem_qblock=p.k_sem_qblock,
+                    k_geo_qblock=p.k_geo_qblock,
+                    v_qblock=p.v_qblock,
+                    residual_len=p.residual_len,
+                )
+            )
 
         for r in neigh_num(int(p.residual_len), resid_cands):
             out.append(

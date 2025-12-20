@@ -290,6 +290,16 @@ python3 vis_heatmap.py --ckpt runs/v21_combined_baseline_96/best.pt
 | `--layers`    | `6`        | Number of transformer layers                 |
 | `--n-head`    | `8`        | Number of attention heads                    |
 
+### Decoupled KV cache: semantic vs geometric precision (why k_geo is usually higher precision)
+
+In **decoupled attention**, attention logits are the sum of two paths:
+
+- **Semantic path**: content similarity (no RoPE)
+- **Geometric path**: relative positional similarity (**RoPE applied here only**)
+
+Because RoPE encodes a geometric/rotational positional signal, the **geometric K/V state is often more sensitive to quantization error**. In practice this is why default heterogeneous KV-cache policies commonly use **more aggressive quantization on `k_sem`** (e.g. `q4_0`/`nf4`) while keeping **`k_geo` at higher precision** (e.g. `q8_0` or `fp16`) to preserve positional fidelity over long contexts.
+
+The production self-optimizer can still explore counterfactual configurations (including sem/geo swaps), but policy acceptance is guarded by short- and optional long-horizon quality checks vs an fp16-cache baseline.
 ---
 
 ## 📜 Citation

@@ -37,12 +37,16 @@ class _StubPolicyTuner:
     """Stand-in for KVCachePolicySelfOptimizer that returns a pre-configured policy."""
 
     policy_to_return: KVCachePolicy
+    updated_policies: list[KVCachePolicy] = []
 
     def __init__(self, *args, **kwargs):
         pass
 
     def choose_policy(self, *, prompt_len: int) -> KVCachePolicy:
         return type(self).policy_to_return
+
+    def update_cached_policy(self, policy: KVCachePolicy) -> None:
+        type(self).updated_policies.append(policy)
 
 
 class TestChooseKVCachePolicyHelper(unittest.TestCase):
@@ -100,6 +104,7 @@ class TestChooseKVCachePolicyHelper(unittest.TestCase):
             residual_len=0,
         )
         _StubPolicyTuner.policy_to_return = chosen_policy
+        _StubPolicyTuner.updated_policies = []
 
         self_opt = KVSelfOptConfig(mode="startup", scope="cache", policy_quality=True, layerwise_cache=False)
 
@@ -131,6 +136,76 @@ class TestChooseKVCachePolicyHelper(unittest.TestCase):
         self.assertIsNone(promote)
         self.assertEqual(kv_res2, 128)
         warn_mock.assert_called()
+        # Rejections should be persisted so subsequent runs don't keep selecting a known-bad cached policy.
+        self.assertGreaterEqual(len(_StubPolicyTuner.updated_policies), 1)
+
+    def test_long_horizon_reject_falls_back_to_base_policy(self) -> None:
+        m = _make_small_gpt(n_layer=2)
+        prompt = torch.zeros((1, 128), dtype=torch.long)
+        k_sem = KVCacheTensorConfig(kind="q4_0", qblock=32, residual_len=128)
+        k_geo = KVCacheTensorConfig(kind="q8_0", qblock=32, residual_len=128)
+        v_dec = KVCacheTensorConfig(kind="q4_0", qblock=32, residual_len=128)
+
+        base_policy = KVCachePolicy(
+            k_sem_kind=k_sem.kind,
+            k_geo_kind=k_geo.kind,
+            v_kind=v_dec.kind,
+            k_sem_qblock=k_sem.qblock,
+            k_geo_qblock=k_geo.qblock,
+            v_qblock=v_dec.qblock,
+            residual_len=128,
+        )
+        chosen_policy = KVCachePolicy(
+            k_sem_kind="fp16",
+            k_geo_kind="fp16",
+            v_kind="fp16",
+            k_sem_qblock=32,
+            k_geo_qblock=32,
+            v_qblock=32,
+            residual_len=0,
+        )
+        _StubPolicyTuner.policy_to_return = chosen_policy
+        _StubPolicyTuner.updated_policies = []
+
+        self_opt = KVSelfOptConfig(mode="startup", scope="cache", policy_quality=True, policy_quality_long=True, layerwise_cache=False)
+
+        # First reject_reasons call corresponds to short gate; second corresponds to long gate.
+        call_count = {"n": 0}
+
+        def _reasons_side_effect(*args, **kwargs):
+            call_count["n"] += 1
+            return [] if call_count["n"] == 1 else ["forced_long_reject"]
+
+        with (
+            patch("production.model.KVCachePolicySelfOptimizer", _StubPolicyTuner),
+            patch.object(m, "_policy_quality_metrics_decoupled", return_value={"max_abs_logit": 0.0}),
+            patch("production.model.policy_quality_reject_reasons", side_effect=_reasons_side_effect),
+            patch("production.model.warn_policy_quality_reject") as warn_mock,
+        ):
+            k_sem2, k_geo2, v_dec2, promote, kv_res2 = m._choose_kv_cache_policy(
+                model=m,
+                self_opt=self_opt,
+                device=prompt.device,
+                prompt=prompt,
+                k_sem_cfg=k_sem,
+                k_geo_cfg=k_geo,
+                v_dec_cfg=v_dec,
+                kv_residual=128,
+                kv_decode_block=1024,
+                kv_fused="auto",
+                max_new_tokens=16,
+                is_speculative=False,
+            )
+
+        exp_k_sem, exp_k_geo, exp_v = base_policy.to_tensor_cfgs()
+        self.assertEqual((k_sem2.kind, k_sem2.qblock, k_sem2.residual_len), (exp_k_sem.kind, exp_k_sem.qblock, exp_k_sem.residual_len))
+        self.assertEqual((k_geo2.kind, k_geo2.qblock, k_geo2.residual_len), (exp_k_geo.kind, exp_k_geo.qblock, exp_k_geo.residual_len))
+        self.assertEqual((v_dec2.kind, v_dec2.qblock, v_dec2.residual_len), (exp_v.kind, exp_v.qblock, exp_v.residual_len))
+        self.assertIsNone(promote)
+        self.assertEqual(kv_res2, 128)
+        warn_mock.assert_called()
+        # Rejected long-horizon policy should be persisted as a fallback/base policy.
+        self.assertTrue(any(p.short() == base_policy.short() for p in _StubPolicyTuner.updated_policies))
 
     def test_layerwise_speculative_print_and_promote(self) -> None:
         m = _make_small_gpt(n_layer=4)

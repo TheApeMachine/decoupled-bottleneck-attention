@@ -615,9 +615,12 @@ class GPT(nn.Module):
                         if layerwise_promote_layers is None:
                             warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons)
                             chosen = base_policy
+                            # Persist the rejection so we don't repeatedly pick a known-bad cached policy.
+                            pol_tuner.update_cached_policy(base_policy)
                     else:
                         warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons)
                         chosen = base_policy
+                        pol_tuner.update_cached_policy(base_policy)
                 else:
                     dnll = float(qm.get("delta_nll", float("nan")))
                     pr = float(qm.get("ppl_ratio", float("nan")))
@@ -627,6 +630,122 @@ class GPT(nn.Module):
                         print(f"[selfopt] cache-policy quality OK (spec): ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}")
                     else:
                         print(f"[selfopt] cache-policy quality OK: ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}")
+
+            # Optional long-horizon quality gate (final acceptance check).
+            # Runs only after the short gate passes (or after a layerwise repair passes the short gate).
+            if (
+                chosen is not base_policy
+                and bool(getattr(self_opt, "policy_quality", False))
+                and bool(getattr(self_opt, "policy_quality_long", False))
+            ):
+                calib_long_spec = getattr(self_opt, "calib_long_tokens", None) or getattr(self_opt, "calib_tokens", None)
+                if calib_long_spec:
+                    calib_long_ids = load_token_ids_spec(str(calib_long_spec))
+                    calib_long = torch.tensor([calib_long_ids], device=device, dtype=torch.long)
+                else:
+                    calib_long = prompt.detach()
+
+                compute_kl_long = bool(getattr(self_opt, "quality_long_compute_kl", False)) or (getattr(self_opt, "quality_long_kl_tol", None) is not None)
+                pre_long = int(getattr(self_opt, "calib_long_prefill", 4096))
+                dec_long = int(getattr(self_opt, "calib_long_decode_steps", 128))
+
+                if layerwise_promote_layers is None:
+                    qm_long = self._policy_quality_metrics_decoupled(
+                        calib_long,
+                        policy=chosen,
+                        prefill=pre_long,
+                        decode_steps=dec_long,
+                        kv_decode_block=int(kv_decode_block),
+                        compute_kl=compute_kl_long,
+                    )
+                else:
+                    qm_long = self._policy_quality_metrics_decoupled_layerwise(
+                        calib_long,
+                        low_policy=chosen,
+                        promote_layers=int(layerwise_promote_layers),
+                        prefill=pre_long,
+                        decode_steps=dec_long,
+                        kv_decode_block=int(kv_decode_block),
+                        compute_kl=compute_kl_long,
+                    )
+
+                # Long gate tolerances fall back to short gate tolerances when unset.
+                long_max_tol = getattr(self_opt, "quality_long_tol", None)
+                if long_max_tol is None:
+                    long_max_tol = getattr(self_opt, "quality_tol", None)
+                long_dnll_tol = getattr(self_opt, "quality_long_delta_nll_tol", None)
+                if long_dnll_tol is None:
+                    long_dnll_tol = getattr(self_opt, "quality_delta_nll_tol", None)
+                long_pr_tol = getattr(self_opt, "quality_long_ppl_ratio_tol", None)
+                if long_pr_tol is None:
+                    long_pr_tol = getattr(self_opt, "quality_ppl_ratio_tol", None)
+                long_kl_tol = getattr(self_opt, "quality_long_kl_tol", None)
+                if long_kl_tol is None:
+                    long_kl_tol = getattr(self_opt, "quality_kl_tol", None)
+
+                reasons_long = policy_quality_reject_reasons(
+                    qm_long,
+                    max_abs_logit_tol=long_max_tol,
+                    delta_nll_tol=long_dnll_tol,
+                    ppl_ratio_tol=long_pr_tol,
+                    kl_tol=long_kl_tol,
+                )
+
+                if reasons_long:
+                    # First try the existing repair path (promote early layers to fp16), but evaluated on the long gate.
+                    if bool(getattr(self_opt, "layerwise_cache", False)) and model.cfg.n_layer > 1 and layerwise_promote_layers is None:
+                        low = chosen
+                        cand_ns: List[int] = []
+                        n = 1
+                        while n < int(model.cfg.n_layer):
+                            cand_ns.append(n)
+                            n *= 2
+                        cand_ns.append(int(model.cfg.n_layer))
+                        cand_ns = sorted(set(cand_ns))
+
+                        for n_promote in cand_ns:
+                            qm2 = self._policy_quality_metrics_decoupled_layerwise(
+                                calib_long,
+                                low_policy=low,
+                                promote_layers=n_promote,
+                                prefill=pre_long,
+                                decode_steps=dec_long,
+                                kv_decode_block=int(kv_decode_block),
+                                compute_kl=compute_kl_long,
+                            )
+                            reasons2 = policy_quality_reject_reasons(
+                                qm2,
+                                max_abs_logit_tol=long_max_tol,
+                                delta_nll_tol=long_dnll_tol,
+                                ppl_ratio_tol=long_pr_tol,
+                                kl_tol=long_kl_tol,
+                            )
+                            if not reasons2:
+                                layerwise_promote_layers = int(n_promote)
+                                dnll = float(qm2.get("delta_nll", float("nan")))
+                                pr = float(qm2.get("ppl_ratio", float("nan")))
+                                klv = float(qm2.get("kl_base_cand", float("nan")))
+                                mx = float(qm2.get("max_abs_logit", float("nan")))
+                                print(
+                                    f"[selfopt] long-horizon layerwise cache-policy OK: promote_layers={layerwise_promote_layers}/{model.cfg.n_layer} "
+                                    f"low={low.short()} ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}"
+                                )
+                                chosen = low
+                                break
+
+                    if layerwise_promote_layers is None:
+                        warn_policy_quality_reject(chosen=chosen.short(), fallback=base_policy.short(), reasons=reasons_long)
+                        chosen = base_policy
+                        pol_tuner.update_cached_policy(base_policy)
+                else:
+                    dnll = float(qm_long.get("delta_nll", float("nan")))
+                    pr = float(qm_long.get("ppl_ratio", float("nan")))
+                    klv = float(qm_long.get("kl_base_cand", float("nan")))
+                    mx = float(qm_long.get("max_abs_logit", float("nan")))
+                    if layerwise_promote_layers is not None:
+                        print(f"[selfopt] cache-policy long-horizon OK (layerwise): ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}")
+                    else:
+                        print(f"[selfopt] cache-policy long-horizon OK: ΔNLL={dnll:.4g} ppl_ratio={pr:.4g} KL={klv:.4g} max|Δlogit|={mx:.4g}")
 
             k_sem_cfg2, k_geo_cfg2, v_dec_cfg2 = chosen.to_tensor_cfgs()
             kv_residual_out = int(chosen.residual_len)

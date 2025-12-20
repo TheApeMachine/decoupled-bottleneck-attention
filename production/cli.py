@@ -312,7 +312,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         default="fp16",
         choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"],
-        help="Default KV-cache format (can be overridden per-tensor with the --kv-cache-* flags).",
+        help="Default KV-cache format (can be overridden per-tensor with the --kv-cache-* flags). "
+             "For decoupled attention, note the geometric (RoPE) path is typically more sensitive to quantization error; "
+             "defaults often keep k_geo at higher precision than k_sem to preserve positional fidelity.",
     )
     ap.add_argument("--kv-qblock", type=int, default=32, help="Quantization block size along the channel dimension.")
     ap.add_argument("--kv-residual", type=int, default=128, help="Keep this many newest KV tokens in fp16 as a hot residual window (only for quantized caches).")
@@ -348,6 +350,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--self-opt-block-n", type=str, default="128", help="Comma-separated BLOCK_N candidates for fused kernels (e.g. '64,128').")
     ap.add_argument("--self-opt-warps", type=str, default="4,8", help="Comma-separated num_warps candidates for fused kernels.")
     ap.add_argument("--self-opt-stages", type=str, default="2,3", help="Comma-separated num_stages candidates for fused kernels.")
+    ap.add_argument(
+        "--self-opt-kernel-profiles",
+        type=str,
+        default="auto",
+        choices=["auto", "small", "off"],
+        help="v32: Hierarchical decode tuning. 'auto' tries a small built-in set of per-GPU kernel profiles; 'small' tries fewer; 'off' disables profiles (use explicit block_n/warps/stages space).",
+    )
+    ap.add_argument(
+        "--self-opt-expert-launch-space",
+        action="store_true",
+        help="v32: Use the legacy cross-product search over --self-opt-block-n/--self-opt-warps/--self-opt-stages (bigger but more exhaustive).",
+    )
     ap.add_argument("--self-opt-warmup", type=int, default=1, help="Warmup iterations per candidate during tuning.")
     ap.add_argument("--self-opt-iters", type=int, default=3, help="Timed iterations per candidate during tuning.")
     ap.add_argument("--self-opt-interval", type=int, default=256, help="Online mode: tune at most once every N decode steps per bucket.")
@@ -367,7 +381,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--self-opt-residuals", type=str, default="0,32,64,128", help="Comma-separated kv_residual candidates for cache-policy tuning.")
     ap.add_argument("--self-opt-qblocks", type=str, default="16,32,64", help="Comma-separated qblock candidates for cache-policy tuning (applied to all quantized decoupled tensors).")
     ap.add_argument("--self-opt-k-sem-kinds", type=str, default="q4_0,nf4,q8_0,fp16", help="Comma-separated semantic-K quantization kinds to consider (decoupled).")
-    ap.add_argument("--self-opt-k-geo-kinds", type=str, default="q8_0,q4_0,fp16", help="Comma-separated geometric-K quantization kinds to consider (decoupled).")
+    ap.add_argument(
+        "--self-opt-k-geo-kinds",
+        type=str,
+        default="q8_0,q4_0,fp16",
+        help="Comma-separated geometric-K quantization kinds to consider (decoupled). "
+             "Geometric K (RoPE path) is usually kept at higher precision to preserve positional fidelity; "
+             "include lower-precision kinds here only if you intend to empirically validate that assumption.",
+    )
     ap.add_argument("--self-opt-v-kinds", type=str, default="q4_0,q8_0,fp16", help="Comma-separated V quantization kinds to consider (decoupled).")
     ap.add_argument(
         "--self-opt-mem-budget-mb",
@@ -404,6 +425,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--self-opt-quality-ppl-ratio-tol", type=float, default=1.02, help="Quality gate: max allowed ppl_cand/ppl_base on calibration tokens. Default 1.02 (~2%% ppl hit).")
     ap.add_argument("--self-opt-quality-kl-tol", type=float, default=None, help="Optional quality gate: max allowed KL(p_base||p_cand) in nats/token on calibration tokens.")
     ap.add_argument("--self-opt-quality-kl", action="store_true", help="Compute and print KL(p_base||p_cand) even if --self-opt-quality-kl-tol is unset (slow).")
+
+    # Long-horizon quality gate (final accept check; much slower).
+    ap.add_argument(
+        "--self-opt-policy-quality-long",
+        action="store_true",
+        help="(Very slow) After the short policy quality check passes, run a longer-horizon teacher-forced check vs fp16-cache baseline (captures accumulated quantization error).",
+    )
+    ap.add_argument(
+        "--self-opt-calib-long-tokens",
+        type=str,
+        default=None,
+        help="Calibration tokens for --self-opt-policy-quality-long (path to .txt/.npy or whitespace-separated ints). Defaults to --self-opt-calib-tokens (or --prompt-tokens).",
+    )
+    ap.add_argument("--self-opt-calib-long-prefill", type=int, default=4096, help="Prefill length for long-horizon policy quality check.")
+    ap.add_argument("--self-opt-calib-long-decode", type=int, default=128, help="Teacher-forced decode steps for long-horizon policy quality check.")
+    ap.add_argument("--self-opt-quality-long-tol", type=float, default=None, help="Optional long-horizon max abs logit error tolerance (defaults to --self-opt-quality-tol if unset).")
+    ap.add_argument("--self-opt-quality-long-delta-nll-tol", type=float, default=None, help="Optional long-horizon max allowed ΔNLL (nats/token) vs fp16 baseline.")
+    ap.add_argument("--self-opt-quality-long-ppl-ratio-tol", type=float, default=None, help="Optional long-horizon max allowed ppl_cand/ppl_base vs fp16 baseline.")
+    ap.add_argument("--self-opt-quality-long-kl-tol", type=float, default=None, help="Optional long-horizon max allowed KL(p_base||p_cand) in nats/token.")
+    ap.add_argument("--self-opt-quality-long-kl", action="store_true", help="Compute and print long-horizon KL(p_base||p_cand) even if --self-opt-quality-long-kl-tol is unset (slow).")
     ap.add_argument(
         "--self-opt-layerwise-cache",
         action="store_true",
@@ -412,7 +453,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--kv-cache-k", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override K cache kind (standard/bottleneck/gqa).")
     ap.add_argument("--kv-cache-v", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override V cache kind (standard/bottleneck/gqa and decoupled).")
     ap.add_argument("--kv-cache-k-sem", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override semantic K cache kind (decoupled only).")
-    ap.add_argument("--kv-cache-k-geo", type=str, default=None, choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"], help="Override geometric K cache kind (decoupled only).")
+    ap.add_argument(
+        "--kv-cache-k-geo",
+        type=str,
+        default=None,
+        choices=["fp16", "fp32", "q8_0", "q4_0", "nf4"],
+        help="Override geometric K cache kind (decoupled only). "
+             "Geometric K carries relative position via RoPE and is hypothesized to be highly sensitive to quantization; "
+             "aggressively quantizing k_geo can distort the rotational signal and degrade long-range coherence.",
+    )
     ap.add_argument("--kv-qblock-k", type=int, default=None, help="Override K qblock (standard/bottleneck/gqa).")
     ap.add_argument("--kv-qblock-v", type=int, default=None, help="Override V qblock.")
     ap.add_argument("--kv-qblock-k-sem", type=int, default=None, help="Override semantic K qblock.")

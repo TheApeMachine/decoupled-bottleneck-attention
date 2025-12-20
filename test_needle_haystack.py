@@ -17,7 +17,11 @@ Usage:
         --context-lengths 512 1024 2048 4096
 """
 import argparse
-import torch
+import unittest
+try:
+    import torch
+except Exception as e:  # pragma: no cover
+    raise unittest.SkipTest(f"torch is required for this module but is not available: {e}")
 import random
 import math
 from pathlib import Path
@@ -27,8 +31,10 @@ import sys
 try:
     from v21_transformer_decoupled_bottleneck_gqa import GPT, ModelConfig, pick_device
 except ImportError:
-    print("ERROR: Could not import from v21 script.")
-    sys.exit(1)
+    if __name__ == "__main__":  # pragma: no cover
+        print("ERROR: Could not import from v21 script.")
+        sys.exit(1)
+    raise unittest.SkipTest("v21_transformer_decoupled_bottleneck_gqa import failed; skipping long-context script module")
 
 try:
     import matplotlib.pyplot as plt

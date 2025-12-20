@@ -19,3 +19,5 @@ config: {'args': {'size': '1b', 'exp': 'train_decoupled_fast', 'run_root': 'runs
 2025-12-20 10:59:04,355 INFO    MainThread:92753 [wandb_run.py:_redirect():2438] Wrapping output streams.
 2025-12-20 10:59:04,355 INFO    MainThread:92753 [wandb_run.py:_redirect():2461] Redirects installed.
 2025-12-20 10:59:04,357 INFO    MainThread:92753 [wandb_init.py:init():1081] run started, returning control to user process
+2025-12-20 11:07:14,976 INFO    wandb-AsyncioManager-main:92753 [service_client.py:_forward_responses():80] Reached EOF.
+2025-12-20 11:07:14,976 INFO    wandb-AsyncioManager-main:92753 [mailbox.py:close():137] Closing mailbox, abandoning 1 handles.

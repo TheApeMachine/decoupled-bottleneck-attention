@@ -1,4 +1,7 @@
-.PHONY: train paper_all paper_data paper_experiments paper_analyze paper_baseline paper_bottleneck paper_decoupled paper_gqa paper_deep paper_smoke print_config install_deps
+.PHONY: train paper_all paper_data paper_experiments paper_analyze paper_baseline paper_bottleneck paper_decoupled paper_gqa paper_deep paper_smoke print_config install_deps test test_verbose
+
+# Default python used by utility targets (tests, analysis helpers, etc.)
+PY ?= python3.12
 
 train:
 	# python3 v1_gradient_grouping.py --mode baseline 
@@ -719,6 +722,18 @@ install_deps:
 	@echo ">>> Installing FineWeb dependencies..."
 	pip install datasets tiktoken
 	@echo "Done!"
+
+# =============================================================================
+# TESTS
+# =============================================================================
+
+# Fast unit test run: only files in tests/ matching test_*.py
+test:
+	$(PY) -m unittest discover -s tests -p "test_*.py" -q
+
+# Verbose unit test run (useful when debugging failures)
+test_verbose:
+	$(PY) -m unittest discover -s tests -p "test_*.py" -v
 
 # (Old WikiText-based targets removed - use paper_all for FineWeb experiments)
 

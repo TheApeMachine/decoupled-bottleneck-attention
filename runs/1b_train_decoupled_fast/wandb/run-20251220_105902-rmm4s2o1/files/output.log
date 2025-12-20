@@ -1,2 +1,21 @@
 [wandb] run: https://wandb.ai/p4n0p71c0n/1b_decoupled/runs/rmm4s2o1
 step 1/20000 loss=11.2434 ppl=76374.30 lr=5e-07 tok/s=1286 seq=512 gbs=64 ms/step=25488
+step 10/20000 loss=11.1433 ppl=69099.11 lr=5e-06 tok/s=1083 seq=512 gbs=64 ms/step=30258
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 516, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 512, in main
+    return int(run(args))
+               ^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 496, in run
+    run_single(args, device)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/runner.py", line 989, in run_single
+    xb, yb = get_batch_any(train_view, batch_size=micro_bs_try, block_size=seq_len, device=device)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/data.py", line 159, in get_batch_any
+    _offs_cache_np = {}
+       ^^^^^^^^^^^^
+KeyboardInterrupt
