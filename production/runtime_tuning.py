@@ -720,6 +720,79 @@ class KVCachePolicy:
             f"resid={self.residual_len}"
         )
 
+    @classmethod
+    def parse(cls, s: str) -> "KVCachePolicy":
+        """Parse an atomic cache policy string.
+
+        Canonical format (round-trips with `short()`):
+          ksem=<kind>@<qblock>,kgeo=<kind>@<qblock>,v=<kind>@<qblock>,resid=<int>
+        """
+        raw = str(s).strip()
+        if not raw:
+            raise ValueError("Empty kv-policy string")
+
+        def norm_key(k: str) -> str:
+            return str(k).strip().lower().replace("_", "")
+
+        def parse_kind_qblock(val: str) -> Tuple["KVCacheKind", int]:
+            v = str(val).strip().lower()
+            if "@" in v:
+                kind_s, qb_s = v.split("@", 1)
+                kind = str(kind_s).strip()
+                qb = int(str(qb_s).strip())
+            else:
+                kind = str(v).strip()
+                qb = 32
+            if kind not in ("fp16", "fp32", "q8_0", "q4_0", "nf4"):
+                raise ValueError(f"Unknown KV cache kind: {kind}")
+            if qb <= 0:
+                raise ValueError(f"qblock must be > 0 (got {qb})")
+            return kind, int(qb)  # type: ignore[return-value]
+
+        items: Dict[str, str] = {}
+        for part in [p.strip() for p in raw.split(",") if p.strip()]:
+            if "=" not in part:
+                raise ValueError(f"Invalid kv-policy field (expected key=value): {part!r}")
+            k, v = part.split("=", 1)
+            nk = norm_key(k)
+            items[nk] = str(v).strip()
+
+        # Support a few aliases for convenience.
+        ksem_s = items.get("ksem", None) or items.get("ksemkind", None)
+        kgeo_s = items.get("kgeo", None) or items.get("kgeokind", None)
+        v_s = items.get("v", None) or items.get("vkind", None)
+        # Note: keys are normalized (lower + underscores removed), so `residual_len` becomes `residuallen`.
+        resid_s = items.get("resid", None) or items.get("residual", None) or items.get("residuallen", None)
+
+        missing: List[str] = []
+        if ksem_s is None:
+            missing.append("ksem")
+        if kgeo_s is None:
+            missing.append("kgeo")
+        if v_s is None:
+            missing.append("v")
+        if resid_s is None:
+            missing.append("resid")
+        if missing:
+            raise ValueError(f"Missing kv-policy fields: {', '.join(missing)}")
+
+        ksem_kind, ksem_qb = parse_kind_qblock(ksem_s)
+        kgeo_kind, kgeo_qb = parse_kind_qblock(kgeo_s)
+        v_kind, v_qb = parse_kind_qblock(v_s)
+        resid = int(str(resid_s).strip())
+        if resid < 0:
+            raise ValueError(f"resid must be >= 0 (got {resid})")
+
+        return cls(
+            k_sem_kind=ksem_kind,
+            k_geo_kind=kgeo_kind,
+            v_kind=v_kind,
+            k_sem_qblock=int(ksem_qb),
+            k_geo_qblock=int(kgeo_qb),
+            v_qblock=int(v_qb),
+            residual_len=int(resid),
+        )
+
 
 def estimate_seq_cache_bytes(*, batch_size: int, max_seq_len: int, dim: int, cfg: "KVCacheTensorConfig") -> int:
     from production.kvcache_backend import make_quantspec

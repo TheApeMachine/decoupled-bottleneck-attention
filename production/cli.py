@@ -1,16 +1,41 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from typing import Any, Optional
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
-    """Build the v30-compatible CLI argparser.
+class _MinimalParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:  # pragma: no cover
+        # Provide a stronger hint for common migration failure mode.
+        if "unrecognized arguments" in message:
+            message = (
+                f"{message}\n\n"
+                f"Hint: this project now defaults to a minimal CLI. "
+                f"Pass `--expert` to enable advanced/optimization flags."
+            )
+        super().error(message)
 
-    Intentionally mirrors `v30_transformer_decoupled_bottleneck_instrumented_fixed.py` flags
-    so existing scripts continue to work when switching to `python main.py ...`.
+
+def _build_expert_arg_parser() -> argparse.ArgumentParser:
+    """Build the full (expert) CLI argparser.
+
+    This is the legacy v30-compatible surface area. It remains available behind `--expert`
+    so the default UX can stay intent-driven and low-flag.
     """
-    # Parser lifted verbatim (or near-verbatim) from v30's `main()`.
     ap = argparse.ArgumentParser()
+
+    # Global mode switches (minimal parser also exposes these).
+    ap.add_argument(
+        "--expert",
+        action="store_true",
+        help="Enable expert/legacy flags (optimization knobs, KV-cache overrides, etc.).",
+    )
+    ap.add_argument(
+        "--no-selfopt",
+        action="store_true",
+        help="Disable all self-optimization/autotuning (debug/repro).",
+    )
 
     # ---- Experiment suite controls (new in v27) ----
     # Import here so `--help` works even if other heavy deps are missing.
@@ -319,6 +344,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--kv-qblock", type=int, default=32, help="Quantization block size along the channel dimension.")
     ap.add_argument("--kv-residual", type=int, default=128, help="Keep this many newest KV tokens in fp16 as a hot residual window (only for quantized caches).")
     ap.add_argument(
+        "--kv-policy",
+        type=str,
+        default=None,
+        help="(Expert) Atomic KV-cache policy string for decoupled attention. "
+        "Format: 'ksem=<kind>@<qblock>,kgeo=<kind>@<qblock>,v=<kind>@<qblock>,resid=<int>'. "
+        "When set, overrides the per-tensor kv-cache flags; cache-policy self-tuning is disabled (decode tuning may still run).",
+    )
+    ap.add_argument(
         "--kv-decode-block",
         type=int,
         default=1024,
@@ -473,6 +506,80 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the minimal, intent-first CLI argparser (default UX).
+
+    Advanced optimization knobs are intentionally hidden; use `--expert` to access them.
+    """
+    ap = _MinimalParser()
+
+    from production.config import SIZE_PRESETS, EXP_PRESETS
+
+    # Minimal surface area: intent + I/O + instrumentation.
+    ap.add_argument("--expert", action="store_true", help="Enable expert/legacy flags.")
+    ap.add_argument("--no-selfopt", action="store_true", help="Disable all self-optimization/autotuning (debug/repro).")
+
+    ap.add_argument("--mode", type=str, default="train", choices=["train", "sample"], help="Run mode.")
+    ap.add_argument("--size", type=str, default=None, choices=list(SIZE_PRESETS.keys()), help="Model+train size preset.")
+    ap.add_argument("--exp", type=str, default=None, choices=sorted(list(EXP_PRESETS.keys()) + ["paper_all"]), help="Experiment preset.")
+
+    ap.add_argument("--data", type=str, default=None, help="Dataset path (train mode).")
+    ap.add_argument("--ckpt", type=str, default=None, help="Checkpoint path (sample mode).")
+    ap.add_argument("--out-dir", type=str, default=None, help="Output directory (optional if size+exp given).")
+    ap.add_argument("--run-root", type=str, default="runs", help="Root for auto run dirs (when out-dir omitted).")
+    ap.add_argument("--run-tag", type=str, default=None, help="Optional suffix for auto run dirs.")
+    ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--device", type=str, default=None)
+
+    # Sampling essentials (keep user intent; optimization stays automatic).
+    ap.add_argument("--prompt-tokens", type=str, default="0", help="Prompt as whitespace-separated token IDs (or text if tokenizer=tiktoken).")
+    ap.add_argument("--max-new-tokens", type=int, default=50)
+    ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--top-k", type=int, default=None)
+
+    # Training essentials.
+    ap.add_argument("--steps", type=int, default=None, help="Training steps (defaults from size preset when set).")
+
+    # Instrumentation: keep existing UX but minimal.
+    ap.add_argument("--instrument", type=str, default="auto", choices=["auto", "off", "basic", "rich"], help="Console instrumentation.")
+    ap.add_argument("--tb", action="store_true", help="Write TensorBoard scalars.")
+    ap.add_argument("--wandb", action="store_true", help="Write Weights & Biases scalars.")
+    ap.add_argument("--wandb-project", type=str, default="experiments")
+    ap.add_argument("--wandb-entity", type=str, default=None)
+    ap.add_argument("--wandb-name", type=str, default=None)
+    ap.add_argument("--wandb-group", type=str, default=None)
+    ap.add_argument("--wandb-tags", type=str, default=None)
+    ap.add_argument("--wandb-mode", type=str, default="disabled", choices=["disabled", "online", "offline"])
+
+    ap.add_argument("--print-config", action="store_true", help="Print resolved model config and exit.")
+
+    return ap
+
+
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    """Parse argv using the minimal CLI by default, upgrading to expert when requested.
+
+    For minimal runs, we still populate *all* attributes expected by the runtime by merging
+    onto the expert parser's defaults. This keeps downstream code stable while the CLI stays small.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    want_expert = "--expert" in argv
+    if want_expert:
+        ap = _build_expert_arg_parser()
+        return ap.parse_args(argv)
+
+    # Parse minimal args (will error on any legacy/optimization flags).
+    mini = build_arg_parser().parse_args(argv)
+
+    # Start from the expert defaults so downstream code sees every expected attribute.
+    base = _build_expert_arg_parser().parse_args([])
+    for k, v in vars(mini).items():
+        setattr(base, k, v)
+    return base
+
+
 def run(args: argparse.Namespace) -> int:
     """Execute the CLI request with v30-compatible behavior."""
     import copy
@@ -550,8 +657,7 @@ def main() -> int:
     """Module entrypoint so `python -m production.cli ...` works."""
     import math
 
-    ap = build_arg_parser()
-    args = ap.parse_args()
+    args = parse_args()
 
     # Validate args immediately after parsing so invalid values fail fast (before any device/model init).
     sdb = getattr(args, "spec_disable_below_accept", None)

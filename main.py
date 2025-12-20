@@ -6,10 +6,9 @@ import sys
 
 def main(argv: list[str] | None = None) -> int:
     # Thin, stable entrypoint. All implementation lives under production/.
-    from production.cli import build_arg_parser, run
+    from production.cli import parse_args, run
 
-    ap = build_arg_parser()
-    args = ap.parse_args(argv)
+    args = parse_args(argv)
     return run(args)
 
 

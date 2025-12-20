@@ -39,6 +39,41 @@ def neg_inf(dtype: torch.dtype) -> float:
     return -1.0e4
 
 
+def _decoupled_qk_cat(
+    *,
+    q_sem: torch.Tensor,
+    q_geo: torch.Tensor,
+    k_sem: torch.Tensor,
+    k_geo: torch.Tensor,
+    sem_scale: float,
+    geo_scale: float,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Build composite (q_cat, k_cat) for decoupled attention.
+
+    Guarantees score equivalence:
+      (q_cat @ k_cat^T) == (q_sem @ k_sem^T) * sem_scale + (q_geo @ k_geo^T) * geo_scale
+    while leaving SDPA's internal softmax/numerics as an implementation detail.
+    """
+    q_cat = torch.cat([q_sem * float(sem_scale), q_geo * float(geo_scale)], dim=-1)
+    k_cat = torch.cat([k_sem, k_geo], dim=-1)
+    return q_cat, k_cat
+
+
+def _decoupled_scores_f32(
+    *,
+    q_sem: torch.Tensor,
+    q_geo: torch.Tensor,
+    k_sem: torch.Tensor,
+    k_geo: torch.Tensor,
+    sem_scale: float,
+    geo_scale: float,
+) -> torch.Tensor:
+    """Single source of truth for decoupled score computation in fp32."""
+    sem = torch.matmul(q_sem, k_sem.transpose(-2, -1)).to(torch.float32) * float(sem_scale)
+    geo = torch.matmul(q_geo, k_geo.transpose(-2, -1)).to(torch.float32) * float(geo_scale)
+    return sem + geo
+
+
 # -----------------------------
 # Optional Triton fused kernels (decode only)
 # -----------------------------
@@ -498,9 +533,11 @@ class DecoupledBottleneckAttention(nn.Module):
         attn_mask: Optional[torch.Tensor],
         *,
         scale: Optional[float] = None,
+        is_causal: Optional[bool] = None,
     ) -> torch.Tensor:
         dropout_p = self.cfg.dropout if self.training else 0.0
-        is_causal = attn_mask is None
+        if is_causal is None:
+            is_causal = attn_mask is None
 
         # SDPA defaults to an implicit scale of 1/sqrt(dk). To request an explicit `scale`, we emulate it
         # by pre-scaling q so we can stay on the most stable/portable SDPA call signature (no `scale=` kwarg).
@@ -508,7 +545,7 @@ class DecoupledBottleneckAttention(nn.Module):
             dk = int(q.size(-1))
             q = q * (float(scale) * math.sqrt(dk))
 
-        return F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=is_causal)
+        return F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=bool(is_causal))
 
     def _streaming_decode_attn(
         self,
@@ -611,9 +648,13 @@ class DecoupledBottleneckAttention(nn.Module):
             m = m_new
 
         if k_sem_null is not None and k_geo_null is not None and v_null is not None:
-            s = (
-                (qsh * k_sem_null.to(compute_dtype)).sum(dim=-1, keepdim=True).to(torch.float32) * sem_scale
-                + (qgh * k_geo_null.to(compute_dtype)).sum(dim=-1, keepdim=True).to(torch.float32) * geo_scale
+            s = _decoupled_scores_f32(
+                q_sem=qsh,
+                q_geo=qgh,
+                k_sem=k_sem_null.to(compute_dtype),
+                k_geo=k_geo_null.to(compute_dtype),
+                sem_scale=sem_scale,
+                geo_scale=geo_scale,
             )
             update(s, v_null.to(compute_dtype))
 
@@ -631,10 +672,7 @@ class DecoupledBottleneckAttention(nn.Module):
             # Score decomposition is explicit:
             # - semantic contribution: content similarity (no RoPE)
             # - geometric contribution: relative position similarity (RoPE)
-            s = (
-                torch.matmul(qsh, ksh.transpose(-2, -1)).to(torch.float32) * sem_scale
-                + torch.matmul(qgh, kgh.transpose(-2, -1)).to(torch.float32) * geo_scale
-            )
+            s = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
             update(s, vbh)
 
         out = o / d.clamp(min=1e-9).unsqueeze(-1)
@@ -771,10 +809,7 @@ class DecoupledBottleneckAttention(nn.Module):
             ksh = self._shape(k_sem_blk, sem_head_dim)
             kgh = self._shape(k_geo_blk, geo_head_dim)
             vbh = self._shape(v_blk, v_head_dim)
-            s = (
-                torch.matmul(qsh, ksh.transpose(-2, -1)).to(torch.float32) * sem_scale
-                + torch.matmul(qgh, kgh.transpose(-2, -1)).to(torch.float32) * geo_scale
-            )
+            s = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
             update(s, vbh)
 
             m = m_t.view(BH)
@@ -968,10 +1003,7 @@ class DecoupledBottleneckAttention(nn.Module):
             ksh = self._shape(k_sem_blk, sem_head_dim)
             kgh = self._shape(k_geo_blk, geo_head_dim)
             vbh = self._shape(v_blk, v_head_dim)
-            s = (
-                torch.matmul(qsh, ksh.transpose(-2, -1)).to(torch.float32) * sem_scale
-                + torch.matmul(qgh, kgh.transpose(-2, -1)).to(torch.float32) * geo_scale
-            )
+            s = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
             update(s, vbh)
             o = o_t.view(BH, v_head_dim)
             d = d_t.view(BH)
@@ -1443,17 +1475,13 @@ class DecoupledBottleneckAttention(nn.Module):
 
                 # Combine sem+geo into a single SDPA call by concatenating along head_dim.
                 # q/k last-dim must match; v may have a different last-dim (v_head_dim).
-                q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
-                k_cat = torch.cat([ksh, kgh], dim=-1)
-                # q_cat is already pre-scaled above; force SDPA to use scale=1.0 to avoid double scaling.
-                out = self._sdp(q_cat, k_cat, vh, attn_mask=None if attn_mask is None else attn_mask, scale=1.0)
+                q_cat, k_cat = _decoupled_qk_cat(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
+                out = self._sdp(q_cat, k_cat, vh, attn_mask=None if attn_mask is None else attn_mask, scale=1.0, is_causal=True if attn_mask is None else False)
                 y = self.out_proj(self._merge(out))
                 return y, None
 
             # Null-attn path (manual).
-            sem = torch.matmul(qsh, ksh.transpose(-2, -1)) * sem_scale
-            geo = torch.matmul(qgh, kgh.transpose(-2, -1)) * geo_scale
-            scores = sem + geo
+            scores = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
 
             if attn_mask is not None:
                 scores = scores.masked_fill(~attn_mask, ninfty)
@@ -1464,7 +1492,7 @@ class DecoupledBottleneckAttention(nn.Module):
             ksn = self._shape(self.k_sem_null.expand(B, 1, -1), self.sem_head_dim)
             kgn = self._shape(self.k_geo_null.expand(B, 1, -1), self.geo_head_dim)
             vn = self._shape(self.v_null.expand(B, 1, -1), self.v_head_dim)
-            s_null = (torch.matmul(qsh, ksn.transpose(-2, -1)) * sem_scale + torch.matmul(qgh, kgn.transpose(-2, -1)) * geo_scale)
+            s_null = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksn, k_geo=kgn, sem_scale=sem_scale, geo_scale=geo_scale)
             scores = torch.cat([s_null, scores], dim=-1)
 
             attn = F.softmax(scores, dim=-1)
@@ -1481,9 +1509,7 @@ class DecoupledBottleneckAttention(nn.Module):
         if old_len == 0 and T > 1:
             # prefill without cache readback
             if cfg.null_attn:
-                sem = torch.matmul(qsh, ksh.transpose(-2, -1)) * sem_scale
-                geo = torch.matmul(qgh, kgh.transpose(-2, -1)) * geo_scale
-                scores = sem + geo
+                scores = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
                 if attn_mask is not None:
                     scores = scores.masked_fill(~attn_mask, ninfty)
                 ksn = self._shape(self.k_sem_null.expand(B, 1, -1), self.sem_head_dim)
@@ -1500,9 +1526,8 @@ class DecoupledBottleneckAttention(nn.Module):
                 vals = torch.cat([vn, vh], dim=-2)
                 out = torch.matmul(attn, vals)
             else:
-                q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
-                k_cat = torch.cat([ksh, kgh], dim=-1)
-                out = self._sdp(q_cat, k_cat, vh, attn_mask=None if attn_mask is None else attn_mask, scale=1.0)
+                q_cat, k_cat = _decoupled_qk_cat(q_sem=qsh, q_geo=qgh, k_sem=ksh, k_geo=kgh, sem_scale=sem_scale, geo_scale=geo_scale)
+                out = self._sdp(q_cat, k_cat, vh, attn_mask=None if attn_mask is None else attn_mask, scale=1.0, is_causal=True if attn_mask is None else False)
 
             y = self.out_proj(self._merge(out))
             cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
@@ -1521,11 +1546,10 @@ class DecoupledBottleneckAttention(nn.Module):
                 k_sem_all = self._shape(cache.k_sem.get(dtype=qsh.dtype), self.sem_head_dim)
                 k_geo_all = self._shape(cache.k_geo.get(dtype=qsh.dtype), self.geo_head_dim)
                 v_all = self._shape(cache.v.get(dtype=qsh.dtype), self.v_head_dim)
-                q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
-                k_cat = torch.cat([k_sem_all, k_geo_all], dim=-1)
-                # Disable SDPA's implicit 1/sqrt(dk) scaling (we already applied per-path scales above).
-                q_cat = q_cat * math.sqrt(int(q_cat.size(-1)))
-                out = F.scaled_dot_product_attention(q_cat, k_cat, v_all, attn_mask=None, dropout_p=0.0, is_causal=False)
+                q_cat, k_cat = _decoupled_qk_cat(q_sem=qsh, q_geo=qgh, k_sem=k_sem_all, k_geo=k_geo_all, sem_scale=sem_scale, geo_scale=geo_scale)
+                # Important: decode uses is_causal=False here because query length is 1 but its logical
+                # position is the *end* of the prefix; SDPA's built-in causal mask would treat it as position 0.
+                out = self._sdp(q_cat, k_cat, v_all, attn_mask=None, scale=1.0, is_causal=False)
             else:
                 # Quantized/null-attn -> streaming or fused decode.
                 if cfg.null_attn:
@@ -1670,9 +1694,7 @@ class DecoupledBottleneckAttention(nn.Module):
         kgh_all = self._shape(k_geo_all, self.geo_head_dim)
         vh_all = self._shape(v_all, self.v_head_dim)
 
-        sem = torch.matmul(qsh, ksh_all.transpose(-2, -1)) * sem_scale
-        geo = torch.matmul(qgh, kgh_all.transpose(-2, -1)) * geo_scale
-        scores = sem + geo
+        scores = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksh_all, k_geo=kgh_all, sem_scale=sem_scale, geo_scale=geo_scale)
 
         if attn_mask is not None:
             scores = scores.masked_fill(~attn_mask, ninfty)
@@ -1686,7 +1708,7 @@ class DecoupledBottleneckAttention(nn.Module):
             ksn = self._shape(self.k_sem_null.expand(B, 1, -1), self.sem_head_dim)
             kgn = self._shape(self.k_geo_null.expand(B, 1, -1), self.geo_head_dim)
             vn = self._shape(self.v_null.expand(B, 1, -1), self.v_head_dim)
-            s_null = (torch.matmul(qsh, ksn.transpose(-2, -1)) * sem_scale + torch.matmul(qgh, kgn.transpose(-2, -1)) * geo_scale)
+            s_null = _decoupled_scores_f32(q_sem=qsh, q_geo=qgh, k_sem=ksn, k_geo=kgn, sem_scale=sem_scale, geo_scale=geo_scale)
             scores = torch.cat([s_null, scores], dim=-1)
             attn = F.softmax(scores, dim=-1)
             attn = self.drop(attn)

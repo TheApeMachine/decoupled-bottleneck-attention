@@ -31,6 +31,16 @@ class KVCacheTensorConfig:
     residual_len: int = 0  # keep a small fp16 "hot" window for the newest tokens (ring-buffer)
 
 
+def _scale_min_fp16() -> float:
+    """Minimum safe positive fp16 scale to avoid denorm/FTZ and fp16-cast underflow to 0.
+
+    We store quantization scales as fp16. Many backends flush fp16 subnormals to zero, so clamping
+    to fp16 tiny (min positive *normal*) is a conservative choice that preserves nonzero scales
+    and avoids division-by-zero / NaN cascades in downstream dequantization.
+    """
+    return float(torch.finfo(torch.float16).tiny)
+
+
 def _qblock_eff(kind: KVCacheKind, dim: int, qblock: int) -> int:
     qb = min(qblock if qblock > 0 else 32, dim)
     if kind in ("q4_0", "nf4"):
@@ -66,9 +76,12 @@ def quantize_q8_0(x: torch.Tensor, spec: QuantSpec) -> Tuple[torch.Tensor, torch
 
     orig = x.shape[:-1]
     x2 = x.reshape(-1, pad_dim).reshape(-1, nb, qb)
-    amax = x2.abs().amax(dim=-1)  # (N, nb)
-    scale = (amax / 127.0).clamp(min=1e-8)
-    q = torch.round(x2 / scale.unsqueeze(-1)).clamp(-127, 127).to(torch.int8)
+    # Compute scale in fp32 for stability, then store it in fp16.
+    # Important: do NOT clamp to very small values like 1e-8; those can underflow to 0 in fp16
+    # and some backends flush subnormals to zero.
+    amax = x2.abs().amax(dim=-1).to(torch.float32)  # (N, nb)
+    scale = (amax / 127.0).clamp(min=_scale_min_fp16())
+    q = torch.round(x2.to(torch.float32) / scale.unsqueeze(-1)).clamp(-127, 127).to(torch.int8)
     q = q.reshape(*orig, pad_dim)
     return q, scale.to(torch.float16).reshape(*orig, nb)
 
@@ -101,9 +114,9 @@ def quantize_q4_0(x: torch.Tensor, spec: QuantSpec) -> Tuple[torch.Tensor, torch
 
     orig = x.shape[:-1]
     x2 = x.reshape(-1, pad_dim).reshape(-1, nb, qb)
-    amax = x2.abs().amax(dim=-1)
-    scale = (amax / 7.0).clamp(min=1e-8)
-    q = torch.round(x2 / scale.unsqueeze(-1)).clamp(-8, 7).to(torch.int16)
+    amax = x2.abs().amax(dim=-1).to(torch.float32)
+    scale = (amax / 7.0).clamp(min=_scale_min_fp16())
+    q = torch.round(x2.to(torch.float32) / scale.unsqueeze(-1)).clamp(-8, 7).to(torch.int16)
     u = (q + 8).clamp(0, 15).to(torch.uint8)
 
     u_even = u[..., 0::2]
@@ -173,10 +186,10 @@ def quantize_nf4(x: torch.Tensor, spec: QuantSpec) -> Tuple[torch.Tensor, torch.
 
     orig = x.shape[:-1]
     x2 = x.reshape(-1, pad_dim).reshape(-1, nb, qb)
-    amax = x2.abs().amax(dim=-1)
-    scale = amax.clamp(min=1e-8)
+    amax = x2.abs().amax(dim=-1).to(torch.float32)
+    scale = amax.clamp(min=_scale_min_fp16())
 
-    y = (x2 / scale.unsqueeze(-1)).clamp(-1.0, 1.0)
+    y = (x2.to(torch.float32) / scale.unsqueeze(-1)).clamp(-1.0, 1.0)
     levels = NF4_LEVELS.to(device=y.device, dtype=torch.float32)
     diff = (y.to(torch.float32).unsqueeze(-1) - levels).abs()
     idx = diff.argmin(dim=-1).to(torch.uint8)  # 0..15

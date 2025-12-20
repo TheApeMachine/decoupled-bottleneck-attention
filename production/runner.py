@@ -26,12 +26,97 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
     )
     from production.instrumentation import RunLogger
     from production.model import GPT, ModelConfig
-    from production.runtime_tuning import KVSelfOptConfig
+    from production.runtime_tuning import KVCachePolicy, KVSelfOptConfig
 
     try:
         import tiktoken  # type: ignore
     except Exception:
         tiktoken = None  # type: ignore
+
+    def _csv_ints(s: Optional[str]) -> Tuple[int, ...]:
+        if s is None:
+            return ()
+        parts: List[int] = []
+        for x in str(s).split(","):
+            x = x.strip()
+            if not x:
+                continue
+            try:
+                parts.append(int(x))
+            except Exception:
+                pass
+        return tuple(parts)
+
+    def _csv_strs(s: Optional[str]) -> Tuple[str, ...]:
+        if s is None:
+            return ()
+        parts: List[str] = []
+        for x in str(s).split(","):
+            x = x.strip()
+            if x:
+                parts.append(x)
+        return tuple(parts)
+
+    # Self-optimization is on by default (intent-first UX). Use --no-selfopt to opt out.
+    self_opt_cfg: Optional[KVSelfOptConfig] = None
+    if not bool(getattr(args, "no_selfopt", False)):
+        mode = str(getattr(args, "self_opt", "none"))
+        if mode not in ("startup", "online"):
+            mode = "online"
+
+        cache_path = getattr(args, "self_opt_cache", None)
+        if (not cache_path) and getattr(args, "out_dir", None):
+            cache_path = os.path.join(str(args.out_dir), "selfopt_cache.json")
+
+        self_opt_cfg = KVSelfOptConfig(
+            mode=mode,
+            scope=str(getattr(args, "self_opt_scope", "all")),
+            decode_blocks=_csv_ints(getattr(args, "self_opt_decode_blocks", None)) or (256, 512, 1024, 2048),
+            block_ns=_csv_ints(getattr(args, "self_opt_block_n", None)) or (128,),
+            warps=_csv_ints(getattr(args, "self_opt_warps", None)) or (4, 8),
+            stages=_csv_ints(getattr(args, "self_opt_stages", None)) or (2, 3),
+            kernel_profiles=str(getattr(args, "self_opt_kernel_profiles", "auto")),
+            expert_launch_space=bool(getattr(args, "self_opt_expert_launch_space", False)),
+            warmup=int(getattr(args, "self_opt_warmup", 1)),
+            iters=int(getattr(args, "self_opt_iters", 3)),
+            interval=int(getattr(args, "self_opt_interval", 256)),
+            hysteresis=float(getattr(args, "self_opt_hysteresis", 0.03)),
+            cache_path=cache_path,
+            verbose=bool(getattr(args, "self_opt_verbose", False)),
+            verify=bool(getattr(args, "self_opt_verify", False)),
+            verify_tol=float(getattr(args, "self_opt_verify_tol", 5e-3)),
+            residuals=_csv_ints(getattr(args, "self_opt_residuals", None)) or (0, 32, 64, 128),
+            qblocks=_csv_ints(getattr(args, "self_opt_qblocks", None)) or (16, 32, 64),
+            k_sem_kinds=_csv_strs(getattr(args, "self_opt_k_sem_kinds", None)) or ("q4_0", "nf4", "q8_0", "fp16"),
+            k_geo_kinds=_csv_strs(getattr(args, "self_opt_k_geo_kinds", None)) or ("q8_0", "q4_0", "fp16"),
+            v_kinds=_csv_strs(getattr(args, "self_opt_v_kinds", None)) or ("q4_0", "q8_0", "fp16"),
+            mem_budget_mb=getattr(args, "self_opt_mem_budget_mb", None),
+            mem_overhead_frac=float(getattr(args, "self_opt_mem_overhead_frac", 0.10)),
+            policy_prefix_len=getattr(args, "self_opt_policy_prefix_len", None),
+            policy_warmup=int(getattr(args, "self_opt_policy_warmup", 1)),
+            policy_iters=int(getattr(args, "self_opt_policy_iters", 3)),
+            policy_hysteresis=float(getattr(args, "self_opt_policy_hysteresis", 0.02)),
+            prefer_lower_mem_within=float(getattr(args, "self_opt_prefer_low_mem_within", 0.02)),
+            policy_quality=bool(getattr(args, "self_opt_policy_quality", False)),
+            calib_tokens=getattr(args, "self_opt_calib_tokens", None),
+            calib_prefill=int(getattr(args, "self_opt_calib_prefill", 64)),
+            calib_decode_steps=int(getattr(args, "self_opt_calib_decode", 8)),
+            quality_tol=float(getattr(args, "self_opt_quality_tol", 0.5)),
+            quality_delta_nll_tol=getattr(args, "self_opt_quality_delta_nll_tol", None),
+            quality_ppl_ratio_tol=getattr(args, "self_opt_quality_ppl_ratio_tol", None),
+            quality_kl_tol=getattr(args, "self_opt_quality_kl_tol", None),
+            quality_compute_kl=bool(getattr(args, "self_opt_quality_kl", False)),
+            policy_quality_long=bool(getattr(args, "self_opt_policy_quality_long", False)),
+            calib_long_tokens=getattr(args, "self_opt_calib_long_tokens", None),
+            calib_long_prefill=int(getattr(args, "self_opt_calib_long_prefill", 4096)),
+            calib_long_decode_steps=int(getattr(args, "self_opt_calib_long_decode", 128)),
+            quality_long_tol=getattr(args, "self_opt_quality_long_tol", None),
+            quality_long_delta_nll_tol=getattr(args, "self_opt_quality_long_delta_nll_tol", None),
+            quality_long_ppl_ratio_tol=getattr(args, "self_opt_quality_long_ppl_ratio_tol", None),
+            quality_long_kl_tol=getattr(args, "self_opt_quality_long_kl_tol", None),
+            quality_long_compute_kl=bool(getattr(args, "self_opt_quality_long_kl", False)),
+            layerwise_cache=bool(getattr(args, "self_opt_layerwise_cache", False)),
+        )
 
     # -------------------------
     # Sample mode
@@ -69,81 +154,27 @@ def run_single(args: argparse.Namespace, device: torch.device) -> None:
 
         prompt = torch.tensor([prompt_ids], device=device, dtype=torch.long)
 
-        def _csv_ints(s: Optional[str]) -> Tuple[int, ...]:
-            if s is None:
-                return ()
-            parts: List[int] = []
-            for x in str(s).split(","):
-                x = x.strip()
-                if not x:
-                    continue
+        # Expert override: force an atomic decoupled KV cache policy from a single string.
+        kv_policy_s = getattr(args, "kv_policy", None)
+        if kv_policy_s:
+            if str(getattr(cfg, "attn_mode", "")) != "decoupled":
+                raise ValueError("--kv-policy is only supported for decoupled attention checkpoints")
+            pol = KVCachePolicy.parse(str(kv_policy_s))
+            # Apply as per-tensor overrides (so model.generate() stays unchanged).
+            args.kv_cache_k_sem = pol.k_sem_kind
+            args.kv_cache_k_geo = pol.k_geo_kind
+            args.kv_cache_v = pol.v_kind
+            args.kv_qblock_k_sem = int(pol.k_sem_qblock)
+            args.kv_qblock_k_geo = int(pol.k_geo_qblock)
+            args.kv_qblock_v = int(pol.v_qblock)
+            args.kv_residual = int(pol.residual_len)
+
+            # If selfopt is enabled, keep decode-plan tuning but disable cache-policy tuning (policy is forced).
+            if self_opt_cfg is not None:
                 try:
-                    parts.append(int(x))
+                    self_opt_cfg.scope = "decode"
                 except Exception:
                     pass
-            return tuple(parts)
-
-        def _csv_strs(s: Optional[str]) -> Tuple[str, ...]:
-            if s is None:
-                return ()
-            parts: List[str] = []
-            for x in str(s).split(","):
-                x = x.strip()
-                if x:
-                    parts.append(x)
-            return tuple(parts)
-
-        self_opt_cfg = None
-        if getattr(args, "self_opt", "none") != "none":
-            self_opt_cfg = KVSelfOptConfig(
-                mode=args.self_opt,
-                scope=getattr(args, "self_opt_scope", "all"),
-                decode_blocks=_csv_ints(getattr(args, "self_opt_decode_blocks", "")) or (256, 512, 1024, 2048),
-                block_ns=_csv_ints(getattr(args, "self_opt_block_n", "")) or (128,),
-                warps=_csv_ints(getattr(args, "self_opt_warps", "")) or (4, 8),
-                stages=_csv_ints(getattr(args, "self_opt_stages", "")) or (2, 3),
-                kernel_profiles=str(getattr(args, "self_opt_kernel_profiles", "auto")),
-                expert_launch_space=bool(getattr(args, "self_opt_expert_launch_space", False)),
-                warmup=int(getattr(args, "self_opt_warmup", 1)),
-                iters=int(getattr(args, "self_opt_iters", 3)),
-                interval=int(getattr(args, "self_opt_interval", 256)),
-                hysteresis=float(getattr(args, "self_opt_hysteresis", 0.03)),
-                cache_path=getattr(args, "self_opt_cache", None),
-                verbose=bool(getattr(args, "self_opt_verbose", False)),
-                verify=bool(getattr(args, "self_opt_verify", False)),
-                verify_tol=float(getattr(args, "self_opt_verify_tol", 5e-3)),
-                residuals=_csv_ints(getattr(args, "self_opt_residuals", "")) or (0, 32, 64, 128),
-                qblocks=_csv_ints(getattr(args, "self_opt_qblocks", "")) or (16, 32, 64),
-                k_sem_kinds=_csv_strs(getattr(args, "self_opt_k_sem_kinds", "")) or ("q4_0", "nf4", "q8_0", "fp16"),
-                k_geo_kinds=_csv_strs(getattr(args, "self_opt_k_geo_kinds", "")) or ("q8_0", "q4_0", "fp16"),
-                v_kinds=_csv_strs(getattr(args, "self_opt_v_kinds", "")) or ("q4_0", "q8_0", "fp16"),
-                mem_budget_mb=getattr(args, "self_opt_mem_budget_mb", None),
-                mem_overhead_frac=float(getattr(args, "self_opt_mem_overhead_frac", 0.10)),
-                policy_prefix_len=getattr(args, "self_opt_policy_prefix_len", None),
-                policy_warmup=int(getattr(args, "self_opt_policy_warmup", 1)),
-                policy_iters=int(getattr(args, "self_opt_policy_iters", 3)),
-                policy_hysteresis=float(getattr(args, "self_opt_policy_hysteresis", 0.02)),
-                prefer_lower_mem_within=float(getattr(args, "self_opt_prefer_low_mem_within", 0.02)),
-                policy_quality=bool(getattr(args, "self_opt_policy_quality", False)),
-                calib_tokens=getattr(args, "self_opt_calib_tokens", None),
-                calib_prefill=int(getattr(args, "self_opt_calib_prefill", 64)),
-                calib_decode_steps=int(getattr(args, "self_opt_calib_decode", 8)),
-                quality_tol=float(getattr(args, "self_opt_quality_tol", 0.5)),
-                quality_delta_nll_tol=getattr(args, "self_opt_quality_delta_nll_tol", None),
-                quality_ppl_ratio_tol=getattr(args, "self_opt_quality_ppl_ratio_tol", None),
-                quality_kl_tol=getattr(args, "self_opt_quality_kl_tol", None),
-                quality_compute_kl=bool(getattr(args, "self_opt_quality_kl", False)),
-                policy_quality_long=bool(getattr(args, "self_opt_policy_quality_long", False)),
-                calib_long_tokens=getattr(args, "self_opt_calib_long_tokens", None),
-                calib_long_prefill=int(getattr(args, "self_opt_calib_long_prefill", 4096)),
-                calib_long_decode_steps=int(getattr(args, "self_opt_calib_long_decode", 128)),
-                quality_long_tol=getattr(args, "self_opt_quality_long_tol", None),
-                quality_long_delta_nll_tol=getattr(args, "self_opt_quality_long_delta_nll_tol", None),
-                quality_long_ppl_ratio_tol=getattr(args, "self_opt_quality_long_ppl_ratio_tol", None),
-                quality_long_kl_tol=getattr(args, "self_opt_quality_long_kl_tol", None),
-                quality_long_compute_kl=bool(getattr(args, "self_opt_quality_long_kl", False)),
-                layerwise_cache=bool(getattr(args, "self_opt_layerwise_cache", False)),
-            )
 
         logger = None
         if args.instrument != "off" or args.live_plot or args.tb or bool(getattr(args, "wandb", False)):

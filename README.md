@@ -274,6 +274,38 @@ python3 vis_heatmap.py --ckpt runs/v21_combined_baseline_96/best.pt
 
 ---
 
+## Minimal CLI (intent-first)
+
+This project now defaults to a **minimal, self-optimizing CLI**: you specify *intent* (train/sample, model size, data, instrumentation) and the system self-tunes performance/kv-cache policies based on your hardware and workload.
+
+### Train (example)
+
+```bash
+python3 main.py --mode train --size 1b --exp train_decoupled_fast --data wiki.train.tokens --wandb
+```
+
+### Sample (example)
+
+```bash
+python3 main.py --mode sample --ckpt runs/1b_train_decoupled_fast/ckpt.pt --prompt-tokens "0 1 2 3" --max-new-tokens 64 --tb
+```
+
+### Expert escape hatch
+
+To access legacy/advanced flags (optimization knobs, kv-cache overrides, etc.), pass `--expert`.
+
+```bash
+python3 main.py --expert --mode sample --ckpt runs/1b_train_decoupled_fast/ckpt.pt --kv-policy "ksem=q4_0@32,kgeo=q8_0@32,v=q4_0@32,resid=128"
+```
+
+### Debug/repro
+
+Disable all self-optimization with:
+
+```bash
+python3 main.py --no-selfopt ...
+```
+
 ## 🔧 Model Configuration
 
 | Argument      | Default    | Description                                  |
