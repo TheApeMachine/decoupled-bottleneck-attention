@@ -121,7 +121,7 @@ def quantize_q4_0(x: torch.Tensor, spec: QuantSpec) -> Tuple[torch.Tensor, torch
 
     u_even = u[..., 0::2]
     u_odd = u[..., 1::2]
-    packed = (u_even * 16) + u_odd  # uint8
+    packed = (u_even << 4) | u_odd  # uint8
 
     packed = packed.reshape(*orig, pad_dim // 2)
     return packed, scale.to(torch.float16).reshape(*orig, nb)
@@ -138,9 +138,11 @@ def dequantize_q4_0(packed: torch.Tensor, scale: torch.Tensor, spec: QuantSpec) 
 
     orig = packed.shape[:-1]
     p2 = packed.reshape(-1, pad_dim // 2).to(torch.int16)
-    hi = p2 // 16
-    lo = p2 % 16
-    u = torch.stack([hi, lo], dim=-1).reshape(-1, pad_dim)
+    hi = (p2 >> 4) & 0xF
+    lo = p2 & 0xF
+    u = torch.empty((p2.size(0), pad_dim), device=p2.device, dtype=torch.int16)
+    u[:, 0::2] = hi
+    u[:, 1::2] = lo
     q = (u - 8).clamp(-8, 7).to(torch.float32)
 
     q = q.reshape(-1, nb, qb)
@@ -196,7 +198,7 @@ def quantize_nf4(x: torch.Tensor, spec: QuantSpec) -> Tuple[torch.Tensor, torch.
 
     idx_even = idx[..., 0::2]
     idx_odd = idx[..., 1::2]
-    packed = (idx_even * 16) + idx_odd
+    packed = (idx_even << 4) | idx_odd
     packed = packed.reshape(*orig, pad_dim // 2)
     return packed, scale.to(torch.float16).reshape(*orig, nb)
 
@@ -212,9 +214,12 @@ def dequantize_nf4(packed: torch.Tensor, scale: torch.Tensor, spec: QuantSpec) -
 
     orig = packed.shape[:-1]
     p2 = packed.reshape(-1, pad_dim // 2).to(torch.int16)
-    hi = p2 // 16
-    lo = p2 % 16
-    idx = torch.stack([hi, lo], dim=-1).reshape(-1, pad_dim).to(torch.long)
+    hi = (p2 >> 4) & 0xF
+    lo = p2 & 0xF
+    idx_i16 = torch.empty((p2.size(0), pad_dim), device=p2.device, dtype=torch.int16)
+    idx_i16[:, 0::2] = hi
+    idx_i16[:, 1::2] = lo
+    idx = idx_i16.to(torch.long)
 
     levels = NF4_LEVELS.to(device=packed.device, dtype=torch.float32)
     q = levels[idx]

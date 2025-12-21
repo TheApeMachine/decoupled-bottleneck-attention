@@ -33,8 +33,8 @@ class TestPolicyQualityRejectReasons(unittest.TestCase):
         self.assertTrue(any("ΔNLL" in r for r in reasons))
         self.assertTrue(any("ppl_ratio" in r for r in reasons))
 
-    def test_ignores_nan_metrics(self) -> None:
-        metrics = {"delta_nll": float("nan"), "ppl_ratio": float("nan"), "kl_base_cand": float("nan"), "max_abs_logit": float("nan")}
+    def test_rejects_nan_metrics(self) -> None:
+        metrics = {"delta_nll": float("nan"), "ppl_ratio": float("nan"), "kl_base_cand": float("nan"), "max_abs_logit": 0.0}
         reasons = policy_quality_reject_reasons(
             metrics,
             max_abs_logit_tol=0.5,
@@ -42,6 +42,8 @@ class TestPolicyQualityRejectReasons(unittest.TestCase):
             ppl_ratio_tol=1.02,
             kl_tol=0.1,
         )
-        self.assertEqual(reasons, [])
+        self.assertTrue(any("ΔNLL=nan" in r for r in reasons))
+        self.assertTrue(any("ppl_ratio=nan" in r for r in reasons))
+        self.assertTrue(any("KL=nan" in r for r in reasons))
 
 

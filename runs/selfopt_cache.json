@@ -1,5 +1,17 @@
 {
   "train_plans": {
+    "mps|train|cfg=44136fa355b3678a|auto|amp=1|ampdt=torch.bfloat16": {
+      "by_seq": {
+        "512": [
+          8,
+          1
+        ]
+      },
+      "iters": 2,
+      "target_gbs": 0,
+      "ts": 1766328869.195233,
+      "warmup": 1
+    },
     "mps|train|cfg=6623228c6c98481d|auto|amp=1|ampdt=torch.bfloat16": {
       "by_seq": {
         "512": [
