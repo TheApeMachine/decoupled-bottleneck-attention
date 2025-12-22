@@ -1,0 +1,51 @@
+{
+  "os": "macOS-15.6-arm64-arm-64bit",
+  "python": "CPython 3.12.12",
+  "startedAt": "2025-12-22T14:51:12.984714Z",
+  "args": [
+    "--mode",
+    "train",
+    "--exp",
+    "paper_baseline",
+    "--data",
+    "fineweb_100m.npy",
+    "--out-dir",
+    "runs/mac_fw100m_l12_baseline_s1337",
+    "--seed",
+    "1337",
+    "--steps",
+    "6000"
+  ],
+  "program": "/Users/theapemachine/go/src/github.com/theapemachine/experiments/main.py",
+  "codePath": "main.py",
+  "codePathLocal": "main.py",
+  "git": {
+    "remote": "https://github.com/TheApeMachine/experiments.git",
+    "commit": "d4e84dd3632f0fa8ef612a3da29e89fb50c1ebf7"
+  },
+  "email": "theapemachine@gmail.com",
+  "root": "runs/mac_fw100m_l12_baseline_s1337",
+  "host": "marvin-2.localdomain",
+  "executable": "/Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/bin/python3.12",
+  "cpu_count": 16,
+  "cpu_count_logical": 16,
+  "disk": {
+    "/": {
+      "total": "1995218165760",
+      "used": "1132914561024"
+    }
+  },
+  "memory": {
+    "total": "137438953472"
+  },
+  "apple": {
+    "name": "Apple M4 Max",
+    "ecpuCores": 4,
+    "pcpuCores": 12,
+    "gpuCores": 40,
+    "memoryGb": 128,
+    "swapTotalBytes": "6442450944",
+    "ramTotalBytes": "137438953472"
+  },
+  "writerId": "zgywkbcouqiwa8b72w5x0pq4efgdprh0"
+}

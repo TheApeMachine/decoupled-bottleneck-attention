@@ -1,0 +1,202 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            zgywkbcouqiwa8b72w5x0pq4efgdprh0:
+                apple:
+                    ecpuCores: 4
+                    gpuCores: 40
+                    memoryGb: 128
+                    name: Apple M4 Max
+                    pcpuCores: 12
+                    ramTotalBytes: "137438953472"
+                    swapTotalBytes: "6442450944"
+                args:
+                    - --mode
+                    - train
+                    - --exp
+                    - paper_baseline
+                    - --data
+                    - fineweb_100m.npy
+                    - --out-dir
+                    - runs/mac_fw100m_l12_baseline_s1337
+                    - --seed
+                    - "1337"
+                    - --steps
+                    - "6000"
+                codePath: main.py
+                codePathLocal: main.py
+                cpu_count: 16
+                cpu_count_logical: 16
+                disk:
+                    /:
+                        total: "1995218165760"
+                        used: "1132914561024"
+                email: theapemachine@gmail.com
+                executable: /Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/bin/python3.12
+                git:
+                    commit: d4e84dd3632f0fa8ef612a3da29e89fb50c1ebf7
+                    remote: https://github.com/TheApeMachine/experiments.git
+                host: marvin-2.localdomain
+                memory:
+                    total: "137438953472"
+                os: macOS-15.6-arm64-arm-64bit
+                program: /Users/theapemachine/go/src/github.com/theapemachine/experiments/main.py
+                python: CPython 3.12.12
+                root: runs/mac_fw100m_l12_baseline_s1337
+                startedAt: "2025-12-22T14:51:12.984714Z"
+                writerId: zgywkbcouqiwa8b72w5x0pq4efgdprh0
+        m: []
+        python_version: 3.12.12
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 13
+                - 16
+                - 61
+            "4": 3.12.12
+            "5": 0.23.1
+            "12": 0.23.1
+            "13": darwin-arm64
+args:
+    value:
+        adam_betas: 0.9,0.95
+        adam_eps: 1e-08
+        attn_dim: 256
+        attn_mode: standard
+        block: 512
+        ckpt: null
+        d_ff: 1024
+        d_model: 256
+        data: fineweb_100m.npy
+        data_dtype: int64
+        data_format: auto
+        dataset_tokens: 100000000
+        dataset_tokens_source: filename
+        device_type: mps
+        dropout: 0
+        embed_dim: 256
+        eval_every: 0
+        eval_iters: 20
+        exp: paper_baseline
+        exp_source: exp
+        geo_dim: 0
+        instrument: rich
+        kv_cache: fp16
+        kv_decode_block: 1024
+        kv_fused: auto
+        kv_head: null
+        kv_qblock: 32
+        kv_residual: 128
+        layers: 12
+        layers_source: out_dir
+        lion_betas: 0.9,0.99
+        live_plot: false
+        log_every: 10
+        lr: 0.0005095939393902741
+        lr_schedule: cosine
+        max_new_tokens: 50
+        min_lr: 5.095939393902742e-05
+        mlp: swiglu
+        mode: train
+        n_head: 2
+        no_decoupled_gate: false
+        no_learned_temp: false
+        no_rope: false
+        null_attn: false
+        opt_foreach: false
+        opt_fused: false
+        optimizer: adamw
+        out_dir: runs/mac_fw100m_l12_baseline_s1337
+        prompt_tokens: "0"
+        result: null
+        resume: false
+        resume_path: null
+        rope_base: 10000
+        save_every: 0
+        seed: 1337
+        selfopt_summary:
+            attn_dim: 256
+            attn_mode: standard
+            block: 512
+            d_ff: 1024
+            d_model: 256
+            data: fineweb_100m.npy
+            dataset_tokens: 100000000
+            dataset_tokens_source: filename
+            device_type: mps
+            embed_dim: 256
+            exp: paper_baseline
+            exp_source: exp
+            geo_dim: 0
+            head_dim: 128
+            layers: 12
+            layers_source: out_dir
+            lr: 0.0005095939393902741
+            lr_schedule: cosine
+            min_lr: 5.095939393902742e-05
+            mode: train
+            n_head: 2
+            null_attn: false
+            optimizer: adamw
+            out_dir: runs/mac_fw100m_l12_baseline_s1337
+            rope: true
+            sem_dim: 0
+            steps: 6000
+            target_params: 5000000
+            target_params_source: dataset_tokens/20
+            tie_qk: false
+            tokens_per_param: 20
+            warmup_steps: 0
+            weight_decay: 0.1
+        sem_dim: 0
+        size: null
+        steps: 6000
+        target_params: 5000000
+        target_params_source: dataset_tokens/20
+        tb: false
+        temperature: 1
+        tie_qk: false
+        tokenizer: tiktoken
+        tokens_per_param: 20
+        top_k: null
+        val_frac: 0.1
+        vocab_size: 50257
+        wandb: true
+        wandb_entity: p4n0p71c0n
+        wandb_group: null
+        wandb_mode: auto
+        wandb_name: null
+        wandb_project: production
+        wandb_tags: null
+        warmup_steps: 0
+        weight_decay: 0.1
+config:
+    value:
+        attn_dim: 104
+        attn_mode: standard
+        block_size: 512
+        d_ff: 600
+        d_model: 128
+        decoupled_gate: true
+        device: mps
+        dim_multiplier: 0
+        dropout: 0
+        embed_dim: 32
+        geo_dim: 0
+        head_dim: 32
+        head_policy: standard
+        kv_head: null
+        learned_temp: true
+        mlp: swiglu
+        n_head: 4
+        n_layer: 12
+        null_attn: false
+        rope: true
+        rope_base: 10000
+        sem_dim: 104
+        tie_qk: false
+        vocab_size: 50257

@@ -224,7 +224,11 @@ class RunLogger:
         if "wall_time" not in event:
             event["wall_time"] = now_iso()
         if self._jsonl_f is not None:
-            _ = self._jsonl_f.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
+            # Use default=str to ensure non-JSON-serializable objects (e.g. torch.device)
+            # never crash logging.
+            _ = self._jsonl_f.write(
+                json.dumps(event, separators=(",", ":"), ensure_ascii=False, default=str) + "\n"
+            )
             self._jsonl_f.flush()
         if self._tb is not None:
             self._tb.maybe_log(event)

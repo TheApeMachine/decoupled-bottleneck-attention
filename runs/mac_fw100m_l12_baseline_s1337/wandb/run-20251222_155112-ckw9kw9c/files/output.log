@@ -1,0 +1,38 @@
+[wandb] run: https://wandb.ai/p4n0p71c0n/production/runs/ckw9kw9c
+[3m                                                     Run Summary                                                      [0m
+┌──────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│[1m [0m[1mintent  [0m[1m [0m│ device=mps  exp=paper_baseline (exp)  data=fineweb_100m.npy  out_dir=runs/mac_fw100m_l12_baseline_s1337 │
+│[1m          [0m│ dataset_tokens=100_000_000 (filename)  target_params=5_000_000 (dataset_tokens/20)  layers=12 (out_dir) │
+│[1m [0m[1mdata    [0m[1m [0m│ n_tokens=100_000_000                                                                                    │
+│[1m [0m[1mmodel   [0m[1m [0m│ block=512  d_model=128  n_head=4  head_dim=32  d_ff=600  embed_dim=32                                   │
+│[1m [0m[1mattn    [0m[1m [0m│ mode=standard  attn_dim=104  sem_dim=104  geo_dim=0  rope=1  tie_qk=0  null_attn=0                      │
+│[1m [0m[1mtraincfg[0m[1m [0m│ steps=6_000  lr=0.00051  wd=0.1  opt=adamw  sched=cosine  warmup=100  min_lr=5.1e-05                    │
+└──────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ [33mtrain_seq_len[0m=[1;36m512[0m [33meval_seq_len[0m=[1;36m512[0m [33mbs[0m=[1;36m8[0m [33mga[0m=[1;36m37[0m [33mamp[0m=[1;36m1[0m [33mamp_dtype[0m=[35mtorch[0m.bfloat16
+ starting: [33msteps[0m=[1;36m6000[0m [1m([0mcfg.[33msteps[0m=[1;36m6000[0m[1m)[0m [33mstart_step[0m=[1;36m0[0m [33mwarmup[0m=[1;36m100[0m [33mlog_every[0m=[1;36m10[0m [33meval_every[0m=[1;36m0[0m [33msave_every[0m=[1;36m1000[0m [1m([0meval recommended ~[1;36m100[0m[1m)[0m
+ [33mstep[0m=[1;36m0[0m [33mloss[0m=[1;36m10[0m[1;36m.8179[0m [33mlr[0m=[1;36m5[0m[1;36m.1e-06[0m tok/[33ms[0m=[1;36m41493[0m [33mdt[0m=[1;36m3[0m[1;36m.[0m653s
+ [33mstep[0m=[1;36m10[0m [33mloss[0m=[1;36m10[0m[1;36m.7963[0m [33mlr[0m=[1;36m5[0m[1;36m.61e-05[0m tok/[33ms[0m=[1;36m43246[0m [33mdt[0m=[1;36m3[0m[1;36m.[0m504s
+ [33mstep[0m=[1;36m20[0m [33mloss[0m=[1;36m10[0m[1;36m.7874[0m [33mlr[0m=[1;36m0[0m[1;36m.000107[0m tok/[33ms[0m=[1;36m42239[0m [33mdt[0m=[1;36m3[0m[1;36m.[0m588s
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/main.py", line 16, in <module>
+    raise SystemExit(main(sys.argv[1:]))
+                     ^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/main.py", line 12, in main
+    return run(args)
+           ^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/cli.py", line 148, in run
+    run_single(args, device)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/runner.py", line 76, in run_single
+    run_train(args=args, device=device, self_opt=self_opt_cfg)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/runner_train_impl/run.py", line 18, in run_train
+    Trainer(args=args, device=device, self_opt=self_opt).run()
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/production/runner_train_impl/trainer.py", line 345, in run
+    cast(_BackwardTensor, loss_to_back).backward()
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/lib/python3.12/site-packages/torch/_tensor.py", line 625, in backward
+    torch.autograd.backward(
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/lib/python3.12/site-packages/torch/autograd/__init__.py", line 354, in backward
+    _engine_run_backward(
+  File "/Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/lib/python3.12/site-packages/torch/autograd/graph.py", line 841, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

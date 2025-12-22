@@ -1,0 +1,28 @@
+{
+  "defaults": {
+    "eval_iters": 20,
+    "instrument": "rich",
+    "save_every": 0,
+    "tokenizer": "tiktoken",
+    "val_frac": 0.1,
+    "wandb": true,
+    "wandb_entity": "p4n0p71c0n",
+    "wandb_mode": "online",
+    "wandb_project": "production"
+  },
+  "group": "mac_fw100m",
+  "id": "mac_fw100m_l12_decoupled_notieqk_s1337",
+  "resume_effective": "none",
+  "spec": {
+    "exp": "paper_decoupled_notieqk",
+    "expected": {
+      "attn_mode": "decoupled",
+      "null_attn": false,
+      "rope": true,
+      "tie_qk": false
+    },
+    "id": "mac_fw100m_l12_decoupled_notieqk_s1337",
+    "seed": 1337,
+    "steps": 6000
+  }
+}

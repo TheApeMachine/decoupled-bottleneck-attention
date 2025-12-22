@@ -35,3 +35,6 @@ paper.log
 paper.out
 *.wandb
 *.zip
+CRITIQUE.md
+.gitignore
+DIFFUSERS-ADDON.md

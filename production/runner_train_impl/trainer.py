@@ -100,7 +100,29 @@ class Trainer:
 
         # Config-only fast path (used by harness validation).
         if int(self.run_cfg.steps) == 0:
+            slog.close()
             return
+
+        # Initialize structured run logging for real training runs only (avoid
+        # creating W&B runs during harness config-validation `--steps 0`).
+        from production.instrumentation import RunLogger
+
+        if (
+            str(self.run_cfg.instrument) != "off"
+            or bool(self.run_cfg.live_plot)
+            or bool(self.run_cfg.tb)
+            or bool(self.run_cfg.wandb)
+        ):
+            slog.run_logger = RunLogger(
+                str(self.run_cfg.out_dir),
+                instrument=str(self.run_cfg.instrument),
+                cfg=cfg,
+                args=self.args,
+                device=self.device,
+                live_plot=bool(self.run_cfg.live_plot),
+                tb=bool(self.run_cfg.tb),
+                wandb=bool(self.run_cfg.wandb),
+            )
 
         with console.status("Building model…"):
             model = self._build_model(cfg)
@@ -401,6 +423,23 @@ class Trainer:
                 except (OSError, UnicodeEncodeError):
                     pass
 
+                # Structured event (for JSONL/TB/W&B).
+                try:
+                    slog.log(
+                        {
+                            "type": "train",
+                            "step": int(step),
+                            "loss": float(loss_avg),
+                            "lr": float(lr),
+                            "tok_s": float(tok_s),
+                            "seq_len": float(train_sl),
+                            "gbs": float(tok_per_step),
+                            "ms_step": float(dt * 1000.0),
+                        }
+                    )
+                except (OSError, RuntimeError, ValueError, TypeError):
+                    pass
+
             do_eval = (
                 eval_every > 0
                 and step > 0
@@ -450,6 +489,19 @@ class Trainer:
                 except (OSError, UnicodeEncodeError):
                     pass
 
+                # Structured eval event (for JSONL/TB/W&B).
+                try:
+                    slog.log(
+                        {
+                            "type": "eval",
+                            "step": int(step),
+                            "train_loss": float(tr_loss),
+                            "val_loss": float(va_loss),
+                        }
+                    )
+                except (OSError, RuntimeError, ValueError, TypeError):
+                    pass
+
             if do_save or is_last:
                 last_save = step
                 _ = save_checkpoint(
@@ -460,6 +512,11 @@ class Trainer:
                     cfg=cfg,
                     extra={"best_val": float(best_val)},
                 )
+
+        try:
+            slog.finalize(best_val=float(best_val), last_step=int(total_steps))
+        finally:
+            slog.close()
 
     def _build_model(self, cfg: ModelConfig) -> torch.nn.Module:
         """Why: isolate model construction so dtype/compile planning can wrap it cleanly."""

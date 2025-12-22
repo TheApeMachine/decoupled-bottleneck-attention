@@ -1,0 +1,25 @@
+{
+  "defaults": {
+    "eval_iters": 20,
+    "instrument": "rich",
+    "save_every": 0,
+    "tokenizer": "tiktoken",
+    "val_frac": 0.1,
+    "wandb": true,
+    "wandb_entity": "p4n0p71c0n",
+    "wandb_mode": "online",
+    "wandb_project": "production"
+  },
+  "group": "mac_fw100m",
+  "id": "mac_fw100m_l12_gqa_s1338",
+  "resume_effective": "none",
+  "spec": {
+    "exp": "paper_gqa",
+    "expected": {
+      "attn_mode": "gqa"
+    },
+    "id": "mac_fw100m_l12_gqa_s1338",
+    "seed": 1338,
+    "steps": 6000
+  }
+}

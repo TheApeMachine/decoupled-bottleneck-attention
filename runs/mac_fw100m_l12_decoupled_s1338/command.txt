@@ -1,0 +1,1 @@
+/Users/theapemachine/go/src/github.com/theapemachine/experiments/.venv/bin/python3.12 main.py --mode train --exp paper_decoupled --data fineweb_100m.npy --out-dir runs/mac_fw100m_l12_decoupled_s1338 --seed 1338 --steps 6000
