@@ -2,7 +2,7 @@
 
 # Default python used by utility targets (tests, analysis helpers, etc.)
 # Override if you want a specific interpreter, e.g. `make test PY=python3.12`.
-PY ?= python
+PY ?= python3
 
 train:
 	# python3 v1_gradient_grouping.py --mode baseline 

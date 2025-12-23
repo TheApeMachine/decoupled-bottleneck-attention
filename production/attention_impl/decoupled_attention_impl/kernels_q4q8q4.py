@@ -37,6 +37,9 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
         def kv_decode_update_decoupled_q4q8q4(
             q_sem_ptr,
             q_geo_ptr,
+            k_sem_null_ptr,
+            k_geo_null_ptr,
+            v_null_ptr,
             k_sem_q_ptr,
             k_sem_s_ptr,
             k_geo_q_ptr,
@@ -59,10 +62,18 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             GEO_SCALE: tl.constexpr,
             BLOCK_N: tl.constexpr,
             NUM_SUBBLOCKS: tl.constexpr,
+            HAS_NULL: tl.constexpr,
+            SEED_NULL: tl.constexpr,
             stride_qsem_b: tl.constexpr,
             stride_qsem_h: tl.constexpr,
             stride_qgeo_b: tl.constexpr,
             stride_qgeo_h: tl.constexpr,
+            stride_ksn_b: tl.constexpr,
+            stride_ksn_h: tl.constexpr,
+            stride_kgn_b: tl.constexpr,
+            stride_kgn_h: tl.constexpr,
+            stride_vn_b: tl.constexpr,
+            stride_vn_h: tl.constexpr,
             stride_ksq_b: tl.constexpr,
             stride_ksq_t: tl.constexpr,
             stride_kss_b: tl.constexpr,
@@ -111,6 +122,27 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
                 mask=dg < HD_GEO,
                 other=0.0,
             ).to(tl.float32)
+
+            if HAS_NULL and SEED_NULL:
+                    ksn = tl.load(
+                        k_sem_null_ptr + b * stride_ksn_b + h * stride_ksn_h + ds,
+                        mask=ds < HD_SEM,
+                        other=0.0,
+                    ).to(tl.float32)
+                    kgn = tl.load(
+                        k_geo_null_ptr + b * stride_kgn_b + h * stride_kgn_h + dg,
+                        mask=dg < HD_GEO,
+                        other=0.0,
+                    ).to(tl.float32)
+                    s_null = tl.sum(q_sem * ksn, axis=0) * SEM_SCALE + tl.sum(q_geo * kgn, axis=0) * GEO_SCALE
+                    vn = tl.load(
+                        v_null_ptr + b * stride_vn_b + h * stride_vn_h + dv,
+                        mask=dv < HD_V,
+                        other=0.0,
+                    ).to(tl.float32)
+                    m = s_null
+                    d = 1.0
+                    o = vn
 
             # Static loop: process NUM_SUBBLOCKS contiguous blocks of BLOCK_N tokens.
             for sb in tl.static_range(NUM_SUBBLOCKS):
@@ -329,6 +361,11 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
 
         @triton.jit
         def kv_decode_reduce_partitions(
+            q_sem_ptr,
+            q_geo_ptr,
+            k_sem_null_ptr,
+            k_geo_null_ptr,
+            v_null_ptr,
             m_part_ptr,
             d_part_ptr,
             o_part_ptr,
@@ -337,7 +374,23 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             o_ptr,
             P: tl.int32,
             NUM_PARTS: tl.constexpr,
+            HAS_NULL: tl.constexpr,
+            H: tl.constexpr,
+            HD_SEM: tl.constexpr,
+            HD_GEO: tl.constexpr,
             HD_V: tl.constexpr,
+            SEM_SCALE: tl.constexpr,
+            GEO_SCALE: tl.constexpr,
+            stride_qsem_b: tl.constexpr,
+            stride_qsem_h: tl.constexpr,
+            stride_qgeo_b: tl.constexpr,
+            stride_qgeo_h: tl.constexpr,
+            stride_ksn_b: tl.constexpr,
+            stride_ksn_h: tl.constexpr,
+            stride_kgn_b: tl.constexpr,
+            stride_kgn_h: tl.constexpr,
+            stride_vn_b: tl.constexpr,
+            stride_vn_h: tl.constexpr,
             stride_mp_row: tl.constexpr,
             stride_mp_part: tl.constexpr,
             stride_dp_row: tl.constexpr,
@@ -351,7 +404,42 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             Why: combine local (m, d, o) from partitions into a single online-softmax state.
             """
             pid_row = tl.program_id(0)  # 0..BH-1
+            b = pid_row // H
+            h = pid_row - b * H
             dv = tl.arange(0, HD_V)
+
+            if HAS_NULL:
+                ds = tl.arange(0, HD_SEM)
+                dg = tl.arange(0, HD_GEO)
+                qsem = tl.load(
+                    q_sem_ptr + b * stride_qsem_b + h * stride_qsem_h + ds,
+                    mask=ds < HD_SEM,
+                    other=0.0,
+                ).to(tl.float32)
+                qgeo = tl.load(
+                    q_geo_ptr + b * stride_qgeo_b + h * stride_qgeo_h + dg,
+                    mask=dg < HD_GEO,
+                    other=0.0,
+                ).to(tl.float32)
+                ksn = tl.load(
+                    k_sem_null_ptr + b * stride_ksn_b + h * stride_ksn_h + ds,
+                    mask=ds < HD_SEM,
+                    other=0.0,
+                ).to(tl.float32)
+                kgn = tl.load(
+                    k_geo_null_ptr + b * stride_kgn_b + h * stride_kgn_h + dg,
+                    mask=dg < HD_GEO,
+                    other=0.0,
+                ).to(tl.float32)
+                s_null = tl.sum(qsem * ksn, axis=0) * SEM_SCALE + tl.sum(qgeo * kgn, axis=0) * GEO_SCALE
+                vn = tl.load(
+                    v_null_ptr + b * stride_vn_b + h * stride_vn_h + dv,
+                    mask=dv < HD_V,
+                    other=0.0,
+                ).to(tl.float32)
+            else:
+                s_null = tl.full([], -float("inf"), tl.float32)
+                vn = tl.zeros([HD_V], dtype=tl.float32)
 
             # First pass: global max over partitions.
             m = -float("inf")
@@ -364,6 +452,9 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
                     other=-float("inf"),
                 )
                 m = tl.maximum(m, mp)
+
+            if HAS_NULL:
+                m = tl.maximum(m, s_null)
 
             # Second pass: combine denominators and outputs.
             d = 0.0
@@ -391,8 +482,11 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
                 d += dp * scale
                 o += op * scale
 
+            if HAS_NULL:
+                s = tl.exp(s_null - m)
+                d += s
+                o += vn * s
+
             tl.store(m_ptr + pid_row, m)
             tl.store(d_ptr + pid_row, d)
             tl.store(o_ptr + pid_row * stride_o + dv, o, mask=dv < HD_V)
-
-

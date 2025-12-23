@@ -134,6 +134,14 @@ class DecoupledBottleneckAttention(nn.Module):
 
         # (Decoupled) Optional per-head sem/geo mixing gate (created only in decoupled mode).
         self.decoupled_gate_logit: torch.Tensor | None = None
+        self.decoupled_gate_proj: nn.Linear | None = None
+
+        self.long_seq_mem_k_linear: nn.Linear | None = None
+        self.long_seq_mem_v_linear: nn.Linear | None = None
+        self.long_seq_mem_k_conv: nn.Conv1d | None = None
+        self.long_seq_mem_v_conv: nn.Conv1d | None = None
+        self.long_seq_mem_k_alpha: torch.Tensor | None = None
+        self.long_seq_mem_v_alpha: torch.Tensor | None = None
 
         def must_div(name: str, total: int, denom: int) -> int:
             if total % denom != 0:
@@ -247,6 +255,34 @@ class DecoupledBottleneckAttention(nn.Module):
                 self.k_null = None
                 if cfg.decoupled_gate:
                     self.decoupled_gate_logit = nn.Parameter(torch.zeros(n_head))
+                    if bool(cfg.decoupled_gate_dynamic):
+                        self.decoupled_gate_proj = nn.Linear(cfg.d_model, n_head, bias=False)
+                        nn.init.zeros_(self.decoupled_gate_proj.weight)
+
+                sem_head_dim = int(self.sem_head_dim)
+                v_head_dim = int(self.v_head_dim)
+                self.long_seq_mem_k_linear = nn.Linear(sem_head_dim, sem_head_dim, bias=False)
+                self.long_seq_mem_v_linear = nn.Linear(v_head_dim, v_head_dim, bias=False)
+                self.long_seq_mem_k_conv = nn.Conv1d(
+                    sem_head_dim,
+                    sem_head_dim,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    groups=sem_head_dim,
+                    bias=False,
+                )
+                self.long_seq_mem_v_conv = nn.Conv1d(
+                    v_head_dim,
+                    v_head_dim,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    groups=v_head_dim,
+                    bias=False,
+                )
+                self.long_seq_mem_k_alpha = nn.Parameter(torch.zeros(()))
+                self.long_seq_mem_v_alpha = nn.Parameter(torch.zeros(()))
 
             case _:
                 # `_normalize_attn_mode` returns a string; keep match exhaustive and fail loud.
@@ -284,6 +320,17 @@ class DecoupledBottleneckAttention(nn.Module):
         s = self.logit_scale.float().clamp(min=-8.0, max=8.0)
         scale = torch.exp(s).to(dtype=q.dtype).view(1, -1, 1, 1)
         return q * scale
+
+    def _decoupled_gate(self, x: torch.Tensor) -> torch.Tensor | None:
+        if self.decoupled_gate_logit is None:
+            return None
+        gate_bias = self.decoupled_gate_logit.view(1, -1, 1, 1).to(dtype=torch.float32, device=x.device)
+        if self.decoupled_gate_proj is None:
+            gate_logit = gate_bias
+        else:
+            dyn = self.decoupled_gate_proj.forward(x).transpose(1, 2).unsqueeze(-1).to(dtype=torch.float32)
+            gate_logit = gate_bias + dyn
+        return torch.sigmoid(gate_logit).to(dtype=x.dtype)
 
     def _sdp(
         self,
@@ -455,8 +502,6 @@ class DecoupledBottleneckAttention(nn.Module):
             raise RuntimeError("Triton not available")
         if q_sem.device.type != "cuda":
             raise RuntimeError("Fused decode requires CUDA")
-        if self.cfg.null_attn:
-            raise RuntimeError("Fused decode currently assumes null_attn=False")
 
         if not (cache.k_sem.kind == "q4_0" and cache.k_geo.kind == "q8_0" and cache.v.kind == "q4_0"):
             raise RuntimeError("Fused decode q4q8q4 requires k_sem=q4_0, k_geo=q8_0, v=q4_0")
@@ -475,10 +520,24 @@ class DecoupledBottleneckAttention(nn.Module):
         q_sem2 = q_sem[:, :, 0, :].contiguous().to(torch.float16)
         q_geo2 = q_geo[:, :, 0, :].contiguous().to(torch.float16)
 
+        has_null = bool(self.cfg.null_attn)
+        if has_null:
+            ksn = self._shape(cast(torch.Tensor, self.k_sem_null).expand(B, 1, -1), sem_head_dim)[:, :, 0, :].contiguous().to(torch.float16)
+            kgn = self._shape(cast(torch.Tensor, self.k_geo_null).expand(B, 1, -1), geo_head_dim)[:, :, 0, :].contiguous().to(torch.float16)
+            vn = self._shape(cast(torch.Tensor, self.v_null).expand(B, 1, -1), v_head_dim)[:, :, 0, :].contiguous().to(torch.float16)
+        else:
+            ksn = kgn = vn = q_sem2
+
         BH = B * H
         m = torch.full((BH,), -float("inf"), device=q_sem.device, dtype=torch.float32)
         d = torch.zeros((BH,), device=q_sem.device, dtype=torch.float32)
         o = torch.zeros((BH, v_head_dim), device=q_sem.device, dtype=torch.float32)
+
+        if has_null and L_prefix == 0:
+            s_null = (q_sem2.float() * ksn.float()).sum(dim=-1) * float(sem_scale) + (q_geo2.float() * kgn.float()).sum(dim=-1) * float(geo_scale)
+            m = s_null.reshape(BH)
+            d = torch.ones((BH,), device=q_sem.device, dtype=torch.float32)
+            o = vn.float().reshape(BH, v_head_dim)
 
         if L_prefix > 0:
             block_n = int(getattr(cache, "block_n", 128)) or 128
@@ -505,6 +564,9 @@ class DecoupledBottleneckAttention(nn.Module):
                 _ = launch(
                     q_sem2,
                     q_geo2,
+                    ksn,
+                    kgn,
+                    vn,
                     ksq,
                     kss,
                     kgq,
@@ -527,10 +589,18 @@ class DecoupledBottleneckAttention(nn.Module):
                     GEO_SCALE=geo_scale,
                     BLOCK_N=block_n,
                     NUM_SUBBLOCKS=num_sub,
+                    HAS_NULL=has_null,
+                    SEED_NULL=bool(has_null and start == 0),
                     stride_qsem_b=q_sem2.stride(0),
                     stride_qsem_h=q_sem2.stride(1),
                     stride_qgeo_b=q_geo2.stride(0),
                     stride_qgeo_h=q_geo2.stride(1),
+                    stride_ksn_b=ksn.stride(0),
+                    stride_ksn_h=ksn.stride(1),
+                    stride_kgn_b=kgn.stride(0),
+                    stride_kgn_h=kgn.stride(1),
+                    stride_vn_b=vn.stride(0),
+                    stride_vn_h=vn.stride(1),
                     stride_ksq_b=ksq.stride(0),
                     stride_ksq_t=ksq.stride(1),
                     stride_kss_b=kss.stride(0),
@@ -602,8 +672,6 @@ class DecoupledBottleneckAttention(nn.Module):
             raise RuntimeError("Triton not available")
         if q_sem.device.type != "cuda":
             raise RuntimeError("Fused decode requires CUDA")
-        if self.cfg.null_attn:
-            raise RuntimeError("Fused decode currently assumes null_attn=False")
         if not (cache.k_sem.kind == "q4_0" and cache.k_geo.kind == "q8_0" and cache.v.kind == "q4_0"):
             raise RuntimeError("Fused decode q4q8q4 requires k_sem=q4_0, k_geo=q8_0, v=q4_0")
         if not (cache.k_sem.spec.qblock == cache.k_geo.spec.qblock == cache.v.spec.qblock == 32):
@@ -620,6 +688,14 @@ class DecoupledBottleneckAttention(nn.Module):
 
         q_sem2 = q_sem[:, :, 0, :].contiguous().to(torch.float16)
         q_geo2 = q_geo[:, :, 0, :].contiguous().to(torch.float16)
+
+        has_null = bool(self.cfg.null_attn)
+        if has_null:
+            ksn = self._shape(cast(torch.Tensor, self.k_sem_null).expand(B, 1, -1), sem_head_dim)[:, :, 0, :].contiguous().to(torch.float16)
+            kgn = self._shape(cast(torch.Tensor, self.k_geo_null).expand(B, 1, -1), geo_head_dim)[:, :, 0, :].contiguous().to(torch.float16)
+            vn = self._shape(cast(torch.Tensor, self.v_null).expand(B, 1, -1), v_head_dim)[:, :, 0, :].contiguous().to(torch.float16)
+        else:
+            ksn = kgn = vn = q_sem2
 
         BH = B * H
 
@@ -646,6 +722,11 @@ class DecoupledBottleneckAttention(nn.Module):
         d = torch.empty((BH,), device=q_sem.device, dtype=torch.float32)
         o = torch.empty((BH, v_head_dim), device=q_sem.device, dtype=torch.float32)
 
+        num_warps_part = int(getattr(cache, "num_warps_part", 4))
+        num_stages_part = int(getattr(cache, "num_stages_part", 2))
+        num_warps_reduce = int(getattr(cache, "num_warps_reduce", 1))
+        num_stages_reduce = int(getattr(cache, "num_stages_reduce", 1))
+
         if L_prefix > 0:
             ksq = cache.k_sem.q
             kss = cache.k_sem.s
@@ -655,14 +736,8 @@ class DecoupledBottleneckAttention(nn.Module):
             vs = cache.v.s
             assert ksq is not None and kss is not None and kgq is not None and kgs is not None and vq is not None and vs is not None
 
-            num_warps_part = int(getattr(cache, "num_warps_part", 4))
-            num_stages_part = int(getattr(cache, "num_stages_part", 2))
-            num_warps_reduce = int(getattr(cache, "num_warps_reduce", 1))
-            num_stages_reduce = int(getattr(cache, "num_stages_reduce", 1))
-
             kernel_part = _kv_decode_partition_stats_decoupled_q4q8q4
-            kernel_reduce = _kv_decode_reduce_partitions
-            if kernel_part is None or kernel_reduce is None:
+            if kernel_part is None:
                 raise RuntimeError("Fused decode kernels are unavailable")
 
             grid1 = (BH, P)
@@ -722,37 +797,56 @@ class DecoupledBottleneckAttention(nn.Module):
                 num_stages=num_stages_part,
             )
 
-            # Reduce
-            # NUM_PARTS is a constexpr loop bound. Round up to power-of-two-ish small bound.
-            num_parts_const = 1
-            while num_parts_const < P:
-                num_parts_const *= 2
-            grid2 = (BH,)
-            launch_reduce = kernel_reduce.__getitem__(grid2)
-            _ = launch_reduce(
-                m_part,
-                d_part,
-                o_part,
-                m,
-                d,
-                o,
-                P,
-                NUM_PARTS=num_parts_const,
-                HD_V=v_head_dim,
-                stride_mp_row=m_part.stride(0),
-                stride_mp_part=m_part.stride(1),
-                stride_dp_row=d_part.stride(0),
-                stride_dp_part=d_part.stride(1),
-                stride_op_row=o_part.stride(0),
-                stride_op_part=o_part.stride(1),
-                stride_o=o.stride(0),
-                num_warps=num_warps_reduce,
-                num_stages=num_stages_reduce,
-            )
-        else:
-            _ = m.fill_(-float("inf"))
-            _ = d.zero_()
-            _ = o.zero_()
+        kernel_reduce = _kv_decode_reduce_partitions
+        if kernel_reduce is None:
+            raise RuntimeError("Fused decode kernels are unavailable")
+
+        num_parts_const = 1
+        while num_parts_const < P:
+            num_parts_const *= 2
+        grid2 = (BH,)
+        launch_reduce = kernel_reduce.__getitem__(grid2)
+        _ = launch_reduce(
+            q_sem2,
+            q_geo2,
+            ksn,
+            kgn,
+            vn,
+            m_part,
+            d_part,
+            o_part,
+            m,
+            d,
+            o,
+            P,
+            NUM_PARTS=num_parts_const,
+            HAS_NULL=has_null,
+            H=H,
+            HD_SEM=sem_head_dim,
+            HD_GEO=geo_head_dim,
+            HD_V=v_head_dim,
+            SEM_SCALE=sem_scale,
+            GEO_SCALE=geo_scale,
+            stride_qsem_b=q_sem2.stride(0),
+            stride_qsem_h=q_sem2.stride(1),
+            stride_qgeo_b=q_geo2.stride(0),
+            stride_qgeo_h=q_geo2.stride(1),
+            stride_ksn_b=ksn.stride(0),
+            stride_ksn_h=ksn.stride(1),
+            stride_kgn_b=kgn.stride(0),
+            stride_kgn_h=kgn.stride(1),
+            stride_vn_b=vn.stride(0),
+            stride_vn_h=vn.stride(1),
+            stride_mp_row=m_part.stride(0),
+            stride_mp_part=m_part.stride(1),
+            stride_dp_row=d_part.stride(0),
+            stride_dp_part=d_part.stride(1),
+            stride_op_row=o_part.stride(0),
+            stride_op_part=o_part.stride(1),
+            stride_o=o.stride(0),
+            num_warps=num_warps_reduce,
+            num_stages=num_stages_reduce,
+        )
 
         # Residual tail via Python streaming updater (tiny).
         _ = cache_len
@@ -1202,10 +1296,11 @@ class DecoupledBottleneckAttention(nn.Module):
 
         # Optional per-head sem/geo mixing gate.
         # Implemented as a query scaling so it works with both streaming decode and fused kernels.
-        if self.decoupled_gate_logit is not None:
-            g = torch.sigmoid(self.decoupled_gate_logit).view(1, -1, 1, 1).to(dtype=qsh.dtype, device=qsh.device)
-            qsh = qsh * (2.0 * g)  # mean 1.0 at init (g=0.5)
-            qgh = qgh * (2.0 * (1.0 - g))
+        g = self._decoupled_gate(x)
+        if g is not None:
+            gq = g.to(dtype=qsh.dtype, device=qsh.device)
+            qsh = qsh * (2.0 * gq)
+            qgh = qgh * (2.0 - 2.0 * gq)
 
         if cache is None:
             # Training / full-attn:
@@ -1216,20 +1311,19 @@ class DecoupledBottleneckAttention(nn.Module):
                 # the geometric path high-resolution in the recent window.
                 #
                 # Trigger only at long sequence lengths to minimize behavioral drift at typical training ctx.
-                if bool(getattr(cfg, "train_long_seq_enabled", True)) and self.training and attn_mask is None:
+                if bool(cfg.train_long_seq_enabled) and self.training and attn_mask is None:
                     dev = x.device.type
                     # Auto-trigger at long seq: start once we approach the configured block_size (but never below 3k).
-                    long_seq_threshold = getattr(cfg, "train_long_seq_threshold", None)
+                    long_seq_threshold = cfg.train_long_seq_threshold
                     if long_seq_threshold is None:
                         long_seq_threshold = max(3072, int(0.75 * cfg.block_size))
                         if dev == "mps":
                             long_seq_threshold = min(int(long_seq_threshold), 3072)
                     if T >= int(long_seq_threshold):
                         try:
-                            # Optional overrides from the resolved model config (derived from KVSelfOptConfig).
-                            mem_block = getattr(cfg, "train_long_seq_mem_block", None)
-                            local_window = getattr(cfg, "train_long_seq_local_window", None)
-                            q_chunk = getattr(cfg, "train_long_seq_q_chunk", None)
+                            mem_block = cfg.train_long_seq_mem_block
+                            local_window = cfg.train_long_seq_local_window
+                            q_chunk = cfg.train_long_seq_q_chunk
 
                             # Fill any missing knobs with conservative, backend-aware defaults.
                             if mem_block is None:
@@ -1249,17 +1343,36 @@ class DecoupledBottleneckAttention(nn.Module):
 
                             q_cat_full = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
 
+                            mem_summarizer = str(cfg.train_long_seq_mem_summarizer).strip().lower()
+                            if mem_summarizer == "conv" and dev != "cuda":
+                                mem_summarizer = "linear"
+                            if mem_summarizer not in ("mean", "linear", "conv"):
+                                mem_summarizer = "mean"
+
                             if n_blocks > 0:
-                                k_sem_blocks = (
-                                    ksh[:, :, : n_blocks * mem_block, :]
-                                    .reshape(B0, H0, n_blocks, mem_block, sem_hd)
-                                    .mean(dim=3)
-                                )
-                                v_blocks = (
-                                    vh[:, :, : n_blocks * mem_block, :]
-                                    .reshape(B0, H0, n_blocks, mem_block, v_hd)
-                                    .mean(dim=3)
-                                )
+                                k_sem_tok = ksh[:, :, : n_blocks * mem_block, :].reshape(B0, H0, n_blocks, mem_block, sem_hd)
+                                v_tok = vh[:, :, : n_blocks * mem_block, :].reshape(B0, H0, n_blocks, mem_block, v_hd)
+                                k_sem_blocks = k_sem_tok.mean(dim=3)
+                                v_blocks = v_tok.mean(dim=3)
+
+                                if mem_summarizer == "linear":
+                                    k_alpha = cast(torch.Tensor, self.long_seq_mem_k_alpha).to(dtype=k_sem_blocks.dtype)
+                                    v_alpha = cast(torch.Tensor, self.long_seq_mem_v_alpha).to(dtype=v_blocks.dtype)
+                                    k_lin = cast(nn.Linear, self.long_seq_mem_k_linear)
+                                    v_lin = cast(nn.Linear, self.long_seq_mem_v_linear)
+                                    k_sem_blocks = k_sem_blocks + k_alpha * k_lin.forward(k_sem_blocks)
+                                    v_blocks = v_blocks + v_alpha * v_lin.forward(v_blocks)
+                                elif mem_summarizer == "conv":
+                                    k_alpha = cast(torch.Tensor, self.long_seq_mem_k_alpha).to(dtype=k_sem_blocks.dtype)
+                                    v_alpha = cast(torch.Tensor, self.long_seq_mem_v_alpha).to(dtype=v_blocks.dtype)
+                                    k_conv = cast(nn.Conv1d, self.long_seq_mem_k_conv)
+                                    v_conv = cast(nn.Conv1d, self.long_seq_mem_v_conv)
+                                    k_in = k_sem_tok.reshape(B0 * H0 * n_blocks, mem_block, sem_hd).transpose(1, 2).contiguous()
+                                    v_in = v_tok.reshape(B0 * H0 * n_blocks, mem_block, v_hd).transpose(1, 2).contiguous()
+                                    k_conv_sum = k_conv.forward(k_in).mean(dim=2).view(B0, H0, n_blocks, sem_hd)
+                                    v_conv_sum = v_conv.forward(v_in).mean(dim=2).view(B0, H0, n_blocks, v_hd)
+                                    k_sem_blocks = k_sem_blocks + k_alpha * k_conv_sum
+                                    v_blocks = v_blocks + v_alpha * v_conv_sum
                                 zeros_geo = k_sem_blocks.new_zeros((B0, H0, n_blocks, geo_head_dim))
                                 k_mem_cat_all = torch.cat([k_sem_blocks, zeros_geo], dim=-1)
                             else:
@@ -1326,7 +1439,6 @@ class DecoupledBottleneckAttention(nn.Module):
             out = torch.matmul(attn, vals)
 
             y = self.out_proj.forward(self._merge(out))
-            y = self.out_proj.forward(self._merge(out))
             return y, None
 
         assert isinstance(cache, DecoupledLayerKVCache)
@@ -1387,8 +1499,7 @@ class DecoupledBottleneckAttention(nn.Module):
 
                 def fused_ok() -> bool:
                     return bool(
-                        (not cfg.null_attn)
-                        and TRITON_AVAILABLE
+                        TRITON_AVAILABLE
                         and cache.k_sem.kind == "q4_0"
                         and cache.k_geo.kind == "q8_0"
                         and cache.v.kind == "q4_0"
@@ -1545,6 +1656,5 @@ class DecoupledBottleneckAttention(nn.Module):
             attn = self.drop.forward(attn)
             out = torch.matmul(attn, vh_all)
 
-            y = self.out_proj.forward(self._merge(out))
         y = self.out_proj.forward(self._merge(out))
         return y, cache

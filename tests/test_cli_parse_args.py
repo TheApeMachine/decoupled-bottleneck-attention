@@ -19,6 +19,18 @@ class TestCLIParseArgs(unittest.TestCase):
         self.assertIn("Hint: this project uses an intent-first CLI", err)
         self.assertIn("high-level intent", err)
 
+    def test_minimal_parse_accepts_kv_policy_override(self) -> None:
+        args = parse_args(["--mode", "sample", "--ckpt", "runs/x/best.pt", "--kv-policy", "ksem=q4_0@32,kgeo=q8_0@32,v=q4_0@32,resid=128"])
+        self.assertEqual(args.mode, "sample")
+        self.assertEqual(args.kv_policy, "ksem=q4_0@32,kgeo=q8_0@32,v=q4_0@32,resid=128")
+
+    def test_deprecated_kv_flags_hint_kv_policy(self) -> None:
+        buf = io.StringIO()
+        with redirect_stderr(buf), self.assertRaises(SystemExit):
+            _ = parse_args(["--kv-cache-k-sem", "q4_0"])
+        err = buf.getvalue()
+        self.assertIn("Use --kv-policy for a unified configuration.", err)
+
     def test_rejects_removed_expert_flag(self) -> None:
         buf = io.StringIO()
         with redirect_stderr(buf), self.assertRaises(SystemExit):

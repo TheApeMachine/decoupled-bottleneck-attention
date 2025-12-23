@@ -23,6 +23,7 @@ from production.data import TokenView
 from production.model import GPT, ModelConfig
 from production.optimizer.counts import CountCodec
 from production.run_config import TrainConfig
+from production.runtime_tuning import KVSelfOptConfig
 from production.selfopt_logging import SelfOptLogger
 
 from production.runner_train_impl.amp import autocast_ctx, make_grad_scaler
@@ -65,10 +66,10 @@ class _CudaGraphStepMarker(Protocol):
 class Trainer:
     """Orchestrates a single training run."""
 
-    def __init__(self, *, args: argparse.Namespace, device: torch.device, self_opt: object | None) -> None:
+    def __init__(self, *, args: argparse.Namespace, device: torch.device, self_opt: KVSelfOptConfig | None) -> None:
         self.args: argparse.Namespace = args
         self.device: torch.device = device
-        self.self_opt: object | None = self_opt
+        self.self_opt: KVSelfOptConfig | None = self_opt
         self.run_cfg: TrainConfig = TrainConfig.from_args(args)
 
     def run(self) -> None:
@@ -606,6 +607,13 @@ class Trainer:
         cfg.tie_qk = bool(self.run_cfg.tie_qk)
         cfg.null_attn = bool(self.run_cfg.null_attn)
         cfg.learned_temp = (not bool(self.run_cfg.no_learned_temp))
+
+        if self.self_opt is not None:
+            cfg.train_long_seq_enabled = bool(self.self_opt.train_long_seq_enabled)
+            cfg.train_long_seq_threshold = self.self_opt.train_long_seq_threshold
+            cfg.train_long_seq_mem_block = self.self_opt.train_long_seq_mem_block
+            cfg.train_long_seq_local_window = self.self_opt.train_long_seq_local_window
+            cfg.train_long_seq_q_chunk = self.self_opt.train_long_seq_q_chunk
 
         # Optional diffusion head (adapter)
         cfg.diffusion_head = bool(self.run_cfg.diffusion_head)

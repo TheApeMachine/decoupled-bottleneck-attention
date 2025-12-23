@@ -2,13 +2,21 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TypeVar
 
-# Python 3.12+ has `typing.override`; older runtimes should use typing_extensions.
+# Python 3.12+ has `typing.override`; fall back to a no-op decorator.
 try:  # pragma: no cover
-    from typing import override  # type: ignore[attr-defined]
+    from typing import override
 except ImportError:  # pragma: no cover
-    from typing_extensions import override
+    try:
+        from typing_extensions import override
+    except ImportError:  # pragma: no cover
+        _F = TypeVar("_F", bound=Callable[..., object])
+
+        def override(f: _F) -> _F:
+            return f
 
 from production.selfopt_cache import as_str_object_dict
 

@@ -67,6 +67,7 @@ class ModelConfig:
     geo_dim: int = 0
 
     decoupled_gate: bool = True
+    decoupled_gate_dynamic: bool = True
 
     rope: bool = True
     rope_base: float = 10000.0
@@ -77,6 +78,13 @@ class ModelConfig:
 
     mlp: Literal["swiglu", "gelu"] = "swiglu"
     dropout: float = 0.0
+
+    train_long_seq_enabled: bool = True
+    train_long_seq_threshold: int | None = None
+    train_long_seq_mem_block: int | None = None
+    train_long_seq_local_window: int | None = None
+    train_long_seq_q_chunk: int | None = None
+    train_long_seq_mem_summarizer: Literal["mean", "linear", "conv"] = "conv"
 
     # Optional diffusion head (embedding-space denoiser conditioned on x_small).
     diffusion_head: bool = False
@@ -120,6 +128,54 @@ class ModelConfig:
             self.dropout = 0.0
         self.dropout = float(min(max(self.dropout, 0.0), 1.0))
 
+        try:
+            self.train_long_seq_enabled = bool(self.train_long_seq_enabled)
+        except (TypeError, ValueError):
+            self.train_long_seq_enabled = True
+
+        def _opt_int(v: object, *, default: int | None) -> int | None:
+            if v is None:
+                return default
+            if isinstance(v, bool):
+                return int(v)
+            if isinstance(v, int):
+                return int(v)
+            if isinstance(v, float):
+                return int(v)
+            if isinstance(v, str):
+                s = v.strip()
+                if s == "":
+                    return default
+                try:
+                    return int(float(s))
+                except ValueError:
+                    return default
+            return default
+
+        self.train_long_seq_threshold = _opt_int(self.train_long_seq_threshold, default=None)
+        if self.train_long_seq_threshold is not None:
+            self.train_long_seq_threshold = int(max(0, int(self.train_long_seq_threshold)))
+
+        self.train_long_seq_mem_block = _opt_int(self.train_long_seq_mem_block, default=None)
+        if self.train_long_seq_mem_block is not None:
+            self.train_long_seq_mem_block = int(max(1, int(self.train_long_seq_mem_block)))
+
+        self.train_long_seq_local_window = _opt_int(self.train_long_seq_local_window, default=None)
+        if self.train_long_seq_local_window is not None:
+            self.train_long_seq_local_window = int(max(0, int(self.train_long_seq_local_window)))
+
+        self.train_long_seq_q_chunk = _opt_int(self.train_long_seq_q_chunk, default=None)
+        if self.train_long_seq_q_chunk is not None:
+            self.train_long_seq_q_chunk = int(max(1, int(self.train_long_seq_q_chunk)))
+
+        mem_sum = str(self.train_long_seq_mem_summarizer).strip().lower()
+        if mem_sum == "conv":
+            self.train_long_seq_mem_summarizer = "conv"
+        elif mem_sum == "linear":
+            self.train_long_seq_mem_summarizer = "linear"
+        else:
+            self.train_long_seq_mem_summarizer = "mean"
+
         # Diffusion head normalization (safe defaults, clamp ranges).
         try:
             self.diffusion_head = bool(self.diffusion_head)
@@ -161,6 +217,15 @@ class ModelConfig:
         if (not math.isfinite(self.diffusion_head_loss_weight)) or self.diffusion_head_loss_weight < 0.0:
             self.diffusion_head_loss_weight = 0.0
         self.diffusion_head_scheduler = str(self.diffusion_head_scheduler or "ddim").strip().lower() or "ddim"
+
+        try:
+            self.decoupled_gate = bool(self.decoupled_gate)
+        except (TypeError, ValueError):
+            self.decoupled_gate = True
+        try:
+            self.decoupled_gate_dynamic = bool(self.decoupled_gate_dynamic)
+        except (TypeError, ValueError):
+            self.decoupled_gate_dynamic = True
 
     @classmethod
     def from_dict(cls, cfg: Mapping[str, object], *, device: torch.device | None = None) -> "ModelConfig":
@@ -259,6 +324,8 @@ class ModelConfig:
                     inst.geo_dim = _as_int(v, 0)
                 case "decoupled_gate":
                     inst.decoupled_gate = _as_bool(v, True)
+                case "decoupled_gate_dynamic":
+                    inst.decoupled_gate_dynamic = _as_bool(v, True)
                 case "rope":
                     inst.rope = _as_bool(v, True)
                 case "rope_base":
@@ -274,6 +341,19 @@ class ModelConfig:
                     inst.mlp = "gelu" if mlp == "gelu" else "swiglu"
                 case "dropout":
                     inst.dropout = _as_float(v, 0.0)
+                case "train_long_seq_enabled":
+                    inst.train_long_seq_enabled = _as_bool(v, True)
+                case "train_long_seq_threshold":
+                    inst.train_long_seq_threshold = None if v is None else _as_int(v, 0)
+                case "train_long_seq_mem_block":
+                    inst.train_long_seq_mem_block = None if v is None else _as_int(v, 0)
+                case "train_long_seq_local_window":
+                    inst.train_long_seq_local_window = None if v is None else _as_int(v, 0)
+                case "train_long_seq_q_chunk":
+                    inst.train_long_seq_q_chunk = None if v is None else _as_int(v, 0)
+                case "train_long_seq_mem_summarizer":
+                    s = str(v).strip().lower()
+                    inst.train_long_seq_mem_summarizer = "conv" if s == "conv" else ("linear" if s == "linear" else "mean")
                 case "diffusion_head":
                     inst.diffusion_head = _as_bool(v, False)
                 case "diffusion_head_num_train_timesteps":
