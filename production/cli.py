@@ -13,8 +13,11 @@ except ImportError:  # pragma: no cover
     from typing_extensions import override
 import copy
 import math
+import torch
+from production.config import pick_device, set_seed
 from production.config import EXP_PRESETS
-
+from production.optimizer import apply_dynamic_config
+from production.runner import run_single
 
 class _MinimalParser(argparse.ArgumentParser):
     @override
@@ -81,8 +84,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     _ = ap.add_argument("--max-new-tokens", type=int, default=50)
     _ = ap.add_argument("--temperature", type=float, default=1.0)
     _ = ap.add_argument("--top-k", type=int, default=None)
-    # Default-on behavior: if user doesn't specify, we enable W&B by internal defaults.
-    # `BooleanOptionalAction` provides `--wandb/--no-wandb` with default=None.
     _ = ap.add_argument(
         "--wandb",
         action=argparse.BooleanOptionalAction,
@@ -118,12 +119,6 @@ def run(args: argparse.Namespace) -> int:
             raise ValueError("--spec-disable-below-accept must be between 0.0 and 1.0") from e
         if not math.isfinite(sdb_f) or sdb_f < 0.0 or sdb_f > 1.0:
             raise ValueError("--spec-disable-below-accept must be between 0.0 and 1.0")
-
-    # Local imports so `parse_args()` (and `--help`) don't require torch.
-    import torch
-    from production.config import pick_device, set_seed
-    from production.optimizer import apply_dynamic_config
-    from production.runner import run_single
 
     device = pick_device(getattr(args, "device", None))
     set_seed(int(getattr(args, "seed", 1337)))
