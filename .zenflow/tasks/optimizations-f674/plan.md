@@ -52,13 +52,14 @@ Save to `{@artifacts_path}/plan.md`.
 
 ---
 
-### [ ] Step: Implementation
+### [x] Step: Implementation
+<!-- chat-id: 4cba42fd-60c8-4946-873b-1abadaaba2ad -->
 
 This section is the actionable implementation checklist. Each step is intended to be PR-sized, independently verifiable, and to preserve the decoupled additive-logit + causal/cache invariants.
 
 ## Implementation Plan (PR-sized slices)
 
-### [ ] Step: Fix decoupled null `out_proj` duplication
+### [x] Step: Fix decoupled null `out_proj` duplication
 
 - **Files:** `production/attention_impl/decoupled_attention_impl/attention_core.py`
 - **Bug:** Manual decoupled `null_attn` training/full-attn path applies `out_proj` twice.
@@ -67,7 +68,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - `make test`
   - Add/extend a unit test that would have caught double-application (e.g., compare against a reference path or assert that the forward equals a single-projection reference when dropout=0).
 
-### [ ] Step: Make long-seq approximation knobs explicit (single runtime source)
+### [x] Step: Make long-seq approximation knobs explicit (single runtime source)
 
 - **Files:** `production/model/config.py`, `production/runner_train_impl/trainer.py`, `production/attention_impl/decoupled_attention_impl/attention_core.py`
 - **Contract:** Attention must not rely on `getattr(cfg, ...)` for undeclared/hidden config.
@@ -83,7 +84,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - `make test`
   - Add/update a config round-trip test ensuring these fields survive `ModelConfig.from_dict()` and influence the attention branch selection.
 
-### [ ] Step: Learned memory summarizer (mean/linear/conv) for long-seq path
+### [x] Step: Learned memory summarizer (mean/linear/conv) for long-seq path
 
 - **Files:** `production/attention_impl/decoupled_attention_impl/attention_core.py` (optionally factor into a small helper module under `production/attention_impl/decoupled_attention_impl/`)
 - **Contract:** Preserve the additive-logit invariant by keeping a single SDPA over a single token axis: semantic-only memory tokens + full-res local tokens.
@@ -102,7 +103,7 @@ This section is the actionable implementation checklist. Each step is intended t
     - shape invariants
     - mean-matching at init (`linear/conv` equals mean for identical inputs, within tolerance)
 
-### [ ] Step: Causal input-conditioned sem/geo gating (default on)
+### [x] Step: Causal input-conditioned sem/geo gating (default on)
 
 - **Files:** `production/attention_impl/decoupled_attention_impl/attention_core.py`, `production/model/config.py`
 - **Contracts:**
@@ -121,7 +122,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - `make test`
   - Add regression tests for shape/dtype stability and for “gate depends only on token-local features” (no reduction over the sequence dimension).
 
-### [ ] Step: Null token integration into Triton fused decode (1-pass)
+### [x] Step: Null token integration into Triton fused decode (1-pass)
 
 - **Files:** `production/attention_impl/decoupled_attention_impl/kernels_q4q8q4.py`, `production/attention_impl/decoupled_attention_impl/attention_core.py`
 - **Kernel contract:**
@@ -143,7 +144,7 @@ This section is the actionable implementation checklist. Each step is intended t
 - **Verification:**
   - Add a CUDA-only parity test comparing fused vs streaming decode with `null_attn=True` for 1-pass mode.
 
-### [ ] Step: Null token integration into Triton fused decode (2-pass)
+### [x] Step: Null token integration into Triton fused decode (2-pass)
 
 - **Files:** `production/attention_impl/decoupled_attention_impl/kernels_q4q8q4.py`, `production/attention_impl/decoupled_attention_impl/attention_core.py`
 - **Correctness requirement:** Null must be included exactly once globally (not once per partition).
@@ -161,7 +162,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - Extend parity tests to cover 2-pass mode.
   - Include cases where `L_prefix > 0` and `L_prefix == 0` (empty prefix / empty cache).
 
-### [ ] Step: Parity test matrix (explicit minimum coverage)
+### [x] Step: Parity test matrix (explicit minimum coverage)
 
 - **Applies to:** Triton null integration steps (1-pass and 2-pass).
 - **Minimum functional coverage:**
@@ -170,7 +171,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - `B>1` and `H>1` to catch stride/indexing issues.
   - If strides are supported for null tensors: contiguous and non-contiguous null tensors (otherwise enforce contiguous with clear runtime checks).
 
-### [ ] Step: KV policy escape hatch in minimal CLI (`--kv-policy`)
+### [x] Step: KV policy escape hatch in minimal CLI (`--kv-policy`)
 
 - **Files:** `production/cli.py`, `production/run_config.py`, `production/runner_sample.py`
 - **Behavior:**
@@ -188,7 +189,7 @@ This section is the actionable implementation checklist. Each step is intended t
     - successful parsing
     - error hint for deprecated flags
 
-### [ ] Step: Audit and de-duplicate dead/overlapping KV policy infrastructure
+### [x] Step: Audit and de-duplicate dead/overlapping KV policy infrastructure
 
 - **Files:** `production/model/policy.py`, `production/model/runtime.py` (plus any call sites discovered)
 - **Goal:** Reduce unused complexity without breaking live generation/tuning.
@@ -201,7 +202,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - Clear single source of truth for runtime KV policy selection.
 - **Verification:** `make test` (and any existing runtime-tuning quality tests).
 
-### [ ] Step: Update training run summaries (KV policy + null attention state)
+### [x] Step: Update training run summaries (KV policy + null attention state)
 
 - **Files:** `production/runner_train_impl/summary.py`
 - **Define semantics:** training does not normally execute fused decode, so the summary should report *capability* (what this build/device could use at inference), not “path taken”.
@@ -214,7 +215,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - `make test`
   - Add/update a narrow unit test around the summary emitter if one exists; otherwise add a focused test for the new rows.
 
-### [ ] Step: Add long-seq drift validator (metrics-style, feasible)
+### [x] Step: Add long-seq drift validator (metrics-style, feasible)
 
 - **Files:** Add `production/validate_long_seq_drift.py`
 - **Approach:**
@@ -225,7 +226,7 @@ This section is the actionable implementation checklist. Each step is intended t
   - Ensure importability under `make test`.
   - Include a representative invocation in `--help`.
 
-### [ ] Step: Final verification
+### [x] Step: Final verification
 
 - **CPU-only:** `make test`
 - **CUDA (if available):** Run the new fused-vs-streaming parity tests for both 1-pass and 2-pass kernels with `null_attn=True`.

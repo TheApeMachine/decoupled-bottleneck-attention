@@ -1,19 +1,40 @@
 """
 CLI for the production system.
 """
-from __future__ import annotations
-import argparse
-import sys
-from typing import NoReturn, cast
 
-# Python 3.12+ has `typing.override`; older runtimes should use typing_extensions.
-try:  # pragma: no cover
-    from typing import override  # type: ignore[attr-defined]
-except ImportError:  # pragma: no cover
-    from typing_extensions import override
+from __future__ import annotations
+
+import argparse
 import copy
 import math
-from production.config import EXP_PRESETS
+import sys
+from collections.abc import Callable
+from typing import NoReturn, TypeVar, cast
+
+try:  # pragma: no cover
+    import torch
+except Exception:  # pragma: no cover
+    torch = None
+
+# Python 3.12+ has `typing.override`; fall back to a no-op decorator.
+try:  # pragma: no cover
+    from typing import override
+except ImportError:  # pragma: no cover
+    try:
+        from typing_extensions import override
+    except ImportError:  # pragma: no cover
+        _F = TypeVar("_F", bound=Callable[..., object])
+
+        def override(f: _F) -> _F:
+            return f
+
+from production.config import EXP_PRESETS, pick_device, set_seed
+try:  # pragma: no cover
+    from production.optimizer import apply_dynamic_config
+    from production.runner import run_single
+except Exception:  # pragma: no cover
+    apply_dynamic_config = None
+    run_single = None
 
 
 class _MinimalParser(argparse.ArgumentParser):
@@ -21,6 +42,8 @@ class _MinimalParser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:  # pragma: no cover
         # Provide a stronger hint for common migration failure mode.
         if "unrecognized arguments" in message:
+            if "--kv-cache" in message or "--kv-qblock" in message:
+                message = f"{message}\n\nHint: Use --kv-policy for a unified configuration."
             message = (
                 f"{message}\n\n"
                 f"Hint: this project uses an intent-first CLI and does not accept legacy optimization flags. "
@@ -81,6 +104,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     _ = ap.add_argument("--max-new-tokens", type=int, default=50)
     _ = ap.add_argument("--temperature", type=float, default=1.0)
     _ = ap.add_argument("--top-k", type=int, default=None)
+    _ = ap.add_argument(
+        "--kv-policy",
+        type=str,
+        default=None,
+        help="Advanced: unified decoupled KV cache policy override (e.g. ksem=q4_0@32,kgeo=q8_0@32,v=q4_0@32,resid=128).",
+    )
     # Default-on behavior: if user doesn't specify, we enable W&B by internal defaults.
     # `BooleanOptionalAction` provides `--wandb/--no-wandb` with default=None.
     _ = ap.add_argument(
@@ -119,11 +148,8 @@ def run(args: argparse.Namespace) -> int:
         if not math.isfinite(sdb_f) or sdb_f < 0.0 or sdb_f > 1.0:
             raise ValueError("--spec-disable-below-accept must be between 0.0 and 1.0")
 
-    # Local imports so `parse_args()` (and `--help`) don't require torch.
-    import torch
-    from production.config import pick_device, set_seed
-    from production.optimizer import apply_dynamic_config
-    from production.runner import run_single
+    if torch is None or apply_dynamic_config is None or run_single is None:
+        raise RuntimeError("torch (and runtime deps) are required to run; install torch to use this CLI")
 
     device = pick_device(getattr(args, "device", None))
     set_seed(int(getattr(args, "seed", 1337)))
@@ -131,7 +157,7 @@ def run(args: argparse.Namespace) -> int:
     # Matmul precision hint (mostly impacts float32 matmuls).
     try:
         if hasattr(torch, "set_float32_matmul_precision"):
-            torch.set_float32_matmul_precision(str(getattr(args, "matmul_precision", "high")))
+            cast(object, torch).set_float32_matmul_precision(str(getattr(args, "matmul_precision", "high")))
     except (RuntimeError, ValueError, TypeError):
         pass
 
@@ -140,12 +166,12 @@ def run(args: argparse.Namespace) -> int:
         for exp in ["paper_baseline", "paper_bottleneck", "paper_decoupled", "paper_gqa"]:
             a2 = copy.deepcopy(args)
             a2.exp = exp
-            apply_dynamic_config(a2, device=device)
-            run_single(a2, device)
+            cast(object, apply_dynamic_config)(a2, device=device)
+            cast(object, run_single)(a2, device)
         return 0
 
-    apply_dynamic_config(args, device=device)
-    run_single(args, device)
+    cast(object, apply_dynamic_config)(args, device=device)
+    cast(object, run_single)(args, device)
     return 0
 
 

@@ -43,12 +43,7 @@ class KVCachePolicy:
 
     def short(self) -> str:
         """Return a compact string representation."""
-        return (
-            f"ksem={self.k_sem_kind}@{self.k_sem_qblock},"
-            f"kgeo={self.k_geo_kind}@{self.k_geo_qblock},"
-            f"v={self.v_kind}@{self.v_qblock},"
-            f"resid={self.residual_len}"
-        )
+        return f"ksem={self.k_sem_kind}@{self.k_sem_qblock},kgeo={self.k_geo_kind}@{self.k_geo_qblock},v={self.v_kind}@{self.v_qblock},resid={self.residual_len}"
 
     @classmethod
     def parse(cls, s: str) -> "KVCachePolicy":
@@ -116,5 +111,4 @@ class KVCachePolicy:
             v_qblock=int(v_qb),
             residual_len=int(resid),
         )
-
 
