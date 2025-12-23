@@ -57,7 +57,7 @@ class ManifestTest(unittest.TestCase):
             )
 
             m = Manifest.from_path(path)
-            self.assertEqual(m.model.network.layers[0].type, LayerType.LINEAR)
+            self.assertEqual(m.model.topology.layers[0].type, LayerType.LINEAR)
 
     def test_load_json_manifest(self) -> None:
         """
@@ -98,7 +98,7 @@ class ManifestTest(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
 
             m = Manifest.from_path(path)
-            self.assertEqual(m.model.network.type.value, "stacked")
+            self.assertEqual(m.model.topology.type.value, "stacked")
 
     def test_rejects_invalid_layer_shape(self) -> None:
         """

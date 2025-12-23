@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 from caramba.config.mode import Mode
 from caramba.config.model import ModelConfig, ModelType
-from caramba.config.network import NetworkConfig, NetworkType
+from caramba.config.topology import TopologyConfig, TopologyType
 from caramba.config.defaults import Defaults
 from caramba.config.group import Group
 from caramba.config.manifest import Manifest
@@ -33,7 +33,6 @@ class CLI(argparse.ArgumentParser):
     """
     CLI is a minimal, intent-first command line interface.
     """
-
     def __init__(self) -> None:
         super().__init__(
             prog="caramba",
@@ -172,8 +171,8 @@ class CLI(argparse.ArgumentParser):
             notes="",
             model=ModelConfig(
                 type=ModelType.TRANSFORMER,
-                network=NetworkConfig(
-                    type=NetworkType.STACKED,
+                topology=TopologyConfig(
+                    type=TopologyType.STACKED,
                     layers=[],
                 ),
             ),

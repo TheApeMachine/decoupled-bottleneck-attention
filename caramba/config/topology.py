@@ -1,5 +1,5 @@
 """
-network provides the network configuration.
+topology provides the network topology configuration.
 """
 from __future__ import annotations
 import enum
@@ -8,9 +8,9 @@ from pydantic import BaseModel
 from caramba.config.layer import LayerConfig
 
 
-class NetworkType(str, enum.Enum):
+class TopologyType(str, enum.Enum):
     """
-    NetworkType provides the network type.
+    TopologyType provides the network topology type.
     """
     STACKED = "stacked"
     RESIDUAL = "residual"
@@ -19,14 +19,11 @@ class NetworkType(str, enum.Enum):
     BRANCHING = "branching"
     CYCLIC = "cyclic"
     RECURRENT = "recurrent"
-    CONVOLUTIONAL = "convolutional"
-    POOLING = "pooling"
-    NORMALIZATION = "normalization"
+    
 
-
-class NetworkConfig(BaseModel):
+class TopologyConfig(BaseModel):
     """
-    NetworkConfig provides the network configuration.
+    TopologyConfig provides the network topology configuration.
     """
-    type: NetworkType
+    type: TopologyType
     layers: list[LayerConfig]

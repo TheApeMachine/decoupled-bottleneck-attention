@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from torch import nn, Tensor
-from caramba.config.network import NetworkConfig
-from caramba.network.stacked import Stacked
+from caramba.config.topology import TopologyConfig
+from caramba.topology.stacked import Stacked
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,9 +22,9 @@ class Transformer(nn.Module):
     """
     Transformer provides the transformer model.
     """
-    def __init__(self, config: NetworkConfig) -> None:
+    def __init__(self, config: TopologyConfig) -> None:
         super().__init__()
-        self.config: NetworkConfig = config
+        self.config: TopologyConfig = config
         self.network: nn.Module = Stacked(config)
 
     def forward(self, x: Tensor) -> Tensor:

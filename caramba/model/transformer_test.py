@@ -7,7 +7,7 @@ from __future__ import annotations
 import unittest
 import torch
 from caramba.model.transformer import Transformer
-from caramba.config.network import NetworkConfig, NetworkType
+from caramba.config.topology import TopologyConfig, TopologyType
 from caramba.config.layer import (
     LinearLayerConfig,
     LayerNormLayerConfig,
@@ -25,7 +25,7 @@ class TransformerTest(unittest.TestCase):
         """
         test the forward pass of the transformer model.
         """
-        transformer = Transformer(NetworkConfig(layers=[
+        transformer = Transformer(TopologyConfig(layers=[
             LinearLayerConfig(
                 type=LayerType.LINEAR,
                 d_in=128,
@@ -46,8 +46,8 @@ class TransformerTest(unittest.TestCase):
             ),
             DropoutLayerConfig(type=LayerType.DROPOUT, p=0.1),
         ],
-            type=NetworkType.STACKED,
+            type=TopologyType.STACKED,
         ))
-        
+
         x: torch.Tensor = torch.randn(1, 10, 128)
         self.assertEqual(transformer(x).shape, (1, 10, 128))

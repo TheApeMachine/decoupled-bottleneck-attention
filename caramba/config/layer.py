@@ -15,7 +15,10 @@ class LayerType(str, enum.Enum):
     LAYER_NORM = "layer_norm"
     LINEAR = "linear"
     SEQUENTIAL = "sequential"
+    CONVOLUTIONAL = "convolutional"
     MULTIHEAD = "multihead"
+    POOLING = "pooling"
+    NORMALIZATION = "normalization"
     DROPOUT = "dropout"
 
 

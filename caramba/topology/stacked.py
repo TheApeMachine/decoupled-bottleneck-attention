@@ -7,7 +7,7 @@ from torch import nn, Tensor
 from typing_extensions import override
 
 from caramba.config.layer import LayerType
-from caramba.config.network import NetworkConfig
+from caramba.config.topology import TopologyConfig
 from caramba.layer.linear import Linear
 from caramba.layer.normalize import Normalize
 from caramba.layer.multihead import Multihead
@@ -18,9 +18,9 @@ class Stacked(nn.Module):
     """
     Stacked provides the stacked network.
     """
-    def __init__(self, config: NetworkConfig) -> None:
+    def __init__(self, config: TopologyConfig) -> None:
         super().__init__()
-        self.config: NetworkConfig = config
+        self.config: TopologyConfig = config
         self.layers: nn.ModuleList = nn.ModuleList([])
 
     def build(self) -> None:

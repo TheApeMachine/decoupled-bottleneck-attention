@@ -6,7 +6,7 @@ from __future__ import annotations
 import enum
 from pydantic import BaseModel, Field
 from caramba.config.embedder import EmbedderConfig, NoEmbedderConfig
-from caramba.config.network import NetworkConfig
+from caramba.config.topology import TopologyConfig
 
 
 class ModelType(str, enum.Enum):
@@ -24,4 +24,4 @@ class ModelConfig(BaseModel):
     """
     type: ModelType
     embedder: EmbedderConfig = Field(default_factory=NoEmbedderConfig)
-    network: NetworkConfig
+    topology: TopologyConfig
