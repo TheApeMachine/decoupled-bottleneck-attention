@@ -13,10 +13,14 @@ class Sequential(nn.Module):
     """
     Sequential provides a sequential topology.
     """
-    def __init__(self, config: SequentialTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: SequentialTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: SequentialTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override
     def forward(self, x: Tensor) -> Tensor:

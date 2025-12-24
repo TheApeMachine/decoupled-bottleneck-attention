@@ -13,10 +13,14 @@ class Nested(nn.Module):
     """
     Nested provides a nested topology.
     """
-    def __init__(self, config: NestedTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: NestedTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: NestedTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override
     def forward(self, x: Tensor) -> Tensor:

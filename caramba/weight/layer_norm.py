@@ -4,9 +4,12 @@ layer_norm provides layer norm weight containers.
 
 from __future__ import annotations
 
+import torch
 from torch import Tensor, nn
 import torch.nn.init as init
 from typing_extensions import override
+
+from caramba.weight.guard import require_bool, require_int
 
 
 class LayerNormWeight(nn.Module):
@@ -21,15 +24,18 @@ class LayerNormWeight(nn.Module):
         elementwise_affine: bool,
     ) -> None:
         super().__init__()
-        self.d_model: int = int(d_model)
-        self.elementwise_affine: bool = bool(elementwise_affine)
+        self.d_model: int = require_int("d_model", d_model, ge=1)
+        self.elementwise_affine: bool = require_bool(
+            "elementwise_affine",
+            elementwise_affine,
+        )
 
         self.weight: nn.Parameter | None = None
         self.bias: nn.Parameter | None = None
 
         if self.elementwise_affine:
-            self.weight = nn.Parameter(Tensor(self.d_model))
-            self.bias = nn.Parameter(Tensor(self.d_model))
+            self.weight = nn.Parameter(torch.empty((self.d_model,)))
+            self.bias = nn.Parameter(torch.empty((self.d_model,)))
             self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -42,11 +48,11 @@ class LayerNormWeight(nn.Module):
             init.zeros_(self.bias)
 
     @override
-    def forward(self, *args: object, **kwargs: object) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         forward is intentionally unsupported for weight containers.
         """
-        _ = (args, kwargs)
+        _ = x
         raise RuntimeError(
             "LayerNormWeight is a weight container; call Normalize.forward."
         )

@@ -4,7 +4,18 @@ layer provides layer modules.
 from __future__ import annotations
 
 from torch import nn
-from caramba.config.layer import LayerConfig, LayerType
+from caramba.builder import Builder
+from caramba.config.layer import (
+    AttentionLayerConfig,
+    DropoutLayerConfig,
+    LayerConfig,
+    LayerNormLayerConfig,
+    LinearLayerConfig,
+    MultiheadLayerConfig,
+    RMSNormLayerConfig,
+    SwiGLULayerConfig,
+)
+from caramba.config.topology import TopologyConfig, _TopologyConfigBase
 from caramba.layer.attention import Attention
 from caramba.layer.linear import Linear
 from caramba.layer.normalize import Normalize
@@ -14,29 +25,31 @@ from caramba.layer.multihead import Multihead
 from caramba.layer.dropout import Dropout
 
 
-def build(config: LayerConfig) -> nn.Module:
+class LayerBuilder(Builder):
     """
-    build builds a layer module from config.
+    LayerBuilder builds layer modules from config.
     """
-    out = None
-
-    match config.type:
-        case LayerType.LINEAR:
-            out = Linear(config)
-        case LayerType.LAYER_NORM:
-            out = Normalize(config)
-        case LayerType.RMS_NORM:
-            out = RMSNorm(config)
-        case LayerType.MULTIHEAD:
-            out = Multihead(config)
-        case LayerType.DROPOUT:
-            out = Dropout(config)
-        case LayerType.ATTENTION:
-            out = Attention(config)
-        case LayerType.SWIGLU:
-            out = SwiGLU(config)
-
-    if out is None:
-        raise ValueError(f"Unsupported layer type: {config.type}")
-
-    return out
+    def build(self, config: LayerConfig | TopologyConfig) -> nn.Module:
+        """
+        build builds a layer module from config.
+        """
+        if isinstance(config, _TopologyConfigBase):
+            raise ValueError(f"LayerBuilder only accepts LayerConfig, got {type(config)!r}")
+        match config:
+            case LinearLayerConfig() as c:
+                out = Linear(c)
+            case LayerNormLayerConfig() as c:
+                out = Normalize(c)
+            case RMSNormLayerConfig() as c:
+                out = RMSNorm(c)
+            case MultiheadLayerConfig() as c:
+                out = Multihead(c)
+            case DropoutLayerConfig() as c:
+                out = Dropout(c)
+            case AttentionLayerConfig() as c:
+                out = Attention(c)
+            case SwiGLULayerConfig() as c:
+                out = SwiGLU(c)
+            case _:
+                raise ValueError(f"Unsupported layer type: {config.type}")
+        return out

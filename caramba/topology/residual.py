@@ -14,10 +14,14 @@ class Residual(nn.Module):
     """
     Residual provides a residual topology.
     """
-    def __init__(self, config: ResidualTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: ResidualTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: ResidualTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
 
     @override
@@ -25,9 +29,7 @@ class Residual(nn.Module):
         """
         forward pass for the residual topology.
         """
+        residual = x
         for layer in self.layers:
-            residual = x
             x = layer.forward(x)
-            x = residual + x
-
-        return x
+        return residual + x

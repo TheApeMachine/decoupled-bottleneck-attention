@@ -1,24 +1,22 @@
 version: 1
-name: dba
-notes: "Decoupled Bottleneck Attention expressed via composable blocks."
+name: llama_block
+notes: "Minimal Llama block expressed as Residual([Norm, Attention]) + Residual([Norm, SwiGLU])."
 vars:
   d_model: 128
   n_heads: 4
   n_kv_heads: 4
-  sem_dim: 32
-  geo_dim: 32
   rope_base: 10000.0
-  rope_dim: 16
+  rope_dim: 32
   d_ff: 256
   n_blocks: 2
 defaults:
   tokenizer: tiktoken
   val_frac: 0.1
   instrument: rich
-  wandb: true
+  wandb: false
   wandb_project: ""
   wandb_entity: ""
-  wandb_mode: online
+  wandb_mode: offline
   eval_iters: 20
   save_every: 0
 model:
@@ -35,16 +33,13 @@ model:
           - type: attention
             operation: { type: attention, is_causal: true, dropout_p: 0.0 }
             weight:
-              type: decoupled_attention
+              type: llama_attention
               d_model: "${d_model}"
               n_heads: "${n_heads}"
               n_kv_heads: "${n_kv_heads}"
-              sem_dim: "${sem_dim}"
-              geo_dim: "${geo_dim}"
               rope_base: "${rope_base}"
               rope_dim: "${rope_dim}"
               bias: false
-              gate: true
       - type: residual
         layers:
           - type: rms_norm
@@ -64,8 +59,8 @@ groups:
     runs:
       - id: default
         mode: train
-        exp: dba
+        exp: llama_block
         seed: 1337
         steps: 1000
-        expected:
-          attn_mode: decoupled
+        expected: {}
+

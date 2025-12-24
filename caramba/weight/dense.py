@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import math
 
+import torch
 from torch import Tensor, nn
 import torch.nn.init as init
 from typing_extensions import override
+
+from caramba.weight.guard import require_bool, require_int
 
 
 class DenseWeight(nn.Module):
@@ -17,14 +20,15 @@ class DenseWeight(nn.Module):
     """
     def __init__(self, d_in: int, d_out: int, *, bias: bool) -> None:
         super().__init__()
-        self.d_in: int = int(d_in)
-        self.d_out: int = int(d_out)
+        self.d_in: int = require_int("d_in", d_in, ge=1)
+        self.d_out: int = require_int("d_out", d_out, ge=1)
+        self.has_bias: bool = require_bool("bias", bias)
 
         self.weight: nn.Parameter = nn.Parameter(
-            Tensor(self.d_out, self.d_in),
+            torch.empty((self.d_out, self.d_in)),
         )
         self.bias: nn.Parameter | None = (
-            nn.Parameter(Tensor(self.d_out)) if bool(bias) else None
+            nn.Parameter(torch.empty((self.d_out,))) if self.has_bias else None
         )
         self.reset_parameters()
 
@@ -40,11 +44,11 @@ class DenseWeight(nn.Module):
             init.uniform_(self.bias, -bound, bound)
 
     @override
-    def forward(self, *args: object, **kwargs: object) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         forward is intentionally unsupported for weight containers.
         """
-        _ = (args, kwargs)
+        _ = x
         raise RuntimeError("DenseWeight is a weight container; call Matmul.forward.")
 
 

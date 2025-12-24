@@ -1,0 +1,22 @@
+[build-system]
+requires = [
+  "setuptools>=68",
+  "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "theapemachine-experiments"
+version = "0.1.0"
+description = "Research workspace containing the caramba modular system."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[project.scripts]
+caramba = "caramba.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["caramba*"]
+

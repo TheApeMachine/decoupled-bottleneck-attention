@@ -13,10 +13,14 @@ class Stacked(nn.Module):
     """
     Stacked provides the stacked network.
     """
-    def __init__(self, config: StackedTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: StackedTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: StackedTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override
     def forward(self, x: Tensor) -> Tensor:

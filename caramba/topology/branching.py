@@ -14,10 +14,14 @@ class Branching(nn.Module):
     """
     Branching provides a branching topology.
     """
-    def __init__(self, config: BranchingTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: BranchingTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: BranchingTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override
     def forward(self, x: Tensor) -> Tensor:

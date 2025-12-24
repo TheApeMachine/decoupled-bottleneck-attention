@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from caramba.command import Command, CompileCommand, RunCommand
 from caramba.config.mode import Mode
 from caramba.config.model import ModelConfig, ModelType
 from caramba.config.topology import StackedTopologyConfig
@@ -16,12 +17,16 @@ from caramba.config.defaults import Defaults
 from caramba.config.group import Group
 from caramba.config.manifest import Manifest
 from caramba.config.run import Run
-from caramba.compiler import lower_manifest
+from caramba.compiler import lower_manifest, validate_manifest
 
 
 class _Args(argparse.Namespace):
-    entity: str = ""
-    project: str = ""
+    command: str | None = None
+    compile_manifest: Path | None = None
+    print_plan: bool = False
+
+    entity: str | None = None
+    project: str | None = None
     manifest: Path = Path("caramba/manifest.json")
     mode: str = "train"
     exp: str | None = None
@@ -47,19 +52,37 @@ class CLI(argparse.ArgumentParser):
             version="%(prog)s 0.1.0",
             help="Show the version and exit.",
         )
+
+        subparsers = self.add_subparsers(dest="command")
+        compile_parser = subparsers.add_parser(
+            "compile",
+            help="Compile a manifest (parse → lower → validate), without building.",
+        )
+        _ = compile_parser.add_argument(
+            "manifest",
+            type=Path,
+            dest="compile_manifest",
+            help="Manifest path (.json, .yml, or .yaml).",
+        )
+        _ = compile_parser.add_argument(
+            "--print-plan",
+            action="store_true",
+            default=False,
+            dest="print_plan",
+            help="Print the lowered graph/plan.",
+        )
+
         _ = self.add_argument(
             "--entity",
             type=str,
             default=None,
             help="The entity is a label for the institution or user that is running the experiments.",
-            required=True,
         )
         _ = self.add_argument(
             "--project",
             type=str,
             default=None,
             help="The project is a label for the project the experiments belong to.",
-            required=True,
         )
         _ = self.add_argument(
             "--manifest",
@@ -153,6 +176,77 @@ class CLI(argparse.ArgumentParser):
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
 
+    def parse_command(self, argv: list[str] | None = None) -> Command:
+        """
+        parse_command parses the CLI arguments into a typed command payload.
+        """
+        args = self.parse_args(argv, namespace=_Args())
+
+        match args.command:
+            case "compile":
+                if args.compile_manifest is None:
+                    raise ValueError("compile requires a manifest path.")
+                manifest = lower_manifest(Manifest.from_path(args.compile_manifest))
+                validate_manifest(manifest)
+                return CompileCommand(
+                    manifest=manifest,
+                    print_plan=bool(args.print_plan),
+                )
+            case None:
+                manifest = self._parse_run_manifest(args)
+                validate_manifest(manifest)
+                return RunCommand(manifest=manifest)
+            case _:
+                raise ValueError(f"Invalid command: {args.command}")
+
+    def _parse_run_manifest(self, args: _Args) -> Manifest:
+        """
+        _parse_run_manifest builds or loads a manifest for the run command.
+        """
+        if args.manifest.exists():
+            return lower_manifest(Manifest.from_path(args.manifest))
+
+        if args.entity is None or args.project is None:
+            raise ValueError(
+                "Missing required flags: --entity and --project are required when "
+                "no manifest file is provided."
+            )
+
+        return lower_manifest(
+            Manifest(
+                version=1,
+                name="",
+                notes="",
+                model=ModelConfig(
+                    type=ModelType.TRANSFORMER,
+                    topology=StackedTopologyConfig(layers=[]),
+                ),
+                defaults=Defaults(
+                    wandb_entity=args.entity,
+                    wandb_project=args.project,
+                ),
+                groups=[
+                    Group(
+                        name="default",
+                        description="Default group",
+                        data="",
+                        runs=[
+                            Run(
+                                id="default",
+                                mode=self._get_mode(args.mode),
+                                exp="default",
+                                seed=args.seed,
+                                steps=1000,
+                                expected={
+                                    "attn_mode": "standard",
+                                },
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
     def parse(self, argv: list[str] | None = None) -> Manifest:
         """
         parse the CLI arguments and return a Manifest object.
@@ -161,40 +255,12 @@ class CLI(argparse.ArgumentParser):
         and serialize the manifest.json file onto the Manifest object.
         otherwise, it will use the arguments to construct a Manifest object.
         """
-        args = self.parse_args(argv, namespace=_Args())
-
-        if args.manifest.exists():
-            return lower_manifest(Manifest.from_path(args.manifest))
-
-        return lower_manifest(Manifest(
-            version=1,
-            name="",
-            notes="",
-            model=ModelConfig(
-                type=ModelType.TRANSFORMER,
-                topology=StackedTopologyConfig(layers=[]),
-            ),
-            defaults=Defaults(
-                wandb_entity=args.entity,
-                wandb_project=args.project,
-            ),
-            groups=[
-                Group(
-                    name="default",
-                    description="Default group",
-                    data="",
-                    runs=[
-                        Run(
-                            id="default",
-                            mode=self._get_mode(args.mode),
-                            exp="default",
-                            seed=args.seed,
-                            steps=1000,
-                            expected={
-                                "attn_mode": "standard",
-                            },
-                        ),
-                    ],
+        command = self.parse_command(argv)
+        match command:
+            case RunCommand() as c:
+                return c.manifest
+            case CompileCommand():
+                raise ValueError(
+                    "compile is not supported via CLI.parse(); use `caramba compile` "
+                    "via the console script entrypoint."
                 )
-            ],
-        ))

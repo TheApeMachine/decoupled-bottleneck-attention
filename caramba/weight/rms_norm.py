@@ -3,9 +3,12 @@ rms_norm provides RMSNorm weight containers.
 """
 from __future__ import annotations
 
+import torch
 from torch import Tensor, nn
 import torch.nn.init as init
 from typing_extensions import override
+
+from caramba.weight.guard import require_int
 
 
 class RMSNormWeight(nn.Module):
@@ -14,11 +17,9 @@ class RMSNormWeight(nn.Module):
     """
     def __init__(self, d_model: int) -> None:
         super().__init__()
-        self.d_model: int = int(d_model)
-        if self.d_model <= 0:
-            raise ValueError(f"d_model must be > 0, got {self.d_model}")
+        self.d_model: int = require_int("d_model", d_model, ge=1)
 
-        self.weight: nn.Parameter = nn.Parameter(Tensor(self.d_model))
+        self.weight: nn.Parameter = nn.Parameter(torch.empty((self.d_model,)))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -28,11 +29,11 @@ class RMSNormWeight(nn.Module):
         init.ones_(self.weight)
 
     @override
-    def forward(self, *args: object, **kwargs: object) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         forward is intentionally unsupported for weight containers.
         """
-        _ = (args, kwargs)
+        _ = x
         raise RuntimeError(
             "RMSNormWeight is a weight container; call RMSNorm.forward."
         )

@@ -1,35 +1,27 @@
-"""
-layer provides the layer configuration.
-"""
+"""Layer configuration with discriminated union."""
 from __future__ import annotations
 
 import enum
-from typing import Annotated, Literal, TypeAlias
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, BeforeValidator
 
 from caramba.config.operation import (
-    LayerNormOperationConfig,
-    RMSNormOperationConfig,
-    MatmulOperationConfig,
-    MultiheadOperationConfig,
-    DropoutOperationConfig,
-    AttentionOperationConfig,
+    AttentionOperationConfig, DropoutOperationConfig, LayerNormOperationConfig,
+    MatmulOperationConfig, MultiheadOperationConfig, RMSNormOperationConfig,
     SwiGLUOperationConfig,
 )
 from caramba.config.weight import (
-    DecoupledAttentionWeightConfig,
-    DenseWeightConfig,
-    LlamaAttentionWeightConfig,
-    MultiheadWeightConfig,
-    NormWeightConfig,
-    RMSNormWeightConfig,
-    SwiGLUWeightConfig,
+    DecoupledAttentionWeightConfig, DenseWeightConfig, LlamaAttentionWeightConfig,
+    MultiheadWeightConfig, NormWeightConfig, RMSNormWeightConfig, SwiGLUWeightConfig,
 )
-
 
 class LayerType(str, enum.Enum):
     """
-    LayerType provides the layer type.
+    LayerType enumerates the layer types
+
+    This prevents having to deal with magic strings, giving
+    us compile-time safety, and better error messages.
     """
     LAYER_NORM = "layer_norm"
     RMS_NORM = "rms_norm"
@@ -39,81 +31,86 @@ class LayerType(str, enum.Enum):
     ATTENTION = "attention"
     SWIGLU = "swiglu"
 
+    @classmethod
+    def from_str(cls, s: str) -> LayerType:
+        """
+        from_str converts a string to a LayerType.
+        """
+        return cls(s)
 
-class _LayerConfigBase(BaseModel):
-    pass
+
+def _normalize_layer(v: dict) -> dict:
+    if isinstance(v, dict) and isinstance(v.get("type"), str):
+        v["type"] = LayerType.from_str(v["type"])
+    return v
 
 
-class LinearLayerConfig(_LayerConfigBase):
+class LinearLayerConfig(BaseModel):
     """
     LinearLayerConfig provides the linear layer configuration.
     """
-    type: Literal[LayerType.LINEAR] = LayerType.LINEAR
+    type: LayerType = LayerType.LINEAR
     operation: MatmulOperationConfig
     weight: DenseWeightConfig
 
 
-class LayerNormLayerConfig(_LayerConfigBase):
+class LayerNormLayerConfig(BaseModel):
     """
-    LayerNormLayerConfig provides the layer normalization layer configuration.
+    LayerNormLayerConfig provides the layer norm layer configuration.
     """
-    type: Literal[LayerType.LAYER_NORM] = LayerType.LAYER_NORM
+    type: LayerType = LayerType.LAYER_NORM
     operation: LayerNormOperationConfig
     weight: NormWeightConfig
 
 
-class RMSNormLayerConfig(_LayerConfigBase):
+class RMSNormLayerConfig(BaseModel):
     """
-    RMSNormLayerConfig provides RMSNorm layer configuration.
+    RMSNormLayerConfig provides the RMS norm layer configuration.
     """
-    type: Literal[LayerType.RMS_NORM] = LayerType.RMS_NORM
+    type: LayerType = LayerType.RMS_NORM
     operation: RMSNormOperationConfig
     weight: RMSNormWeightConfig
 
 
-class MultiheadLayerConfig(_LayerConfigBase):
+class MultiheadLayerConfig(BaseModel):
     """
     MultiheadLayerConfig provides the multihead layer configuration.
     """
-    type: Literal[LayerType.MULTIHEAD] = LayerType.MULTIHEAD
+    type: LayerType = LayerType.MULTIHEAD
     operation: MultiheadOperationConfig
     weight: MultiheadWeightConfig
 
 
-class DropoutLayerConfig(_LayerConfigBase):
+class DropoutLayerConfig(BaseModel):
     """
     DropoutLayerConfig provides the dropout layer configuration.
     """
-    type: Literal[LayerType.DROPOUT] = LayerType.DROPOUT
+    type: LayerType = LayerType.DROPOUT
     operation: DropoutOperationConfig
 
 
-class AttentionLayerConfig(_LayerConfigBase):
+class AttentionLayerConfig(BaseModel):
     """
-    AttentionLayerConfig provides attention layer configuration.
+    AttentionLayerConfig provides the attention layer configuration.
     """
-
-    type: Literal[LayerType.ATTENTION] = LayerType.ATTENTION
+    type: LayerType = LayerType.ATTENTION
     operation: AttentionOperationConfig
     weight: LlamaAttentionWeightConfig | DecoupledAttentionWeightConfig
 
 
-class SwiGLULayerConfig(_LayerConfigBase):
+class SwiGLULayerConfig(BaseModel):
     """
-    SwiGLULayerConfig provides SwiGLU MLP configuration.
+    SwiGLULayerConfig provides the SwiGLU layer configuration.
     """
-    type: Literal[LayerType.SWIGLU] = LayerType.SWIGLU
+    type: LayerType = LayerType.SWIGLU
     operation: SwiGLUOperationConfig
     weight: SwiGLUWeightConfig
 
 
-LayerConfig: TypeAlias = Annotated[
-    LinearLayerConfig
-    | LayerNormLayerConfig
-    | RMSNormLayerConfig
-    | MultiheadLayerConfig
-    | DropoutLayerConfig
-    | AttentionLayerConfig
-    | SwiGLULayerConfig,
+LayerConfig = Annotated[
+    LinearLayerConfig | LayerNormLayerConfig | RMSNormLayerConfig |
+    MultiheadLayerConfig | DropoutLayerConfig | AttentionLayerConfig |
+    SwiGLULayerConfig,
+    BeforeValidator(_normalize_layer),
     Field(discriminator="type"),
 ]

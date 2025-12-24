@@ -16,7 +16,6 @@ from caramba.config.topology import (
     StackedTopologyConfig,
     TopologyConfig,
 )
-from caramba.compiler.validate import validate_topology
 
 
 def lower_manifest(manifest: Manifest) -> Manifest:
@@ -36,7 +35,6 @@ def lower_model(model: ModelConfig) -> ModelConfig:
     lower_model lowers a model config into a canonical form.
     """
     lowered_topology = lower_topology(model.topology)
-    validate_topology(lowered_topology)
     return model.model_copy(update={"topology": lowered_topology})
 
 
@@ -53,56 +51,56 @@ def lower_topology(config: TopologyConfig) -> TopologyConfig:
             lowered_layers = [lower_topology(x) for x in c.layers]
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in lowered_layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case StackedTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case ResidualTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case SequentialTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case ParallelTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case BranchingTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case CyclicTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case RecurrentTopologyConfig() as c:
             layers = [
                 x.model_copy(deep=True)
-                for _ in range(int(c.repeat))
+                for _ in range(c.repeat)
                 for x in c.layers
             ]
             return c.model_copy(update={"layers": layers, "repeat": 1})

@@ -4,16 +4,21 @@ attention_llama provides Llama-compatible attention weights (GQA + RoPE).
 
 from __future__ import annotations
 
-import torch
-from torch import nn
+from torch import Tensor, nn
 from typing_extensions import override
 
+from caramba.operation.attention_math import shape_heads
+from caramba.operation.matmul import Matmul
 from caramba.operation.rope import RotaryEmbedding
 from caramba.weight.dense import DenseWeight
+from caramba.weight.guard import require_bool, require_float, require_int
 
 
 class LlamaAttentionWeight(nn.Module):
-    """Q/K/V/O projection weights for Llama-style GQA attention + RoPE config."""
+    """
+    LlamaAttentionWeight stores Q/K/V/O projection weights for
+    Llama-style GQA attention with RoPE.
+    """
 
     def __init__(
         self,
@@ -27,26 +32,33 @@ class LlamaAttentionWeight(nn.Module):
     ) -> None:
         super().__init__()
 
-        self._validate(d_model, n_heads, n_kv_heads, rope_dim)
+        d_model_ = require_int("d_model", d_model, ge=1)
+        n_heads_ = require_int("n_heads", n_heads, ge=1)
+        n_kv_heads_ = require_int("n_kv_heads", n_kv_heads, ge=1)
+        rope_dim_ = require_int("rope_dim", rope_dim, ge=1)
+        rope_base_ = require_float("rope_base", rope_base)
+        bias_ = require_bool("bias", bias)
 
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.n_kv_heads = n_kv_heads
-        self.head_dim = d_model // n_heads
-        self.rope_dim = rope_dim
+        self._validate(d_model_, n_heads_, n_kv_heads_, rope_dim_)
+
+        self.d_model: int = d_model_
+        self.n_heads: int = n_heads_
+        self.n_kv_heads: int = n_kv_heads_
+        self.head_dim: int = d_model_ // n_heads_
+        self.rope_dim: int = rope_dim_
 
         def dense(d_in: int, d_out: int) -> DenseWeight:
-            return DenseWeight(d_in, d_out, bias=bias)
+            return DenseWeight(d_in, d_out, bias=bias_)
 
         q_out = n_heads * self.head_dim
         kv_out = n_kv_heads * self.head_dim
 
-        self.q_proj = dense(d_model, q_out)
-        self.k_proj = dense(d_model, kv_out)
-        self.v_proj = dense(d_model, kv_out)
-        self.o_proj = dense(q_out, d_model)
+        self.q_proj: DenseWeight = dense(d_model_, q_out)
+        self.k_proj: DenseWeight = dense(d_model_, kv_out)
+        self.v_proj: DenseWeight = dense(d_model_, kv_out)
+        self.o_proj: DenseWeight = dense(q_out, d_model_)
 
-        self.rope = RotaryEmbedding(rope_dim, base=rope_base)
+        self.rope: RotaryEmbedding = RotaryEmbedding(rope_dim_, base=rope_base_)
 
     @staticmethod
     def _validate(d_model: int, n_heads: int, n_kv_heads: int, rope_dim: int) -> None:
@@ -71,8 +83,41 @@ class LlamaAttentionWeight(nn.Module):
             raise ValueError(f"rope_dim must be even, got {rope_dim}")
 
     @override
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         forward pass for the llama attention weight.
         """
-        raise RuntimeError("LlamaAttentionWeight is a weight container; call Attention.forward.")
+        _ = x
+        raise RuntimeError(
+            "LlamaAttentionWeight is a weight container; call Attention.forward."
+        )
+
+    def project_qkv(
+        self,
+        x: Tensor,
+        *,
+        matmul: Matmul,
+        pos_offset: int,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """
+        project_qkv projects x into attention heads and applies RoPE.
+
+        Returns (q, k, v) in shaped form:
+          - q: (B, H, T, D_head)
+          - k: (B, H_kv, T, D_head)
+          - v: (B, H_kv, T, D_head)
+        """
+        if x.ndim != 3:
+            raise ValueError(f"Expected (B,T,D), got {x.shape}")
+
+        q = matmul.forward(x, weight=self.q_proj.weight, bias=self.q_proj.bias)
+        k = matmul.forward(x, weight=self.k_proj.weight, bias=self.k_proj.bias)
+        v = matmul.forward(x, weight=self.v_proj.weight, bias=self.v_proj.bias)
+
+        qh = shape_heads(q, n_heads=int(self.n_heads), head_dim=int(self.head_dim))
+        kh = shape_heads(k, n_heads=int(self.n_kv_heads), head_dim=int(self.head_dim))
+        vh = shape_heads(v, n_heads=int(self.n_kv_heads), head_dim=int(self.head_dim))
+
+        qh = self.rope.forward(qh, pos_offset=int(pos_offset))
+        kh = self.rope.forward(kh, pos_offset=int(pos_offset))
+        return qh, kh, vh

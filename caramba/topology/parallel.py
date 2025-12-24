@@ -14,10 +14,14 @@ class Parallel(nn.Module):
     """
     Parallel provides a parallel topology.
     """
-    def __init__(self, config: ParallelTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: ParallelTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: ParallelTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override
     def forward(self, x: Tensor) -> Tensor:

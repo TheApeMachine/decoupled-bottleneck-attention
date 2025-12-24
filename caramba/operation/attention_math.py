@@ -8,6 +8,26 @@ import torch
 from torch import Tensor
 
 
+def shape_heads(x: Tensor, *, n_heads: int, head_dim: int) -> Tensor:
+    """
+    shape_heads reshapes (B,T,H*D) -> (B,H,T,D).
+    """
+    if x.ndim != 3:
+        raise ValueError(f"Expected rank-3 (B,T,D), got {x.shape}")
+    if n_heads <= 0:
+        raise ValueError(f"n_heads must be > 0, got {n_heads}")
+    if head_dim <= 0:
+        raise ValueError(f"head_dim must be > 0, got {head_dim}")
+    if int(x.shape[-1]) != int(n_heads * head_dim):
+        raise ValueError(
+            "Expected last dim to equal n_heads*head_dim, got "
+            f"x={x.shape}, n_heads={n_heads}, head_dim={head_dim}"
+        )
+
+    b, t, _ = x.shape
+    return x.view(b, t, int(n_heads), int(head_dim)).transpose(1, 2).contiguous()
+
+
 def decoupled_qk_cat(
     *,
     q_sem: Tensor,

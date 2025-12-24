@@ -13,10 +13,14 @@ class Cyclic(nn.Module):
     """
     Cyclic provides a cyclic topology.
     """
-    def __init__(self, config: CyclicTopologyConfig) -> None:
+    def __init__(
+        self,
+        config: CyclicTopologyConfig,
+        layers: list[nn.Module],
+    ) -> None:
         super().__init__()
         self.config: CyclicTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList([])
+        self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override
     def forward(self, x: Tensor) -> Tensor:

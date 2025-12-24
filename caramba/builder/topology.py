@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from typing_extensions import TypeGuard
 from torch import nn
-from caramba.config.layer import LayerConfig, _LayerConfigBase
+from caramba.builder import Builder
+from caramba.builder.layer import LayerBuilder
+from caramba.config.layer import LayerConfig
 from caramba.config.topology import TopologyConfig, TopologyType, _TopologyConfigBase
 from caramba.topology.nested import Nested
 from caramba.topology.sequential import Sequential
@@ -15,7 +17,7 @@ from caramba.topology.cyclic import Cyclic
 from caramba.topology.recurrent import Recurrent
 from caramba.topology.residual import Residual
 from caramba.topology.stacked import Stacked
-from caramba.builder.layer import build as build_layer
+
 
 def is_topology_config(config: object) -> TypeGuard[TopologyConfig]:
     """
@@ -23,46 +25,68 @@ def is_topology_config(config: object) -> TypeGuard[TopologyConfig]:
     """
     return isinstance(config, _TopologyConfigBase)
 
+
 def is_layer_config(config: object) -> TypeGuard[LayerConfig]:
     """
     is_layer_config checks if config is a layer config instance.
     """
-    return isinstance(config, _LayerConfigBase)
+    return not isinstance(config, _TopologyConfigBase)
 
 
-def build(config: TopologyConfig) -> nn.Module:
+class TopologyBuilder(Builder):
     """
-    build_topology builds a topology module from config.
+    TopologyBuilder builds topology modules from config.
     """
-    out = None
+    def __init__(self) -> None:
+        """
+        __init__ initializes the topology builder.
+        """
+        self.layer_builder = LayerBuilder()
 
-    match config.type:
-        case TopologyType.NESTED:
-            out = Nested(config)
-        case TopologyType.STACKED:
-            out = Stacked(config)
-        case TopologyType.RESIDUAL:
-            out = Residual(config)
-        case TopologyType.SEQUENTIAL:
-            out = Sequential(config)
-        case TopologyType.PARALLEL:
-            out = Parallel(config)
-        case TopologyType.BRANCHING:
-            out = Branching(config)
-        case TopologyType.CYCLIC:
-            out = Cyclic(config)
-        case TopologyType.RECURRENT:
-            out = Recurrent(config)
+    def build(self, config: LayerConfig | TopologyConfig) -> nn.Module:
+        """
+        build builds a topology module from config.
+        """
+        if not isinstance(config, _TopologyConfigBase):
+            raise ValueError(f"TopologyBuilder only accepts TopologyConfig, got {type(config)!r}")
+        layers: list[nn.Module] = []
 
-    if out is None:
-        raise ValueError(f"Unsupported topology type: {config.type}")
+        match config.type:
+            case TopologyType.NESTED:
+                for layer in config.layers:
+                    layers.append(self.build(layer))
+                return Nested(config, layers)
+            case (
+                TopologyType.STACKED
+                | TopologyType.RESIDUAL
+                | TopologyType.SEQUENTIAL
+                | TopologyType.PARALLEL
+                | TopologyType.BRANCHING
+                | TopologyType.CYCLIC
+                | TopologyType.RECURRENT
+            ):
+                for layer in config.layers:
+                    if is_layer_config(layer):
+                        layers.append(self.layer_builder.build(layer))
+                    else:
+                        raise ValueError(f"Unsupported layer type: {type(layer)}")
 
-    for layer in out.config.layers:
-        if is_topology_config(layer):
-            out.layers.append(build(layer))
-        elif is_layer_config(layer):
-            out.layers.append(build_layer(layer))
-        else:
-            raise ValueError(f"Unsupported layer type: {type(layer)}")
-
-    return out
+                match config.type:
+                    case TopologyType.STACKED:
+                        return Stacked(config, layers)
+                    case TopologyType.RESIDUAL:
+                        return Residual(config, layers)
+                    case TopologyType.SEQUENTIAL:
+                        return Sequential(config, layers)
+                    case TopologyType.PARALLEL:
+                        return Parallel(config, layers)
+                    case TopologyType.BRANCHING:
+                        return Branching(config, layers)
+                    case TopologyType.CYCLIC:
+                        return Cyclic(config, layers)
+                    case TopologyType.RECURRENT:
+                        return Recurrent(config, layers)
+                    case _:
+                        raise ValueError(f"Unsupported topology type: {config.type}")
+            case _:
+                raise ValueError(f"Unsupported topology type: {config.type}")
