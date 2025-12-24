@@ -7,6 +7,9 @@
 
 ---
 
+> This repository now also contains an evolution of the original production implementation, which is a full, more modular rewrite, called [caramba](caramba/README.md). It is being developed as a set of composable atomic building blocks to rapidly experiment with new architectures and optimizations, and contains some advanced features.
+> One of the most interesting features the [caramba](caramba/README.md) implementation provides is the ability to "upcycle" a Llama model, retro-fitting Decoupled Bottleneck Attention via a method inspired by *Attention Surgery* (Ghafoorian et al., 2025) \[[arXiv:2509.24899](https://arxiv.org/abs/2509.24899)\].
+
 ## TL;DR
 
 This repo contains the **production implementation** and **paper reproduction harness** for *Decoupled Bottleneck Attention*.
@@ -200,6 +203,20 @@ The production self-optimizer can still explore counterfactual configurations (i
   author={van Dommelen, Daniel Owen},
   journal={arXiv preprint arXiv:2025.XXXXX},
   year={2025}
+}
+```
+
+### Related work
+
+If you reference the *Attention Surgery* method discussed above:
+
+```bibtex
+@article{ghafoorian2025attentionsurgery,
+  title={Attention Surgery: An Efficient Recipe to Linearize Your Video Diffusion Transformer},
+  author={Ghafoorian, Mohsen and Korzhenkov, Denis and Habibian, Amirhossein},
+  journal={arXiv preprint arXiv:2509.24899},
+  year={2025},
+  doi={10.48550/arXiv.2509.24899}
 }
 ```
 

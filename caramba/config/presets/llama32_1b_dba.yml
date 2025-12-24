@@ -91,7 +91,7 @@ groups:
           batch_size: 1
           block_size: 2048
           lr: 0.0001
-          device: cpu
+          device: mps
           dtype: float32
           # Use a local path or an hf:// URI:
           # hf://org/repo/path/to/file.safetensors@revision
@@ -109,5 +109,5 @@ groups:
           batch_size: 1
           block_size: 2048
           lr: 0.00005
-          device: cpu
+          device: mps
           dtype: float32

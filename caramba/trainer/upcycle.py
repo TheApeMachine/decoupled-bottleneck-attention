@@ -91,6 +91,10 @@ class Upcycle:
         if train.teacher_ckpt is None:
             raise ValueError("train.teacher_ckpt is required for upcycle.")
 
+        print(
+            "upcycle: initializing models "
+            f"(device={self.device_name}, dtype={self._dtype_name()})"
+        )
         teacher_cfg = self._teacher_config(self.manifest.model)
         self.teacher = Model(teacher_cfg).to(
             device=self.device,
@@ -101,13 +105,19 @@ class Upcycle:
             dtype=self.dtype,
         )
 
+        print(f"upcycle: resolving teacher_ckpt={train.teacher_ckpt!r}")
         ckpt_path = self._resolve_teacher_ckpt(train.teacher_ckpt)
+        print(f"upcycle: loading teacher state_dict from {str(ckpt_path)!r}")
         state_dict = load_torch_state_dict(ckpt_path)
+        print(f"upcycle: loaded state_dict keys={len(state_dict)}")
 
+        print("upcycle: applying teacher weights")
         LlamaUpcycle(model=self.teacher, state_dict=state_dict).apply()
+        print("upcycle: applying student weights")
         LlamaUpcycle(model=self.student, state_dict=state_dict).apply()
 
         self.teacher.eval()
+        print("upcycle: initialization complete")
     def _run_blockwise(self, run: Run) -> None:
         """
         _run_blockwise runs blockwise distillation.
@@ -126,14 +136,21 @@ class Upcycle:
             predicate=lambda _name, module: isinstance(module, Attention),
         )
 
+        print(
+            "upcycle: blockwise start "
+            f"(blocks={trainer.block_count()}, steps={int(run.steps)})"
+        )
         self.student.train()
         loader_iter = iter(loader)
         for block_index in range(trainer.block_count()):
             last_loss = None
-            for _ in range(int(run.steps)):
+            steps = int(run.steps)
+            for step in range(steps):
                 (x, _y), loader_iter = self._next_batch(loader, loader_iter)
                 x = x.to(device=self.device)
                 last_loss = trainer.step(x, block_index=block_index)
+                if step == 0:
+                    print(f"upcycle: blockwise block={block_index} step=0")
             if last_loss is not None:
                 print(
                     f"blockwise block={block_index} "

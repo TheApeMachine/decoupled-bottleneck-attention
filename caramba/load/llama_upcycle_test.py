@@ -276,6 +276,55 @@ class LlamaUpcycleTest(unittest.TestCase):
             torch.zeros_like(gate_logit),
         )
 
+    def test_loads_tied_head_from_embed_tokens_when_missing(self) -> None:
+        """
+        test loading a tied head when lm_head.weight is not present.
+        """
+        d_model = 8
+        vocab_size = 32
+
+        model = Model(
+            ModelConfig(
+                type=ModelType.TRANSFORMER,
+                embedder=TokenEmbedderConfig(
+                    type=EmbedderType.TOKEN,
+                    vocab_size=vocab_size,
+                    d_model=d_model,
+                ),
+                topology=StackedTopologyConfig(
+                    layers=[
+                        RMSNormLayerConfig(
+                            type=LayerType.RMS_NORM,
+                            operation=RMSNormOperationConfig(eps=1e-5),
+                            weight=RMSNormWeightConfig(d_model=d_model),
+                        ),
+                        LinearLayerConfig(
+                            type=LayerType.LINEAR,
+                            operation=MatmulOperationConfig(),
+                            weight=DenseWeightConfig(
+                                d_in=d_model,
+                                d_out=vocab_size,
+                                bias=False,
+                            ),
+                        ),
+                    ]
+                ),
+            )
+        )
+
+        embed_w = torch.randn(vocab_size, d_model)
+        state_dict: dict[str, torch.Tensor] = {
+            "model.embed_tokens.weight": embed_w,
+            "model.norm.weight": torch.randn(d_model),
+        }
+
+        LlamaUpcycle(model=model, state_dict=state_dict).apply()
+
+        head = self._last(model, Linear)
+        self.assertIsInstance(head, Linear)
+        assert isinstance(head, Linear)
+        torch.testing.assert_close(head.weight.weight, embed_w)
+
     def _first(
         self,
         model: nn.Module,

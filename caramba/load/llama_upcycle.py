@@ -142,7 +142,18 @@ class LlamaUpcycle:
         if head is None:
             raise ValueError("Model has no linear head.")
 
-        weight = self.state.get(self.head_key)
+        weight = self.state.get_optional(self.head_key)
+        if weight is None:
+            if self.head_key != "lm_head.weight":
+                raise ValueError(f"Missing state_dict key: {self.head_key}")
+            embed_key = self.state.key(self.prefix, "embed_tokens", "weight")
+            embed = self.state.get_optional(embed_key)
+            if embed is None:
+                raise ValueError(
+                    "Missing state_dict key: lm_head.weight. "
+                    f"Also missing {embed_key}, cannot infer tied head."
+                )
+            weight = embed
         if head.weight.weight.shape != weight.shape:
             raise ValueError(
                 "Head weight shape mismatch: "

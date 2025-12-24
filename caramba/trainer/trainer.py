@@ -25,8 +25,13 @@ class Trainer:
         Run the training loop.
         """
         for group in self.manifest.groups:
+            print(f"trainer: group={group.name!r} runs={len(group.runs)}")
             session: Upcycle | None = None
             for run in group.runs:
+                print(
+                    "trainer: run "
+                    f"id={run.id!r} mode={run.mode} steps={run.steps}"
+                )
                 if run.mode != Mode.TRAIN:
                     raise ValueError(
                         f"Unsupported mode for run {run.id}: {run.mode}"
