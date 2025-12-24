@@ -51,9 +51,9 @@ def build_weight(config: WeightConfig) -> nn.Module:
                 n_heads=int(c.n_heads),
                 dropout=float(c.dropout),
             )
-        case LlamaAttentionWeightConfig() as c:
-            return build_attention_weight(c)
-        case DecoupledAttentionWeightConfig() as c:
+        case (
+            LlamaAttentionWeightConfig() | DecoupledAttentionWeightConfig()
+        ) as c:
             return build_attention_weight(c)
         case _:
             raise ValueError(f"Unsupported weight config: {type(config)!r}")
@@ -88,6 +88,57 @@ def build_attention_weight(
                 gate=bool(c.gate),
             )
         case _:
-            raise ValueError(f"Unsupported attention weight config: {type(config)!r}")
+            raise ValueError(
+                "Unsupported attention weight config: "
+                f"{type(config)!r}"
+            )
 
 
+def build_dense_weight(config: DenseWeightConfig) -> DenseWeight:
+    """
+    build_dense_weight builds a dense weight module.
+    """
+    weight = build_weight(config)
+    if not isinstance(weight, DenseWeight):
+        raise RuntimeError(f"Expected DenseWeight, got {type(weight)!r}")
+    return weight
+
+
+def build_layer_norm_weight(config: NormWeightConfig) -> LayerNormWeight:
+    """
+    build_layer_norm_weight builds a layer norm weight module.
+    """
+    weight = build_weight(config)
+    if not isinstance(weight, LayerNormWeight):
+        raise RuntimeError(f"Expected LayerNormWeight, got {type(weight)!r}")
+    return weight
+
+
+def build_rms_norm_weight(config: RMSNormWeightConfig) -> RMSNormWeight:
+    """
+    build_rms_norm_weight builds an RMSNorm weight module.
+    """
+    weight = build_weight(config)
+    if not isinstance(weight, RMSNormWeight):
+        raise RuntimeError(f"Expected RMSNormWeight, got {type(weight)!r}")
+    return weight
+
+
+def build_swiglu_weight(config: SwiGLUWeightConfig) -> SwiGLUWeight:
+    """
+    build_swiglu_weight builds a SwiGLU weight module.
+    """
+    weight = build_weight(config)
+    if not isinstance(weight, SwiGLUWeight):
+        raise RuntimeError(f"Expected SwiGLUWeight, got {type(weight)!r}")
+    return weight
+
+
+def build_multihead_weight(config: MultiheadWeightConfig) -> MultiheadWeight:
+    """
+    build_multihead_weight builds a Multihead weight module.
+    """
+    weight = build_weight(config)
+    if not isinstance(weight, MultiheadWeight):
+        raise RuntimeError(f"Expected MultiheadWeight, got {type(weight)!r}")
+    return weight

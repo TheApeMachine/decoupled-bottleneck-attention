@@ -1,0 +1,97 @@
+version: 1
+name: llama32_1b_dba
+notes: "Llama 3.2 1B with DBA attention via upcycle."
+vars:
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  sem_dim: 512
+  geo_dim: 1536
+  rope_base: 500000.0
+  rope_dim: 48
+defaults:
+  tokenizer: llama
+  val_frac: 0.05
+  instrument: rich
+  wandb: true
+  wandb_project: "dba-upcycle"
+  wandb_entity: ""
+  wandb_mode: online
+  eval_iters: 50
+  save_every: 500
+model:
+  type: transformer
+  embedder:
+    type: token
+    vocab_size: "${vocab_size}"
+    d_model: "${d_model}"
+  topology:
+    type: stacked
+    layers:
+      - type: nested
+        repeat: "${n_layers}"
+        layers:
+          - type: residual
+            layers:
+              - type: rms_norm
+                operation: { type: rms_norm, eps: 1e-5 }
+                weight: { type: rms_norm, d_model: "${d_model}" }
+              - type: attention
+                operation: { type: attention, is_causal: true, dropout_p: 0.0 }
+                weight:
+                  type: decoupled_attention
+                  d_model: "${d_model}"
+                  n_heads: "${n_heads}"
+                  n_kv_heads: "${n_kv_heads}"
+                  sem_dim: "${sem_dim}"
+                  geo_dim: "${geo_dim}"
+                  rope_base: "${rope_base}"
+                  rope_dim: "${rope_dim}"
+                  bias: false
+                  gate: true
+          - type: residual
+            layers:
+              - type: rms_norm
+                operation: { type: rms_norm, eps: 1e-5 }
+                weight: { type: rms_norm, d_model: "${d_model}" }
+              - type: swiglu
+                operation: { type: swiglu }
+                weight:
+                  type: swiglu
+                  d_model: "${d_model}"
+                  d_ff: "${d_ff}"
+                  bias: false
+      - type: rms_norm
+        operation: { type: rms_norm, eps: 1e-5 }
+        weight: { type: rms_norm, d_model: "${d_model}" }
+      - type: linear
+        operation: { type: matmul }
+        weight:
+          type: dense
+          d_in: "${d_model}"
+          d_out: "${vocab_size}"
+          bias: false
+groups:
+  - name: upcycle
+    description: "DBA upcycle from Llama 3.2 1B."
+    data: "data/fineweb_sample.npy"
+    runs:
+      - id: blockwise
+        mode: train
+        exp: dba_blockwise
+        seed: 42
+        steps: 500
+        expected:
+          phase: blockwise
+          teacher_ckpt: "weights/llama32-1b"
+      - id: finetune
+        mode: train
+        exp: dba_finetune
+        seed: 42
+        steps: 2000
+        expected:
+          phase: global
+          resume_from: blockwise

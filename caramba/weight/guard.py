@@ -8,7 +8,7 @@ def require_int(name: str, value: object, *, ge: int | None = None) -> int:
     """
     require_int validates that value is an int, optionally bounded below.
     """
-    if not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{name} must be an int, got {type(value)!r}")
     if ge is not None and value < ge:
         raise ValueError(f"{name} must be >= {ge}, got {value}")
@@ -24,11 +24,14 @@ def require_bool(name: str, value: object) -> bool:
     return value
 
 
-def require_float(name: str, value: object) -> float:
+def require_float(name: str, value: object, *, ge: float | None = None) -> float:
     """
-    require_float validates that value is a float or int.
+    require_float validates that value is a float or int, optionally bounded below.
     """
     if isinstance(value, bool) or not isinstance(value, (float, int)):
         raise ValueError(f"{name} must be a float, got {type(value)!r}")
-    return float(value)
+    out = float(value)
+    if ge is not None and out < ge:
+        raise ValueError(f"{name} must be >= {ge}, got {out}")
+    return out
 

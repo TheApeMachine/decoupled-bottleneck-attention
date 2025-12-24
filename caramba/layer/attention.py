@@ -30,11 +30,7 @@ class _AttentionWeight(Protocol):
         *,
         matmul: Matmul,
         pos_offset: int,
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """
-        project_qkv projects x into shaped (q, k, v) for AttentionOp.
-        """
-        raise NotImplementedError
+    ) -> tuple[Tensor, Tensor, Tensor]: ...
 
 
 class Attention(nn.Module):

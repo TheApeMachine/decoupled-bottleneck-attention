@@ -31,5 +31,5 @@ class Residual(nn.Module):
         """
         residual = x
         for layer in self.layers:
-            x = layer.forward(x)
+            x = layer(x)
         return residual + x

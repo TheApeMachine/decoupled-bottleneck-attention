@@ -35,7 +35,7 @@ class NestedTopologyConfig(_TopologyConfigBase):
     NestedTopologyConfig provides a nested topology.
     """
     type: Literal[TopologyType.NESTED] = TopologyType.NESTED
-    layers: list[TopologyConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -44,7 +44,7 @@ class StackedTopologyConfig(_TopologyConfigBase):
     StackedTopologyConfig provides a simple sequential topology.
     """
     type: Literal[TopologyType.STACKED] = TopologyType.STACKED
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -53,7 +53,7 @@ class ResidualTopologyConfig(_TopologyConfigBase):
     ResidualTopologyConfig provides a residual topology.
     """
     type: Literal[TopologyType.RESIDUAL] = TopologyType.RESIDUAL
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -62,7 +62,7 @@ class SequentialTopologyConfig(_TopologyConfigBase):
     SequentialTopologyConfig provides a sequential topology.
     """
     type: Literal[TopologyType.SEQUENTIAL] = TopologyType.SEQUENTIAL
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -71,7 +71,7 @@ class ParallelTopologyConfig(_TopologyConfigBase):
     ParallelTopologyConfig provides a parallel topology.
     """
     type: Literal[TopologyType.PARALLEL] = TopologyType.PARALLEL
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -80,7 +80,7 @@ class BranchingTopologyConfig(_TopologyConfigBase):
     BranchingTopologyConfig provides a branching topology.
     """
     type: Literal[TopologyType.BRANCHING] = TopologyType.BRANCHING
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -89,7 +89,7 @@ class CyclicTopologyConfig(_TopologyConfigBase):
     CyclicTopologyConfig provides a cyclic topology.
     """
     type: Literal[TopologyType.CYCLIC] = TopologyType.CYCLIC
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -98,7 +98,7 @@ class RecurrentTopologyConfig(_TopologyConfigBase):
     RecurrentTopologyConfig provides a recurrent topology.
     """
     type: Literal[TopologyType.RECURRENT] = TopologyType.RECURRENT
-    layers: list[LayerConfig]
+    layers: list["NodeConfig"]
     repeat: int = Field(default=1, ge=1)
 
 
@@ -113,3 +113,6 @@ TopologyConfig: TypeAlias = Annotated[
     | RecurrentTopologyConfig,
     Field(discriminator="type"),
 ]
+
+
+NodeConfig: TypeAlias = LayerConfig | TopologyConfig

@@ -9,12 +9,14 @@ from caramba.config.topology import (
     BranchingTopologyConfig,
     CyclicTopologyConfig,
     NestedTopologyConfig,
+    NodeConfig,
     ParallelTopologyConfig,
     RecurrentTopologyConfig,
     ResidualTopologyConfig,
     SequentialTopologyConfig,
     StackedTopologyConfig,
     TopologyConfig,
+    _TopologyConfigBase,
 )
 
 
@@ -48,61 +50,60 @@ def lower_topology(config: TopologyConfig) -> TopologyConfig:
     """
     match config:
         case NestedTopologyConfig() as c:
-            lowered_layers = [lower_topology(x) for x in c.layers]
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in lowered_layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case StackedTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case ResidualTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case SequentialTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case ParallelTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case BranchingTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case CyclicTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case RecurrentTopologyConfig() as c:
-            layers = [
-                x.model_copy(deep=True)
-                for _ in range(c.repeat)
-                for x in c.layers
-            ]
+            lowered = _lower_nodes(list(c.layers))
+            layers = _repeat_nodes(lowered, repeat=int(c.repeat))
             return c.model_copy(update={"layers": layers, "repeat": 1})
         case _:
             raise ValueError(f"Unsupported topology config: {type(config)!r}")
+
+
+def _lower_nodes(nodes: list[NodeConfig]) -> list[NodeConfig]:
+    """
+    _lower_nodes lowers nested topology nodes.
+    """
+    lowered: list[NodeConfig] = []
+    for node in nodes:
+        if isinstance(node, _TopologyConfigBase):
+            lowered.append(lower_topology(node))
+        else:
+            lowered.append(node)
+    return lowered
+
+
+def _repeat_nodes(nodes: list[NodeConfig], *, repeat: int) -> list[NodeConfig]:
+    """
+    _repeat_nodes repeats nodes by deep-copying each element.
+    """
+    return [
+        node.model_copy(deep=True)
+        for _ in range(int(repeat))
+        for node in nodes
+    ]

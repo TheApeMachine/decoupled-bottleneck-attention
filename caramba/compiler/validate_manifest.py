@@ -18,6 +18,7 @@ from caramba.config.topology import (
     SequentialTopologyConfig,
     StackedTopologyConfig,
     TopologyConfig,
+    _TopologyConfigBase,
 )
 from caramba.config.weight import DecoupledAttentionWeightConfig, LlamaAttentionWeightConfig
 from caramba.config.weight import MultiheadWeightConfig
@@ -48,11 +49,9 @@ def _iter_layers(
     path: str,
 ) -> Iterable[tuple[LayerConfig, str]]:
     match topology:
-        case NestedTopologyConfig() as c:
-            for i, child in enumerate(c.layers):
-                yield from _iter_layers(child, path=f"{path}.layers[{i}]")
         case (
-            StackedTopologyConfig()
+            NestedTopologyConfig()
+            | StackedTopologyConfig()
             | ResidualTopologyConfig()
             | SequentialTopologyConfig()
             | ParallelTopologyConfig()
@@ -60,8 +59,12 @@ def _iter_layers(
             | CyclicTopologyConfig()
             | RecurrentTopologyConfig()
         ) as c:
-            for i, layer in enumerate(c.layers):
-                yield layer, f"{path}.layers[{i}]"
+            for i, node in enumerate(c.layers):
+                node_path = f"{path}.layers[{i}]"
+                if isinstance(node, _TopologyConfigBase):
+                    yield from _iter_layers(node, path=node_path)
+                else:
+                    yield node, node_path
         case _:
             raise ValueError(f"Unsupported topology config: {type(topology)!r}")
 
@@ -89,10 +92,9 @@ def _validate_attention_weight(
             "that divides n_heads."
         )
 
-    head_dim = d_model // n_heads
-
     match weight:
         case LlamaAttentionWeightConfig() as w:
+            head_dim = d_model // n_heads
             rope_dim = w.rope_dim
             if rope_dim % 2 != 0:
                 raise ValueError(
@@ -151,5 +153,4 @@ def _validate_multihead_weight(weight: MultiheadWeightConfig, *, path: str) -> N
             f"d_model={d_model}, n_heads={n_heads}. Fix: set d_model to a "
             "multiple of n_heads."
         )
-
 

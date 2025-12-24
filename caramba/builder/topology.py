@@ -7,8 +7,13 @@ from typing_extensions import TypeGuard
 from torch import nn
 from caramba.builder import Builder
 from caramba.builder.layer import LayerBuilder
-from caramba.config.layer import LayerConfig
-from caramba.config.topology import TopologyConfig, TopologyType, _TopologyConfigBase
+from caramba.config.layer import LayerConfig, _LayerConfigBase
+from caramba.config.topology import (
+    NodeConfig,
+    TopologyConfig,
+    TopologyType,
+    _TopologyConfigBase,
+)
 from caramba.topology.nested import Nested
 from caramba.topology.sequential import Sequential
 from caramba.topology.parallel import Parallel
@@ -30,10 +35,10 @@ def is_layer_config(config: object) -> TypeGuard[LayerConfig]:
     """
     is_layer_config checks if config is a layer config instance.
     """
-    return not isinstance(config, _TopologyConfigBase)
+    return isinstance(config, _LayerConfigBase)
 
 
-class TopologyBuilder(Builder):
+class TopologyBuilder(Builder[TopologyConfig]):
     """
     TopologyBuilder builds topology modules from config.
     """
@@ -43,18 +48,21 @@ class TopologyBuilder(Builder):
         """
         self.layer_builder = LayerBuilder()
 
-    def build(self, config: LayerConfig | TopologyConfig) -> nn.Module:
+    def build(self, config: TopologyConfig) -> nn.Module:
         """
         build builds a topology module from config.
         """
         if not isinstance(config, _TopologyConfigBase):
-            raise ValueError(f"TopologyBuilder only accepts TopologyConfig, got {type(config)!r}")
+            raise ValueError(
+                "TopologyBuilder only accepts TopologyConfig, got "
+                f"{type(config)!r}"
+            )
         layers: list[nn.Module] = []
 
         match config.type:
             case TopologyType.NESTED:
-                for layer in config.layers:
-                    layers.append(self.build(layer))
+                for node in config.layers:
+                    layers.append(self._build_node(node))
                 return Nested(config, layers)
             case (
                 TopologyType.STACKED
@@ -65,11 +73,8 @@ class TopologyBuilder(Builder):
                 | TopologyType.CYCLIC
                 | TopologyType.RECURRENT
             ):
-                for layer in config.layers:
-                    if is_layer_config(layer):
-                        layers.append(self.layer_builder.build(layer))
-                    else:
-                        raise ValueError(f"Unsupported layer type: {type(layer)}")
+                for node in config.layers:
+                    layers.append(self._build_node(node))
 
                 match config.type:
                     case TopologyType.STACKED:
@@ -86,7 +91,15 @@ class TopologyBuilder(Builder):
                         return Cyclic(config, layers)
                     case TopologyType.RECURRENT:
                         return Recurrent(config, layers)
-                    case _:
-                        raise ValueError(f"Unsupported topology type: {config.type}")
             case _:
                 raise ValueError(f"Unsupported topology type: {config.type}")
+
+    def _build_node(self, node: NodeConfig) -> nn.Module:
+        """
+        _build_node builds a layer or topology module from config.
+        """
+        if is_topology_config(node):
+            return self.build(node)
+        if is_layer_config(node):
+            return self.layer_builder.build(node)
+        raise ValueError(f"Unsupported node type: {type(node)!r}")

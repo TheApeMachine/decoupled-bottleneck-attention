@@ -50,8 +50,8 @@ class LlamaAttentionWeight(nn.Module):
         def dense(d_in: int, d_out: int) -> DenseWeight:
             return DenseWeight(d_in, d_out, bias=bias_)
 
-        q_out = n_heads * self.head_dim
-        kv_out = n_kv_heads * self.head_dim
+        q_out = n_heads_ * self.head_dim
+        kv_out = n_kv_heads_ * self.head_dim
 
         self.q_proj: DenseWeight = dense(d_model_, q_out)
         self.k_proj: DenseWeight = dense(d_model_, kv_out)

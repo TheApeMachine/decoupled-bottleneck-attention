@@ -2,19 +2,29 @@
 from __future__ import annotations
 
 import enum
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, Field
 
 from caramba.config.operation import (
-    AttentionOperationConfig, DropoutOperationConfig, LayerNormOperationConfig,
-    MatmulOperationConfig, MultiheadOperationConfig, RMSNormOperationConfig,
+    AttentionOperationConfig,
+    DropoutOperationConfig,
+    LayerNormOperationConfig,
+    MatmulOperationConfig,
+    MultiheadOperationConfig,
+    RMSNormOperationConfig,
     SwiGLUOperationConfig,
 )
 from caramba.config.weight import (
-    DecoupledAttentionWeightConfig, DenseWeightConfig, LlamaAttentionWeightConfig,
-    MultiheadWeightConfig, NormWeightConfig, RMSNormWeightConfig, SwiGLUWeightConfig,
+    DecoupledAttentionWeightConfig,
+    DenseWeightConfig,
+    LlamaAttentionWeightConfig,
+    MultiheadWeightConfig,
+    NormWeightConfig,
+    RMSNormWeightConfig,
+    SwiGLUWeightConfig,
 )
+
 
 class LayerType(str, enum.Enum):
     """
@@ -39,78 +49,110 @@ class LayerType(str, enum.Enum):
         return cls(s)
 
 
-def _normalize_layer(v: dict) -> dict:
-    if isinstance(v, dict) and isinstance(v.get("type"), str):
-        v["type"] = LayerType.from_str(v["type"])
-    return v
+def _normalize_layer(v: object) -> object:
+    """
+    _normalize_layer normalizes the discriminated union "type" field.
+    """
+    if isinstance(v, BaseModel):
+        return v
+
+    if isinstance(v, dict):
+        layer_type = v.get("type")
+        if isinstance(layer_type, str):
+            out = dict(v)
+            out["type"] = LayerType.from_str(layer_type)
+            return out
+        if isinstance(layer_type, LayerType):
+            return v
+        raise TypeError(
+            "LayerConfig must be a dict with a 'type' of str or LayerType, "
+            "or a pydantic BaseModel; got "
+            f"{v!r}."
+        )
+
+    raise TypeError(
+        "LayerConfig must be a dict with a 'type' of str or LayerType, "
+        "or a pydantic BaseModel; got "
+        f"{v!r}."
+    )
 
 
-class LinearLayerConfig(BaseModel):
+class _LayerConfigBase(BaseModel):
+    """
+    _LayerConfigBase provides the base type for layer configs.
+    """
+
+
+class LinearLayerConfig(_LayerConfigBase):
     """
     LinearLayerConfig provides the linear layer configuration.
     """
-    type: LayerType = LayerType.LINEAR
+    type: Literal[LayerType.LINEAR] = LayerType.LINEAR
     operation: MatmulOperationConfig
     weight: DenseWeightConfig
 
 
-class LayerNormLayerConfig(BaseModel):
+class LayerNormLayerConfig(_LayerConfigBase):
     """
     LayerNormLayerConfig provides the layer norm layer configuration.
     """
-    type: LayerType = LayerType.LAYER_NORM
+    type: Literal[LayerType.LAYER_NORM] = LayerType.LAYER_NORM
     operation: LayerNormOperationConfig
     weight: NormWeightConfig
 
 
-class RMSNormLayerConfig(BaseModel):
+class RMSNormLayerConfig(_LayerConfigBase):
     """
     RMSNormLayerConfig provides the RMS norm layer configuration.
     """
-    type: LayerType = LayerType.RMS_NORM
+    type: Literal[LayerType.RMS_NORM] = LayerType.RMS_NORM
     operation: RMSNormOperationConfig
     weight: RMSNormWeightConfig
 
 
-class MultiheadLayerConfig(BaseModel):
+class MultiheadLayerConfig(_LayerConfigBase):
     """
     MultiheadLayerConfig provides the multihead layer configuration.
     """
-    type: LayerType = LayerType.MULTIHEAD
+    type: Literal[LayerType.MULTIHEAD] = LayerType.MULTIHEAD
     operation: MultiheadOperationConfig
     weight: MultiheadWeightConfig
 
 
-class DropoutLayerConfig(BaseModel):
+class DropoutLayerConfig(_LayerConfigBase):
     """
     DropoutLayerConfig provides the dropout layer configuration.
     """
-    type: LayerType = LayerType.DROPOUT
+    type: Literal[LayerType.DROPOUT] = LayerType.DROPOUT
     operation: DropoutOperationConfig
 
 
-class AttentionLayerConfig(BaseModel):
+class AttentionLayerConfig(_LayerConfigBase):
     """
     AttentionLayerConfig provides the attention layer configuration.
     """
-    type: LayerType = LayerType.ATTENTION
+    type: Literal[LayerType.ATTENTION] = LayerType.ATTENTION
     operation: AttentionOperationConfig
     weight: LlamaAttentionWeightConfig | DecoupledAttentionWeightConfig
 
 
-class SwiGLULayerConfig(BaseModel):
+class SwiGLULayerConfig(_LayerConfigBase):
     """
     SwiGLULayerConfig provides the SwiGLU layer configuration.
     """
-    type: LayerType = LayerType.SWIGLU
+    type: Literal[LayerType.SWIGLU] = LayerType.SWIGLU
     operation: SwiGLUOperationConfig
     weight: SwiGLUWeightConfig
 
 
 LayerConfig = Annotated[
-    LinearLayerConfig | LayerNormLayerConfig | RMSNormLayerConfig |
-    MultiheadLayerConfig | DropoutLayerConfig | AttentionLayerConfig |
-    SwiGLULayerConfig,
+    LinearLayerConfig
+    | LayerNormLayerConfig
+    | RMSNormLayerConfig
+    | MultiheadLayerConfig
+    | DropoutLayerConfig
+    | AttentionLayerConfig
+    | SwiGLULayerConfig,
     BeforeValidator(_normalize_layer),
     Field(discriminator="type"),
 ]

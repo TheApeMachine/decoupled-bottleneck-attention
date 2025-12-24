@@ -11,7 +11,11 @@ from caramba.compiler.lower import lower_topology
 from caramba.config.layer import LayerType, LinearLayerConfig
 from caramba.config.layer import LayerNormLayerConfig
 from caramba.config.operation import LayerNormOperationConfig, MatmulOperationConfig
-from caramba.config.topology import NestedTopologyConfig, StackedTopologyConfig
+from caramba.config.topology import (
+    NestedTopologyConfig,
+    SequentialTopologyConfig,
+    StackedTopologyConfig,
+)
 from caramba.config.weight import DenseWeightConfig, NormWeightConfig
 from caramba.model.transformer import Transformer
 
@@ -74,6 +78,22 @@ class LowerTest(unittest.TestCase):
         x = torch.randn(2, 3, 4)
         _ = Transformer(lowered).forward(x)
 
+    def test_allows_topology_nodes_inside_layers(self) -> None:
+        """
+        test allowing topology nodes inside layer lists.
+        """
+        linear = LinearLayerConfig(
+            type=LayerType.LINEAR,
+            operation=MatmulOperationConfig(),
+            weight=DenseWeightConfig(d_in=4, d_out=4, bias=False),
+        )
+        inner = SequentialTopologyConfig(layers=[linear], repeat=1)
+        outer = StackedTopologyConfig(layers=[inner], repeat=1)
+        lowered = lower_topology(outer)
+
+        x = torch.randn(2, 3, 4)
+        _ = Transformer(lowered).forward(x)
+
     def test_rejects_dim_mismatch(self) -> None:
         """
         test rejecting a simple d_model mismatch across layers.
@@ -98,5 +118,4 @@ class LowerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 

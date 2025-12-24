@@ -22,6 +22,8 @@ class Parallel(nn.Module):
         super().__init__()
         self.config: ParallelTopologyConfig = config
         self.layers: nn.ModuleList = nn.ModuleList(layers)
+        if len(self.layers) == 0:
+            raise ValueError("ParallelTopology requires at least one layer")
 
     @override
     def forward(self, x: Tensor) -> Tensor:

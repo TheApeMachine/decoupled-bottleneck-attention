@@ -15,6 +15,7 @@ from caramba.config.layer import (
     MultiheadLayerConfig,
     RMSNormLayerConfig,
     SwiGLULayerConfig,
+    _LayerConfigBase,
 )
 from caramba.config.topology import (
     BranchingTopologyConfig,
@@ -39,7 +40,11 @@ class _IO:
     d_out: int | None
 
 
-def validate_topology(config: TopologyConfig, *, path: str = "model.topology") -> None:
+def validate_topology(
+    config: TopologyConfig,
+    *,
+    path: str = "model.topology",
+) -> None:
     """validate_topology checks basic cross-layer shape invariants."""
     _infer_topology_io(config, path=path)
 
@@ -52,7 +57,7 @@ def _is_layer_config(node: NodeConfig) -> TypeGuard[LayerConfig]:
     """
     _is_layer_config checks if node is a layer config instance.
     """
-    return not isinstance(node, _TopologyConfigBase)
+    return isinstance(node, _LayerConfigBase)
 
 
 def _infer_node_io(node: NodeConfig, *, path: str) -> _IO:
@@ -79,7 +84,8 @@ def _infer_layer_io(config: LayerConfig) -> _IO:
             return _IO(d_in=d, d_out=d)
 
         case DropoutLayerConfig():
-            # Dropout is shape-transparent; leave unknown so it doesn't constrain.
+            # Dropout is shape-transparent; leave unknown so it does not
+            # constrain.
             return _IO(d_in=None, d_out=None)
 
         case _:
@@ -90,7 +96,8 @@ def _require_match(cur: int | None, want: int, *, path: str) -> None:
     if cur is not None and cur != want:
         raise ValueError(
             f"{path}: expected d_in={cur}, got d_in={want}. "
-            "Fix: make this node's input dim match the previous node's output dim."
+            "Fix: make this node's input dim match the previous "
+            "node's output dim."
         )
 
 
@@ -132,7 +139,8 @@ def _require_single_out(outs: set[int], *, path: str, kind: str) -> _IO:
 def _require_shape_preserving(nodes: list[NodeConfig], *, path: str) -> None:
     # Residual adds the block output to the block input.
     # For now we require every node to preserve shape, which is sufficient for
-    # standard Transformer blocks (norm/attn/mlp are shape-preserving end-to-end).
+    # standard Transformer blocks (norm/attn/mlp are shape-preserving
+    # end-to-end).
     for i, node in enumerate(nodes):
         node_path = f"{path}.layers[{i}]"
         io = _infer_node_io(node, path=node_path)
@@ -155,7 +163,8 @@ def _infer_topology_io(config: TopologyConfig, *, path: str) -> _IO:
 
         case ResidualTopologyConfig() as c:
             io = _infer_seq_io(list(c.layers), path=path)
-            # If we can't determine a final d_out, we can't enforce preservation reliably.
+            # If we cannot determine a final d_out, we cannot enforce
+            # preservation reliably.
             if io.d_out is not None:
                 _require_shape_preserving(list(c.layers), path=path)
             return io

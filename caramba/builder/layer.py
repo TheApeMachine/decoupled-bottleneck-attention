@@ -15,7 +15,7 @@ from caramba.config.layer import (
     RMSNormLayerConfig,
     SwiGLULayerConfig,
 )
-from caramba.config.topology import TopologyConfig, _TopologyConfigBase
+from caramba.config.topology import _TopologyConfigBase
 from caramba.layer.attention import Attention
 from caramba.layer.linear import Linear
 from caramba.layer.normalize import Normalize
@@ -25,11 +25,11 @@ from caramba.layer.multihead import Multihead
 from caramba.layer.dropout import Dropout
 
 
-class LayerBuilder(Builder):
+class LayerBuilder(Builder[LayerConfig]):
     """
     LayerBuilder builds layer modules from config.
     """
-    def build(self, config: LayerConfig | TopologyConfig) -> nn.Module:
+    def build(self, config: LayerConfig) -> nn.Module:
         """
         build builds a layer module from config.
         """
@@ -51,5 +51,6 @@ class LayerBuilder(Builder):
             case SwiGLULayerConfig() as c:
                 out = SwiGLU(c)
             case _:
-                raise ValueError(f"Unsupported layer type: {config.type}")
+                layer_type = getattr(config, "type", type(config))
+                raise ValueError(f"Unsupported layer type: {layer_type}")
         return out

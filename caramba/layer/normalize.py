@@ -7,7 +7,9 @@ from torch import nn, Tensor
 from typing_extensions import override
 
 from caramba.config.layer import LayerNormLayerConfig
+from caramba.operation.build import build_layer_norm_operation
 from caramba.operation.layer_norm import LayerNormOp
+from caramba.weight.build import build_layer_norm_weight
 from caramba.weight.layer_norm import LayerNormWeight
 
 
@@ -18,11 +20,10 @@ class Normalize(nn.Module):
     def __init__(self, config: LayerNormLayerConfig) -> None:
         super().__init__()
         self.config: LayerNormLayerConfig = config
-        self.operation: LayerNormOp = LayerNormOp()
-        self.weight: LayerNormWeight = LayerNormWeight(
-            config.weight.d_model,
-            elementwise_affine=bool(config.weight.elementwise_affine),
+        self.operation: LayerNormOp = build_layer_norm_operation(
+            config.operation
         )
+        self.weight: LayerNormWeight = build_layer_norm_weight(config.weight)
         self.eps: float = float(config.operation.eps)
 
     @override

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from caramba.config.layer import LayerType
+from caramba.config.layer import LayerType, LinearLayerConfig
 from caramba.config.manifest import Manifest
 
 
@@ -32,6 +32,8 @@ class ManifestTest(unittest.TestCase):
                         'notes: "x"',
                         "defaults:",
                         "  wandb: false",
+                        "  wandb_project: \"\"",
+                        "  wandb_entity: \"\"",
                         "model:",
                         "  type: transformer",
                         "  topology:",
@@ -74,7 +76,11 @@ class ManifestTest(unittest.TestCase):
                 "version": 1,
                 "name": "test",
                 "notes": "x",
-                "defaults": {"wandb": False},
+                "defaults": {
+                    "wandb": False,
+                    "wandb_project": "",
+                    "wandb_entity": "",
+                },
                 "model": {
                     "type": "transformer",
                     "topology": {
@@ -116,6 +122,50 @@ class ManifestTest(unittest.TestCase):
             m = Manifest.from_path(path)
             self.assertEqual(m.model.topology.type.value, "stacked")
 
+    def test_resolves_vars(self) -> None:
+        """
+        test resolving vars in a manifest payload.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.yml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "version: 1",
+                        "name: test",
+                        'notes: "x"',
+                        "vars:",
+                        "  d_in: 16",
+                        "  d_out: 32",
+                        "defaults:",
+                        "  wandb: false",
+                        "  wandb_project: \"\"",
+                        "  wandb_entity: \"\"",
+                        "model:",
+                        "  type: transformer",
+                        "  topology:",
+                        "    type: stacked",
+                        "    layers:",
+                        "      - type: linear",
+                        "        operation:",
+                        "          type: matmul",
+                        "        weight:",
+                        "          type: dense",
+                        "          d_in: \"${d_in}\"",
+                        "          d_out: \"${d_out}\"",
+                        "groups: []",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            m = Manifest.from_path(path)
+            layer = m.model.topology.layers[0]
+            self.assertEqual(layer.type, LayerType.LINEAR)
+            assert isinstance(layer, LinearLayerConfig)
+            self.assertEqual(layer.weight.d_in, 16)
+            self.assertEqual(layer.weight.d_out, 32)
+
     def test_rejects_invalid_layer_shape(self) -> None:
         """
         test rejecting an invalid layer shape.
@@ -128,7 +178,10 @@ class ManifestTest(unittest.TestCase):
                     [
                         "version: 1",
                         "notes: x",
-                        "defaults: {wandb: false}",
+                        "defaults:",
+                        "  wandb: false",
+                        "  wandb_project: \"\"",
+                        "  wandb_entity: \"\"",
                         "model:",
                         "  type: transformer",
                         "  topology:",

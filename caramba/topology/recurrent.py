@@ -21,6 +21,8 @@ class Recurrent(nn.Module):
         super().__init__()
         self.config: RecurrentTopologyConfig = config
         self.layers: nn.ModuleList = nn.ModuleList(layers)
+        if len(self.layers) == 0:
+            raise ValueError("RecurrentTopology requires at least one layer")
 
     @override
     def forward(self, x: Tensor) -> Tensor:

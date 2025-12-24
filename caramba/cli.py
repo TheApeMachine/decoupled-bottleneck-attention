@@ -11,12 +11,7 @@ import argparse
 from pathlib import Path
 from caramba.command import Command, CompileCommand, RunCommand
 from caramba.config.mode import Mode
-from caramba.config.model import ModelConfig, ModelType
-from caramba.config.topology import StackedTopologyConfig
-from caramba.config.defaults import Defaults
-from caramba.config.group import Group
 from caramba.config.manifest import Manifest
-from caramba.config.run import Run
 from caramba.compiler import lower_manifest, validate_manifest
 
 
@@ -53,15 +48,18 @@ class CLI(argparse.ArgumentParser):
             help="Show the version and exit.",
         )
 
-        subparsers = self.add_subparsers(dest="command")
+        subparsers = self.add_subparsers(
+            dest="command",
+            parser_class=argparse.ArgumentParser,
+        )
         compile_parser = subparsers.add_parser(
             "compile",
             help="Compile a manifest (parse → lower → validate), without building.",
         )
         _ = compile_parser.add_argument(
-            "manifest",
+            "compile_manifest",
             type=Path,
-            dest="compile_manifest",
+            metavar="manifest",
             help="Manifest path (.json, .yml, or .yaml).",
         )
         _ = compile_parser.add_argument(
@@ -206,45 +204,9 @@ class CLI(argparse.ArgumentParser):
         if args.manifest.exists():
             return lower_manifest(Manifest.from_path(args.manifest))
 
-        if args.entity is None or args.project is None:
-            raise ValueError(
-                "Missing required flags: --entity and --project are required when "
-                "no manifest file is provided."
-            )
-
-        return lower_manifest(
-            Manifest(
-                version=1,
-                name="",
-                notes="",
-                model=ModelConfig(
-                    type=ModelType.TRANSFORMER,
-                    topology=StackedTopologyConfig(layers=[]),
-                ),
-                defaults=Defaults(
-                    wandb_entity=args.entity,
-                    wandb_project=args.project,
-                ),
-                groups=[
-                    Group(
-                        name="default",
-                        description="Default group",
-                        data="",
-                        runs=[
-                            Run(
-                                id="default",
-                                mode=self._get_mode(args.mode),
-                                exp="default",
-                                seed=args.seed,
-                                steps=1000,
-                                expected={
-                                    "attn_mode": "standard",
-                                },
-                            ),
-                        ],
-                    )
-                ],
-            )
+        raise ValueError(
+            f"Manifest file not found: {args.manifest}. Provide --manifest PATH to "
+            "an existing manifest file."
         )
 
     def parse(self, argv: list[str] | None = None) -> Manifest:

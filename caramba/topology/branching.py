@@ -21,6 +21,8 @@ class Branching(nn.Module):
     ) -> None:
         super().__init__()
         self.config: BranchingTopologyConfig = config
+        if not layers or len(layers) == 0:
+            raise ValueError("layers must contain at least one nn.Module")
         self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override

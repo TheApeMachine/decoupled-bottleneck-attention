@@ -21,12 +21,14 @@ from caramba.config.topology import (
     BranchingTopologyConfig,
     CyclicTopologyConfig,
     NestedTopologyConfig,
+    NodeConfig,
     ParallelTopologyConfig,
     RecurrentTopologyConfig,
     ResidualTopologyConfig,
     SequentialTopologyConfig,
     StackedTopologyConfig,
     TopologyConfig,
+    _TopologyConfigBase,
 )
 from caramba.config.weight import (
     DecoupledAttentionWeightConfig,
@@ -68,9 +70,9 @@ def _format_topology(
 
     match config:
         case NestedTopologyConfig() as c:
-            for i, child in enumerate(c.layers):
-                yield from _format_topology(
-                    child,
+            for i, node in enumerate(c.layers):
+                yield from _format_node(
+                    node,
                     indent=indent + 2,
                     path=f"{path}.topology.layers[{i}]",
                 )
@@ -83,14 +85,29 @@ def _format_topology(
             | CyclicTopologyConfig()
             | RecurrentTopologyConfig()
         ) as c:
-            for i, layer in enumerate(c.layers):
-                yield from _format_layer(
-                    layer,
+            for i, node in enumerate(c.layers):
+                yield from _format_node(
+                    node,
                     indent=indent + 2,
                     path=f"{path}.topology.layers[{i}]",
                 )
         case _:
             raise ValueError(f"Unsupported topology config: {type(config)!r}")
+
+
+def _format_node(
+    config: NodeConfig,
+    *,
+    indent: int,
+    path: str,
+) -> Iterable[str]:
+    """
+    _format_node formats a topology or layer node.
+    """
+    if isinstance(config, _TopologyConfigBase):
+        yield from _format_topology(config, indent=indent, path=path)
+    else:
+        yield from _format_layer(config, indent=indent, path=path)
 
 
 def _format_layer(
@@ -245,5 +262,3 @@ def _fmt_dims(weight: WeightConfig | None) -> str:
             )
         case _:
             raise ValueError(f"Unsupported weight config: {type(weight)!r}")
-
-

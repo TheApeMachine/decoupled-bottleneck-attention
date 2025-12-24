@@ -20,6 +20,8 @@ class Sequential(nn.Module):
     ) -> None:
         super().__init__()
         self.config: SequentialTopologyConfig = config
+        if not layers or len(layers) == 0:
+            raise ValueError("SequentialTopology requires at least one layer")
         self.layers: nn.ModuleList = nn.ModuleList(layers)
 
     @override

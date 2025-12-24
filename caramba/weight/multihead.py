@@ -19,9 +19,7 @@ class MultiheadWeight(nn.Module):
         super().__init__()
         embed_dim = require_int("d_model", d_model, ge=1)
         num_heads = require_int("n_heads", n_heads, ge=1)
-        p = require_float("dropout", dropout)
-        if p < 0.0:
-            raise ValueError(f"dropout must be >= 0, got {p}")
+        p = require_float("dropout", dropout, ge=0.0)
 
         self.attn: nn.MultiheadAttention = nn.MultiheadAttention(
             embed_dim=embed_dim,
