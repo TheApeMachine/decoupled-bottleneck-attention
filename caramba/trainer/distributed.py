@@ -38,6 +38,8 @@ import torch.distributed as dist
 from torch import nn, Tensor
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
+from caramba.console import logger as console_logger
+
 if TYPE_CHECKING:
     from torch.nn.parallel import DistributedDataParallel
     from torch.distributed.fsdp import FullyShardedDataParallel
@@ -193,8 +195,10 @@ class DistributedContext:
         ctx._initialized = True
 
         if is_main_process():
-            print(f"Distributed training initialized: "
-                  f"world_size={ctx._world_size}, backend={backend}")
+            console_logger.info(
+                f"Distributed training initialized: "
+                f"world_size={ctx._world_size}, backend={backend}"
+            )
 
         return ctx
 
@@ -489,9 +493,14 @@ class DistributedContext:
         self._initialized = False
 
     def print(self, *args: Any, **kwargs: Any) -> None:
-        """Print only from the main process."""
+        """Print only from the main process (deprecated, use log instead)."""
         if self.is_main:
-            print(*args, **kwargs)
+            console_logger.log(" ".join(str(arg) for arg in args))
+
+    def log(self, msg: str) -> None:
+        """Log a message only from the main process using the unified logger."""
+        if self.is_main:
+            console_logger.info(msg)
 
     def save_checkpoint(
         self,

@@ -664,21 +664,42 @@ if TRITON_AVAILABLE and fused_decode_available(cache, "cuda"):
 
 ## Console Logging
 
-Rich-based logging with progress bars:
+Rich-based logging with structured, beautiful console output:
 
 ```python
-from caramba.console.logger import Logger
+from caramba.console import logger
 
-logger = Logger()
-
+# Basic logging with semantic levels
 logger.info("Starting training...")
+logger.success("Training complete!")
 logger.warning("Low memory detected")
 logger.error("Training failed")
 
-# Progress bar
+# Structured output
+logger.header("Training Phase", "blockwise distillation")
+logger.subheader("Epoch 1")
+logger.metric("loss", 0.0234)
+logger.step(1, 10, "Processing batch...")
+logger.path("/path/to/checkpoint.pt", "Saved")
+
+# Key-value display
+logger.key_value({"epochs": 10, "lr": 0.001, "batch_size": 32})
+
+# Progress tracking
 for step in logger.progress(1000, description="Training"):
     # ... training step ...
     pass
+
+# Rich progress bar with fine control
+with logger.progress_bar() as progress:
+    task = progress.add_task("Training...", total=1000)
+    for step in range(1000):
+        progress.update(task, advance=1)
+
+# Training-specific helpers
+logger.training_step("global", step=100, loss=0.0234, extras={"ce": 0.02, "diff": 0.01})
+logger.benchmark_result("perplexity", "student", 12.5, " ppl")
+logger.artifacts_summary({"model.pt": "/path/to/model.pt", "config.json": "/path/to/config.json"})
 ```
 
 ---

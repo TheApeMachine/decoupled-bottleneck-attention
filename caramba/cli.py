@@ -14,6 +14,7 @@ from caramba.command import Command, CompileCommand, RunCommand
 from caramba.config.mode import Mode
 from caramba.config.manifest import Manifest
 from caramba.compiler import Compiler
+from caramba.console import logger
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,8 +306,8 @@ def main(argv: list[str] | None = None) -> int:
                 if cmd.print_plan:
                     from caramba.compiler.plan import Planner
 
-                    print(Planner().format(cmd.manifest))
-                print("✓ Manifest compiled successfully")
+                    logger.log(Planner().format(cmd.manifest))
+                logger.success("Manifest compiled successfully")
                 return 0
 
             case ExperimentCommand() as cmd:
@@ -314,10 +315,8 @@ def main(argv: list[str] | None = None) -> int:
 
                 runner = ExperimentRunner(cmd.manifest)
                 artifacts = runner.run(cmd.group)
-                print(f"\n✓ Experiment complete!")
-                print(f"  Generated {len(artifacts)} artifacts:")
-                for name, path in artifacts.items():
-                    print(f"    - {name}: {path}")
+                logger.success("Experiment complete!")
+                logger.artifacts_summary(artifacts)
                 return 0
 
             case RunCommand() as cmd:
@@ -329,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
     except Exception as e:
-        print(f"✗ Error: {e}")
+        logger.error(f"Error: {e}")
         return 1
 
 

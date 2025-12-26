@@ -21,6 +21,7 @@ from caramba.config.benchmark import (
     MemoryBenchmarkConfig,
     PerplexityBenchmarkConfig,
 )
+from caramba.console import logger
 
 
 class BenchmarkRunner:
@@ -51,7 +52,7 @@ class BenchmarkRunner:
 
         Returns a dict of artifact paths.
         """
-        print(f"benchmark: running {len(self.suite.benchmarks)} benchmarks")
+        logger.header("Benchmarks", f"{len(self.suite.benchmarks)} configured")
 
         # Collect results
         teacher_perplexity: PerplexityResult | None = None
@@ -62,7 +63,7 @@ class BenchmarkRunner:
         student_memory: MemoryResult | None = None
 
         for spec in self.suite.benchmarks:
-            print(f"benchmark: {spec.id} ({spec.config.type})")
+            logger.subheader(f"{spec.id} ({spec.config.type})")
 
             for _ in range(spec.repeats):
                 match spec.config.type:
@@ -74,13 +75,13 @@ class BenchmarkRunner:
                             result = benchmark.run(teacher, "teacher")
                             if teacher_perplexity is None or result.perplexity < teacher_perplexity.perplexity:
                                 teacher_perplexity = result
-                            print(f"  teacher: ppl={result.perplexity:.2f}")
+                            logger.metric("teacher", result.perplexity, " ppl")
 
                         if "student" in spec.models:
                             result = benchmark.run(student, "student")
                             if student_perplexity is None or result.perplexity < student_perplexity.perplexity:
                                 student_perplexity = result
-                            print(f"  student: ppl={result.perplexity:.2f}")
+                            logger.metric("student", result.perplexity, " ppl")
 
                     case BenchmarkType.LATENCY:
                         assert isinstance(spec.config, LatencyBenchmarkConfig)
@@ -90,13 +91,13 @@ class BenchmarkRunner:
                             result = benchmark.run(teacher, "teacher")
                             if teacher_latency is None:
                                 teacher_latency = result
-                            print(f"  teacher: {result.avg_tokens_per_second:.1f} tok/s")
+                            logger.metric("teacher", result.avg_tokens_per_second, " tok/s")
 
                         if "student" in spec.models:
                             result = benchmark.run(student, "student")
                             if student_latency is None:
                                 student_latency = result
-                            print(f"  student: {result.avg_tokens_per_second:.1f} tok/s")
+                            logger.metric("student", result.avg_tokens_per_second, " tok/s")
 
                     case BenchmarkType.MEMORY:
                         assert isinstance(spec.config, MemoryBenchmarkConfig)
@@ -110,7 +111,7 @@ class BenchmarkRunner:
                             if teacher_memory is None:
                                 teacher_memory = result
                             if result.kvcache_analysis:
-                                print(f"  teacher: {result.kvcache_analysis.bytes_per_token_fp16:.0f} bytes/tok")
+                                logger.metric("teacher", result.kvcache_analysis.bytes_per_token_fp16, " bytes/tok")
 
                         if "student" in spec.models:
                             result = benchmark.run(student, "student")
@@ -118,13 +119,13 @@ class BenchmarkRunner:
                                 student_memory = result
                             if result.kvcache_analysis:
                                 kv_bytes = result.kvcache_analysis.bytes_per_token_dba_fp16 or result.kvcache_analysis.bytes_per_token_fp16
-                                print(f"  student: {kv_bytes:.0f} bytes/tok")
+                                logger.metric("student", kv_bytes, " bytes/tok")
 
                     case _:
-                        print(f"  skipping unsupported benchmark type: {spec.config.type}")
+                        logger.warning(f"skipping unsupported benchmark type: {spec.config.type}")
 
         # Generate artifacts
-        print("benchmark: generating artifacts")
+        logger.info("Generating artifacts...")
         generator = ArtifactGenerator(self.output_dir)
         paths = generator.generate_all(
             metadata=self.metadata,
@@ -137,9 +138,9 @@ class BenchmarkRunner:
             formats=self.suite.formats,
         )
 
-        print(f"benchmark: generated {len(paths)} artifacts in {self.output_dir}")
+        logger.success(f"Generated {len(paths)} artifacts in {self.output_dir}")
         for name, path in paths.items():
-            print(f"  - {name}: {path}")
+            logger.path(str(path), name)
 
         return paths
 

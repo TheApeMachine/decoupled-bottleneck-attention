@@ -37,6 +37,7 @@ from caramba.trainer.distributed import (
 )
 from caramba.eval.suite import assert_eval_thresholds, run_eval_verify
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.console import logger
 
 
 def _make_teacher_model_config(model_config: "ModelConfig") -> "ModelConfig":
@@ -134,6 +135,9 @@ class Upcycle:
         cfg = run.verify
         if cfg is None:
             return
+
+        logger.header("Verification")
+
         if isinstance(cfg, CompareVerifyConfig):
             self.verify_compare(run, cfg)
         elif isinstance(cfg, EvalVerifyConfig):
@@ -143,6 +147,8 @@ class Upcycle:
 
     def verify_compare(self, run: Run, cfg: CompareVerifyConfig) -> None:
         """Compare teacher/student on a few batches."""
+        logger.info(f"Running teacher/student comparison on {cfg.batches} batches...")
+
         train = self.require_train(run)
         batches = self.collect_compare_batches(
             batch_size=train.batch_size,
@@ -158,18 +164,25 @@ class Upcycle:
             attention=cfg.attention,
             logits=cfg.logits,
         )
-        print(f"verify: compare batches={result.batches}")
+        logger.success(f"Comparison complete • {result.batches} batches verified")
         assert_thresholds(result=result, attention=cfg.attention, logits=cfg.logits)
 
     def verify_eval(self, run: Run, cfg: EvalVerifyConfig) -> None:
         """Run a small behavioral evaluation suite."""
+        logger.info("Running behavioral evaluation suite...")
+
         summary = run_eval_verify(
             teacher=self.teacher,
             student=self.student,
             cfg=cfg,
             device=self.device,
         )
-        print(f"verify: eval teacher_acc={summary.teacher_accuracy:.3f} student_acc={summary.student_accuracy:.3f}")
+
+        logger.key_value({
+            "Teacher accuracy": f"{summary.teacher_accuracy:.1%}",
+            "Student accuracy": f"{summary.student_accuracy:.1%}",
+        })
+        logger.success("Evaluation complete")
         assert_eval_thresholds(summary=summary, thresholds=cfg.thresholds)
 
     def verify_kvcache(self, run: Run, cfg: KVCacheVerifyConfig) -> None:
@@ -179,6 +192,8 @@ class Upcycle:
         which is especially relevant for DBA upcycling where we expect
         significant memory reduction due to smaller sem/geo key dimensions.
         """
+        logger.info("Analyzing KV-cache memory footprint...")
+
         # Extract dimensions from the actual models
         teacher_bytes_per_token = self._estimate_model_kvcache_bytes(
             self.teacher, cfg.teacher, cfg.n_layers
@@ -193,10 +208,12 @@ class Upcycle:
 
         reduction = teacher_total / student_total if student_total > 0 else float("inf")
 
-        self._print(
-            f"verify: kvcache teacher={teacher_total / 1024 / 1024:.2f}MB, "
-            f"student={student_total / 1024 / 1024:.2f}MB, reduction={reduction:.2f}x"
-        )
+        logger.key_value({
+            "Teacher KV-cache": f"{teacher_total / 1024 / 1024:.2f} MB",
+            "Student KV-cache": f"{student_total / 1024 / 1024:.2f} MB",
+            "Reduction": f"{reduction:.2f}x",
+        })
+        logger.success("KV-cache analysis complete")
 
         # Check threshold if configured
         if cfg.min_reduction_ratio is not None and reduction < cfg.min_reduction_ratio:
@@ -308,38 +325,47 @@ class Upcycle:
         if train.teacher_ckpt is None:
             raise ValueError("train.teacher_ckpt is required for upcycle.")
 
+        logger.header("Model Initialization")
+
+        # Load checkpoint
+        logger.info(f"Loading teacher checkpoint: {train.teacher_ckpt}")
         ckpt_path = self.resolve_teacher_ckpt(train.teacher_ckpt)
         state_dict = CheckpointLoader().load(ckpt_path)
-        self._print(f"upcycle: loaded state_dict keys={len(state_dict)}")
+        logger.success(f"Loaded checkpoint with {len(state_dict)} keys")
 
-        # Create teacher with standard attention (original Llama architecture)
+        # Create teacher model
+        logger.info("Building teacher model (standard attention)...")
         teacher_model_config = _make_teacher_model_config(self.manifest.model)
         self.teacher = Model(teacher_model_config).to(device=self.device, dtype=self.dtype)
+        logger.success("Teacher model ready")
 
-        # Create student with the manifest's attention config (e.g., DBA)
+        # Create student model
+        logger.info("Building student model (manifest attention)...")
         self.student = Model(self.manifest.model).to(device=self.device, dtype=self.dtype)
-
-        self._print("upcycle: teacher uses standard attention, student uses manifest attention")
+        logger.success("Student model ready")
 
         # Load weights into both models
-        # Teacher: direct load (architecture matches checkpoint)
+        logger.info("Applying weights to teacher...")
         LlamaUpcycle(self.teacher, state_dict).apply()
-        # Student: upcycle surgery (transforms weights for new architecture)
+
+        logger.info("Applying upcycle surgery to student...")
         LlamaUpcycle(self.student, state_dict).apply()
+        logger.success("Weight transfer complete")
 
         # Wrap student for distributed training (teacher stays unwrapped for eval)
         if self.dist_ctx is not None:
+            logger.info("Wrapping student for distributed training...")
             self.student = self.dist_ctx.wrap_model(self.student)
 
         self.teacher.eval()
-        self._print("upcycle: initialization complete")
+        logger.success("Initialization complete")
 
-    def _print(self, msg: str) -> None:
-        """Print only from main process in distributed mode."""
+    def _log(self, msg: str) -> None:
+        """Log only from main process in distributed mode."""
         if self.dist_ctx is not None:
-            self.dist_ctx.print(msg)
+            self.dist_ctx.log(msg)
         else:
-            print(msg)
+            logger.info(msg)
 
     def _unfreeze_all_parameters(self) -> None:
         """Re-enable gradients on all student parameters.
@@ -363,20 +389,43 @@ class Upcycle:
             predicate=lambda _, m: isinstance(m, AttentionLayer),
         )
 
+        n_blocks = trainer.block_count()
+        total_steps = n_blocks * run.steps
+
+        logger.header("Blockwise Distillation", f"{n_blocks} blocks × {run.steps} steps")
+
         self.student.train()
         loader_iter = iter(loader)
-        for block_index in range(trainer.block_count()):
-            loss = None
-            for step in range(run.steps):
-                (x, _), loader_iter = self.next_batch(loader, loader_iter)
-                x = x.to(device=self.device)
-                loss = trainer.step(x, block_index=block_index)
 
-            # Reduce loss across processes for logging
-            if loss is not None:
-                if self.dist_ctx is not None:
-                    loss = self.dist_ctx.all_reduce(loss, op="avg")
-                self._print(f"blockwise block={block_index} loss={float(loss):.6f}")
+        with logger.progress_bar() as progress:
+            overall_task = progress.add_task(
+                f"Training {n_blocks} blocks...",
+                total=total_steps
+            )
+
+            for block_index in range(n_blocks):
+                loss = None
+                block_start_step = block_index * run.steps
+
+                for step in range(run.steps):
+                    (x, _), loader_iter = self.next_batch(loader, loader_iter)
+                    x = x.to(device=self.device)
+                    loss = trainer.step(x, block_index=block_index)
+
+                    # Update progress with current loss
+                    global_step = block_start_step + step + 1
+                    loss_val = float(loss) if loss is not None else 0.0
+                    progress.update(
+                        overall_task,
+                        advance=1,
+                        description=f"Block {block_index + 1}/{n_blocks} • step {step + 1}/{run.steps} • loss={loss_val:.4f}"
+                    )
+
+                # Log block completion
+                if loss is not None:
+                    if self.dist_ctx is not None:
+                        loss = self.dist_ctx.all_reduce(loss, op="avg")
+                    logger.success(f"Block {block_index + 1}/{n_blocks} complete • loss={float(loss):.6f}")
 
     def run_global(self, run: Run) -> None:
         """Run global fine-tuning on next-token loss.
@@ -401,57 +450,58 @@ class Upcycle:
         # Check if diffusion head is enabled
         has_diffusion = self._has_diffusion_head()
 
+        logger.header("Global Fine-tuning", f"{run.steps} steps")
+
         loader_iter = iter(loader)
         loss: Tensor | None = None
-        for step in range(run.steps):
-            (x, y), loader_iter = self.next_batch(loader, loader_iter)
-            x = x.to(device=self.device)
-            y = y.to(device=self.device)
 
-            ce_loss: Tensor
-            diff_loss: Tensor | None = None
+        with logger.progress_bar() as progress:
+            task = progress.add_task(f"Training...", total=run.steps)
 
-            if has_diffusion:
-                # Use return_features path for diffusion training
-                result = self.student.forward(x, return_features=True)  # type: ignore[call-arg]
-                features: Tensor = result[0]  # type: ignore[index]
-                logits: Tensor = result[1]  # type: ignore[index]
-                ce_loss = F.cross_entropy(
-                    logits.view(-1, logits.shape[-1]), y.reshape(-1)
-                )
-                diff_loss_val: Tensor = self.student.diffusion_loss(features, y)  # type: ignore[attr-defined]
-                diff_loss = diff_loss_val
-                diff_weight = self._get_diffusion_loss_weight()
-                loss = ce_loss + diff_weight * diff_loss_val
-            else:
-                logits = self.student.forward(x)
-                ce_loss = F.cross_entropy(
-                    logits.view(-1, logits.shape[-1]), y.reshape(-1)
-                )
-                loss = ce_loss
+            for step in range(run.steps):
+                (x, y), loader_iter = self.next_batch(loader, loader_iter)
+                x = x.to(device=self.device)
+                y = y.to(device=self.device)
 
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            optimizer.step()
+                ce_loss: Tensor
+                diff_loss: Tensor | None = None
 
-            # Periodic logging
-            if step % 100 == 0:
-                if self.dist_ctx is not None:
-                    loss_reduced = self.dist_ctx.all_reduce(loss.detach(), op="avg")
-                else:
-                    loss_reduced = loss.detach()
-                if has_diffusion and diff_loss is not None:
-                    self._print(
-                        f"global step={step} loss={float(loss_reduced):.6f} "
-                        f"(ce={float(ce_loss):.4f} diff={float(diff_loss):.4f})"
+                if has_diffusion:
+                    # Use return_features path for diffusion training
+                    result = self.student.forward(x, return_features=True)  # type: ignore[call-arg]
+                    features: Tensor = result[0]  # type: ignore[index]
+                    logits: Tensor = result[1]  # type: ignore[index]
+                    ce_loss = F.cross_entropy(
+                        logits.view(-1, logits.shape[-1]), y.reshape(-1)
                     )
+                    diff_loss_val: Tensor = self.student.diffusion_loss(features, y)  # type: ignore[attr-defined]
+                    diff_loss = diff_loss_val
+                    diff_weight = self._get_diffusion_loss_weight()
+                    loss = ce_loss + diff_weight * diff_loss_val
                 else:
-                    self._print(f"global step={step} loss={float(loss_reduced):.6f}")
+                    logits = self.student.forward(x)
+                    ce_loss = F.cross_entropy(
+                        logits.view(-1, logits.shape[-1]), y.reshape(-1)
+                    )
+                    loss = ce_loss
 
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                optimizer.step()
+
+                # Update progress bar with current metrics
+                loss_val = float(loss) if loss is not None else 0.0
+                if has_diffusion and diff_loss is not None:
+                    desc = f"Step {step + 1}/{run.steps} • loss={loss_val:.4f} (ce={float(ce_loss):.4f} diff={float(diff_loss):.4f})"
+                else:
+                    desc = f"Step {step + 1}/{run.steps} • loss={loss_val:.4f}"
+                progress.update(task, advance=1, description=desc)
+
+        # Final summary
         if loss is not None:
             if self.dist_ctx is not None:
                 loss = self.dist_ctx.all_reduce(loss.detach(), op="avg")
-            self._print(f"global loss={float(loss):.6f}")
+            logger.success(f"Global fine-tuning complete • final loss={float(loss):.6f}")
 
     def _has_diffusion_head(self) -> bool:
         """Check if the student model has a diffusion head enabled."""

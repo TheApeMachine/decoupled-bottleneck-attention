@@ -11,7 +11,7 @@ from caramba.config import PositiveInt
 from caramba.config.defaults import Defaults
 from caramba.config.group import Group
 from caramba.config.model import ModelConfig
-from caramba.config.resolve import Resolver
+from caramba.config.resolve import Resolver, normalize_type_names
 
 
 class Manifest(BaseModel):
@@ -49,4 +49,9 @@ class Manifest(BaseModel):
                     f"Manifest vars must be a dict, got {type(vars_payload)!r}"
                 )
             payload = Resolver(vars_payload).resolve(payload)
+
+        # Normalize legacy type names to canonical class names
+        # This allows presets to use shorthand like 'nested' → 'NestedTopology'
+        payload = normalize_type_names(payload)
+
         return cls.model_validate(payload)

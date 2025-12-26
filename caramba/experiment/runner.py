@@ -3,7 +3,6 @@ runner provides the unified experiment orchestration.
 """
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -16,10 +15,9 @@ from caramba.config.benchmark import BenchmarkSuite
 from caramba.config.group import Group
 from caramba.config.manifest import Manifest
 from caramba.config.train import TrainConfig
+from caramba.console import logger
 from caramba.model import Model
 from caramba.trainer.upcycle import Upcycle
-
-logger = logging.getLogger(__name__)
 
 
 class ExperimentRunner:
@@ -49,20 +47,25 @@ class ExperimentRunner:
         """
         # Find the group to run
         group = self._find_group(group_name)
-        logger.info("experiment: running group '%s'", group.name)
-        logger.info("  %s", group.description)
+
+        logger.header("Experiment", group.name)
+        if group.description:
+            logger.info(group.description)
+        logger.key_value({
+            "Runs": len(group.runs),
+            "Benchmarks": len(group.benchmarks) if group.benchmarks else 0,
+            "Data": group.data,
+        })
 
         # Get train config from first run
         train_config = self._get_train_config(group)
 
         # Run upcycle training
         upcycle = Upcycle(self.manifest, group, train_config)
-        for run in group.runs:
-            logger.info(
-                "experiment: run '%s' (%s)",
-                run.id,
-                run.train.phase if run.train else "no train",
-            )
+
+        for i, run in enumerate(group.runs):
+            phase_name = run.train.phase.value if run.train else "unknown"
+            logger.step(i + 1, len(group.runs), f"Run '{run.id}' ({phase_name})")
             upcycle.run(run)
 
         # Store references to trained models
@@ -72,10 +75,9 @@ class ExperimentRunner:
         # Run benchmarks if configured
         artifacts: dict[str, Path] = {}
         if group.benchmarks:
-            logger.info("experiment: running %d benchmarks", len(group.benchmarks))
             artifacts = self._run_benchmarks(group, upcycle)
 
-        logger.info("experiment: complete, generated %d artifacts", len(artifacts))
+        logger.success(f"Experiment complete • {len(artifacts)} artifacts generated")
         return artifacts
 
     def _find_group(self, group_name: str | None) -> Group:
@@ -119,7 +121,7 @@ class ExperimentRunner:
         ):
             if output_formats is not None:
                 logger.warning("Invalid or empty output_formats in manifest, using defaults")
-            output_formats = default_formats
+            output_formats = list(default_formats)
 
         # Build benchmark suite
         suite = BenchmarkSuite(

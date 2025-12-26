@@ -169,10 +169,12 @@ class MemoryBenchmark:
 
         # Calculate bytes per token
         # Standard: 2 * n_layers * n_kv_heads * head_dim * dtype_size (K and V)
+        # Note: Q4 uses 0.625 bytes/element (0.5 for data + 0.125 for scale overhead)
+        # to match the BYTES_PER_Q4_0 constant in upcycle.py
         kv_dim = n_kv_heads * head_dim
-        bytes_fp16 = 2 * n_layers * kv_dim * 2  # 2 bytes for fp16
-        bytes_q8 = 2 * n_layers * kv_dim * 1  # 1 byte for q8
-        bytes_q4 = 2 * n_layers * kv_dim * 0.5  # 0.5 bytes for q4
+        bytes_fp16 = 2 * n_layers * kv_dim * 2.0    # 2 bytes for fp16
+        bytes_q8 = 2 * n_layers * kv_dim * 1.0      # 1 byte for q8
+        bytes_q4 = 2 * n_layers * kv_dim * 0.625    # 0.625 bytes for q4 (including scale overhead)
 
         # DBA: reduced cache due to smaller key dimension
         bytes_dba_fp16: float | None = None
@@ -273,12 +275,16 @@ class MemoryBenchmark:
                     if cfg.sem_dim and cfg.geo_dim:
                         dba_k_dim = cfg.sem_dim + cfg.geo_dim
 
-        # Bytes per element
+        # Bytes per element (including scale overhead for quantized formats)
+        # These match the constants in upcycle.py for consistent reporting
         bytes_per_elem = {
             "fp16": 2.0,
             "fp32": 4.0,
-            "q8": 1.0,
-            "q4": 0.5,
+            "q8": 1.0,       # int8 + amortized scale overhead
+            "q8_0": 1.0,
+            "q4": 0.625,     # 4-bit data (0.5) + scale overhead (0.125)
+            "q4_0": 0.625,
+            "nf4": 0.625,
         }.get(quantization, 2.0)
 
         if dba_k_dim is not None:
