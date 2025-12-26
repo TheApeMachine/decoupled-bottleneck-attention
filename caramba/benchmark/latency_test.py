@@ -17,7 +17,11 @@ from caramba.config.benchmark import LatencyBenchmarkConfig
 
 
 class DummyModel(nn.Module):
-    """Simple model for latency testing."""
+    """Simple model for latency testing.
+
+    Accepts the `ctx` kwarg for compatibility with Generator-based
+    cached latency benchmarks, but ignores it (no actual KV-cache).
+    """
 
     def __init__(self, vocab_size: int = 32000, d_model: int = 64) -> None:
         super().__init__()
@@ -26,7 +30,9 @@ class DummyModel(nn.Module):
         self.linear = nn.Linear(d_model, d_model)
         self.head = nn.Linear(d_model, vocab_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, *, ctx: object | None = None) -> torch.Tensor:
+        # ctx is accepted for Generator compatibility but ignored
+        # (this dummy model has no actual KV-cache)
         h = self.embed(x)
         h = self.linear(h)
         return self.head(h)
@@ -230,6 +236,147 @@ class TestLatencyBenchmark(unittest.TestCase):
         self.assertEqual(m.prompt_len, 32)
         self.assertEqual(m.gen_len, 8)
         self.assertEqual(m.batch_size, 2)
+
+
+class TestLatencyBenchmarkWithCache(unittest.TestCase):
+    """Tests for LatencyBenchmark with KV-cache enabled."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.device = torch.device("cpu")
+
+    def test_cached_run_returns_result(self) -> None:
+        """Cached benchmark run returns a LatencyResult."""
+        config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=1,
+            use_cache=True,  # Enable KV-cache mode
+        )
+        model = DummyModel()
+        model.eval()
+
+        benchmark = LatencyBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        self.assertIsInstance(result, LatencyResult)
+        self.assertEqual(result.model_name, "test_model")
+
+    def test_cached_measurement_has_use_cache_true(self) -> None:
+        """Cached measurements have use_cache=True flag."""
+        config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=1,
+            use_cache=True,
+        )
+        model = DummyModel()
+        model.eval()
+
+        benchmark = LatencyBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        for m in result.measurements:
+            self.assertTrue(m.use_cache)
+
+    def test_uncached_measurement_has_use_cache_false(self) -> None:
+        """Uncached measurements have use_cache=False flag."""
+        config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=1,
+            use_cache=False,
+        )
+        model = DummyModel()
+        model.eval()
+
+        benchmark = LatencyBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        for m in result.measurements:
+            self.assertFalse(m.use_cache)
+
+    def test_cached_times_are_positive(self) -> None:
+        """All cached timing measurements are positive."""
+        config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=2,
+            use_cache=True,
+        )
+        model = DummyModel()
+        model.eval()
+
+        benchmark = LatencyBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        for m in result.measurements:
+            self.assertGreater(m.prefill_time_ms, 0)
+            self.assertGreater(m.decode_time_ms, 0)
+            self.assertGreater(m.total_time_ms, 0)
+            self.assertGreater(m.tokens_per_second, 0)
+            self.assertGreater(m.time_to_first_token_ms, 0)
+
+    def test_cached_ttft_includes_first_decode(self) -> None:
+        """Cached TTFT is at least prefill time (includes first decode step)."""
+        config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=2,
+            use_cache=True,
+        )
+        model = DummyModel()
+        model.eval()
+
+        benchmark = LatencyBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        for m in result.measurements:
+            # TTFT should be >= prefill (it includes first decode step)
+            self.assertGreaterEqual(m.time_to_first_token_ms, m.prefill_time_ms)
+
+
+class TestLatencyMeasurementUseCache(unittest.TestCase):
+    """Tests for use_cache field in LatencyMeasurement."""
+
+    def test_measurement_use_cache_default(self) -> None:
+        """use_cache defaults to False."""
+        m = LatencyMeasurement(
+            prompt_len=128,
+            gen_len=64,
+            batch_size=1,
+            prefill_time_ms=10.0,
+            decode_time_ms=50.0,
+            total_time_ms=60.0,
+            tokens_per_second=1000.0,
+            time_to_first_token_ms=10.0,
+        )
+        self.assertFalse(m.use_cache)
+
+    def test_measurement_use_cache_explicit_true(self) -> None:
+        """use_cache can be set to True."""
+        m = LatencyMeasurement(
+            prompt_len=128,
+            gen_len=64,
+            batch_size=1,
+            prefill_time_ms=10.0,
+            decode_time_ms=50.0,
+            total_time_ms=60.0,
+            tokens_per_second=1000.0,
+            time_to_first_token_ms=10.0,
+            use_cache=True,
+        )
+        self.assertTrue(m.use_cache)
 
 
 if __name__ == "__main__":

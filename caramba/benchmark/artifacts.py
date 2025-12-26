@@ -222,6 +222,7 @@ class ArtifactGenerator:
                 writer.writerow([
                     "model", "prompt_len", "gen_len", "batch_size",
                     "prefill_ms", "decode_ms", "total_ms", "tokens_per_sec",
+                    "ttft_ms", "use_cache",
                 ])
                 for result in [teacher_latency, student_latency]:
                     if result:
@@ -235,6 +236,8 @@ class ArtifactGenerator:
                                 f"{m.decode_time_ms:.2f}",
                                 f"{m.total_time_ms:.2f}",
                                 f"{m.tokens_per_second:.2f}",
+                                f"{m.time_to_first_token_ms:.2f}",
+                                getattr(m, "use_cache", False),
                             ])
             paths["latency.csv"] = path
 
@@ -321,34 +324,45 @@ class ArtifactGenerator:
         if teacher_latency and student_latency:
             fig, ax = plt.subplots(figsize=(10, 6))
 
-            # Group by prompt length, fixed gen_len and batch_size
-            t_data: dict[int, float] = {}
-            s_data: dict[int, float] = {}
+            # Find reference slice programmatically:
+            # - Use smallest batch_size available
+            # - Use median gen_len available (or first if only one)
+            all_measurements = teacher_latency.measurements + student_latency.measurements
+            if all_measurements:
+                batch_sizes = sorted(set(m.batch_size for m in all_measurements))
+                gen_lens = sorted(set(m.gen_len for m in all_measurements))
 
-            for m in teacher_latency.measurements:
-                if m.batch_size == 1 and m.gen_len == 128:
-                    t_data[m.prompt_len] = m.tokens_per_second
+                ref_batch = batch_sizes[0]  # Smallest batch size
+                ref_gen_len = gen_lens[len(gen_lens) // 2]  # Median gen_len
 
-            for m in student_latency.measurements:
-                if m.batch_size == 1 and m.gen_len == 128:
-                    s_data[m.prompt_len] = m.tokens_per_second
+                # Group by prompt length, fixed gen_len and batch_size
+                t_data: dict[int, float] = {}
+                s_data: dict[int, float] = {}
 
-            if t_data and s_data:
-                x = sorted(t_data.keys())
-                t_y = [t_data.get(k, 0) for k in x]
-                s_y = [s_data.get(k, 0) for k in x]
+                for m in teacher_latency.measurements:
+                    if m.batch_size == ref_batch and m.gen_len == ref_gen_len:
+                        t_data[m.prompt_len] = m.tokens_per_second
 
-                ax.plot(x, t_y, "o-", label="Teacher", color="#3498db", linewidth=2)
-                ax.plot(x, s_y, "s-", label="Student (DBA)", color="#e74c3c", linewidth=2)
-                ax.set_xlabel("Prompt Length (tokens)")
-                ax.set_ylabel("Tokens/Second")
-                ax.set_title("Throughput vs Context Length")
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                for m in student_latency.measurements:
+                    if m.batch_size == ref_batch and m.gen_len == ref_gen_len:
+                        s_data[m.prompt_len] = m.tokens_per_second
 
-                path = self.output_dir / "latency_vs_context.png"
-                plt.savefig(path, dpi=150, bbox_inches="tight")
-                paths["latency_vs_context.png"] = path
+                if t_data and s_data:
+                    x = sorted(t_data.keys())
+                    t_y = [t_data.get(k, 0) for k in x]
+                    s_y = [s_data.get(k, 0) for k in x]
+
+                    ax.plot(x, t_y, "o-", label="Teacher", color="#3498db", linewidth=2)
+                    ax.plot(x, s_y, "s-", label="Student (DBA)", color="#e74c3c", linewidth=2)
+                    ax.set_xlabel("Prompt Length (tokens)")
+                    ax.set_ylabel("Tokens/Second")
+                    ax.set_title(f"Throughput vs Context Length (gen_len={ref_gen_len}, batch={ref_batch})")
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+
+                    path = self.output_dir / "latency_vs_context.png"
+                    plt.savefig(path, dpi=150, bbox_inches="tight")
+                    paths["latency_vs_context.png"] = path
 
             plt.close()
 

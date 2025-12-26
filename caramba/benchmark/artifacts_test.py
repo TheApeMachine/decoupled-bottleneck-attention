@@ -231,6 +231,8 @@ class TestArtifactGenerator(unittest.TestCase):
         self.assertIn("model,prompt_len,gen_len", content)
         self.assertIn("teacher", content)
         self.assertIn("student", content)
+        # Check for use_cache column
+        self.assertIn("use_cache", content)
 
     def test_generate_csv_memory(self) -> None:
         """Memory CSV is generated correctly."""
@@ -319,6 +321,69 @@ class TestArtifactGenerator(unittest.TestCase):
 
         summary = report["summary"]
         self.assertAlmostEqual(summary["teacher_perplexity"], 0.0)
+
+
+class TestComparisonSummaryMBConversion(unittest.TestCase):
+    """Tests for ComparisonSummary MB per token conversion."""
+
+    def test_mb_per_token_conversion(self) -> None:
+        """MB per token is correctly derived from bytes per token."""
+        # 2 MB = 2 * 1024 * 1024 bytes = 2097152 bytes
+        bytes_per_token = 2 * 1024 * 1024
+        summary = ComparisonSummary(
+            teacher_perplexity=8.5,
+            student_perplexity=8.7,
+            perplexity_ratio=1.02,
+            teacher_tokens_per_sec=150.0,
+            student_tokens_per_sec=225.0,
+            speedup=1.5,
+            teacher_kvcache_bytes_per_token=bytes_per_token,
+            student_kvcache_bytes_per_token=bytes_per_token / 5,
+            memory_reduction=5.0,
+        )
+        self.assertAlmostEqual(summary.teacher_kvcache_mb_per_token, 2.0)
+        self.assertAlmostEqual(summary.student_kvcache_mb_per_token, 0.4)
+
+    def test_raw_bytes_preserved(self) -> None:
+        """Raw bytes per token is preserved exactly."""
+        summary = ComparisonSummary(
+            teacher_perplexity=8.5,
+            student_perplexity=8.7,
+            perplexity_ratio=1.02,
+            teacher_tokens_per_sec=150.0,
+            student_tokens_per_sec=225.0,
+            speedup=1.5,
+            teacher_kvcache_bytes_per_token=16384.0,
+            student_kvcache_bytes_per_token=3276.8,
+            memory_reduction=5.0,
+        )
+        self.assertAlmostEqual(summary.teacher_kvcache_bytes_per_token, 16384.0)
+        self.assertAlmostEqual(summary.student_kvcache_bytes_per_token, 3276.8)
+
+
+class TestLatencyMeasurementUseCacheField(unittest.TestCase):
+    """Tests for use_cache field in LatencyMeasurement."""
+
+    def test_latency_measurement_with_use_cache(self) -> None:
+        """LatencyMeasurement includes use_cache field."""
+        m = LatencyMeasurement(
+            prompt_len=128, gen_len=64, batch_size=1,
+            prefill_time_ms=10.0, decode_time_ms=40.0,
+            total_time_ms=50.0, tokens_per_second=150.0,
+            time_to_first_token_ms=12.0,
+            use_cache=True,
+        )
+        self.assertTrue(m.use_cache)
+
+    def test_latency_measurement_use_cache_default(self) -> None:
+        """LatencyMeasurement use_cache defaults to False."""
+        m = LatencyMeasurement(
+            prompt_len=128, gen_len=64, batch_size=1,
+            prefill_time_ms=10.0, decode_time_ms=40.0,
+            total_time_ms=50.0, tokens_per_second=150.0,
+            time_to_first_token_ms=10.0,
+        )
+        self.assertFalse(m.use_cache)
 
 
 if __name__ == "__main__":

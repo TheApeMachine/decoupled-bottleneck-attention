@@ -187,6 +187,9 @@ class LatencyBenchmark:
         Uses the Generator class to properly handle KV-cache management,
         providing accurate time-to-first-token (prefill + first decode)
         and decode throughput measurements.
+
+        Note: Cache allocation is performed BEFORE the timed region to measure
+        steady-state inference cost (not including one-time cache setup).
         """
         vocab_size = self._get_vocab_size(model)
 
@@ -204,7 +207,7 @@ class LatencyBenchmark:
             max_seq_len=prompt_len + gen_len + 1,
         )
 
-        # Warmup with fresh generator
+        # Warmup with fresh generator (includes cache allocation)
         for _ in range(self.config.warmup_runs):
             g = Generator(model, config=gen_config, device=self.device)
             with torch.no_grad():
@@ -219,10 +222,13 @@ class LatencyBenchmark:
         total_times: list[float] = []
 
         for _ in range(self.config.timed_runs):
-            # Fresh generator for each run
+            # Create generator and allocate caches BEFORE timing
+            # This measures steady-state inference, not one-time setup
             g = Generator(model, config=gen_config, device=self.device)
+            g._ensure_caches(batch_size)  # Pre-allocate caches
+            self._sync_device()
 
-            # Measure prefill
+            # Measure prefill (now excludes cache allocation)
             start_prefill = time.perf_counter()
             with torch.no_grad():
                 logits = g.prefill(input_ids)

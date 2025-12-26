@@ -42,9 +42,10 @@ class KVCacheAnalysis:
     bytes_per_token_q8: float
     bytes_per_token_q4: float
 
-    # DBA-specific
+    # DBA-specific (stored for accurate cache sizing)
     sem_dim: int | None = None
     geo_dim: int | None = None
+    v_dim: int | None = None  # Actual V dimension for decoupled attention
     bytes_per_token_dba_fp16: float | None = None
 
 
@@ -100,6 +101,7 @@ class MemoryBenchmark:
         attention_mode: str | None = None
         sem_dim: int | None = None
         geo_dim: int | None = None
+        v_dim: int | None = None  # Actual V dimension for decoupled attention
 
         for module in model.modules():
             if isinstance(module, AttentionLayer):
@@ -134,6 +136,7 @@ class MemoryBenchmark:
                     cfg = module.config
                     layer_sem_dim = cfg.sem_dim
                     layer_geo_dim = cfg.geo_dim
+                    layer_v_dim = cfg.v_dim  # Actual V dimension from config
 
                     if sem_dim is None:
                         sem_dim = layer_sem_dim
@@ -147,6 +150,13 @@ class MemoryBenchmark:
                     elif geo_dim != layer_geo_dim:
                         raise ValueError(
                             f"Inconsistent geo_dim across layers: {geo_dim} vs {layer_geo_dim}"
+                        )
+
+                    if v_dim is None:
+                        v_dim = layer_v_dim
+                    elif v_dim != layer_v_dim:
+                        raise ValueError(
+                            f"Inconsistent v_dim across layers: {v_dim} vs {layer_v_dim}"
                         )
 
         # Use defaults if no attention layers found
@@ -167,7 +177,7 @@ class MemoryBenchmark:
                 ", ".join(used_defaults) if used_defaults else "n_layers=0"
             )
 
-        # Calculate bytes per token
+        # Calculate bytes per token for standard attention
         # Standard: 2 * n_layers * n_kv_heads * head_dim * dtype_size (K and V)
         # Note: Q4 uses 0.625 bytes/element (0.5 for data + 0.125 for scale overhead)
         # to match the BYTES_PER_Q4_0 constant in upcycle.py
@@ -176,11 +186,14 @@ class MemoryBenchmark:
         bytes_q8 = 2 * n_layers * kv_dim * 1.0      # 1 byte for q8
         bytes_q4 = 2 * n_layers * kv_dim * 0.625    # 0.625 bytes for q4 (including scale overhead)
 
-        # DBA: reduced cache due to smaller key dimension
+        # DBA: cache sizing using actual dimensions
+        # Cache stores: k_sem (sem_dim) + k_geo (geo_dim) + v (v_dim) per layer
         bytes_dba_fp16: float | None = None
         if sem_dim is not None and geo_dim is not None:
-            dba_k_dim = sem_dim + geo_dim
-            bytes_dba_fp16 = float(n_layers * (dba_k_dim + kv_dim) * 2)  # sem+geo for K, full for V
+            # Use actual v_dim if available, otherwise fall back to kv_dim
+            actual_v_dim = v_dim if v_dim is not None else kv_dim
+            # Total cached: sem_dim + geo_dim + v_dim per token per layer
+            bytes_dba_fp16 = float(n_layers * (sem_dim + geo_dim + actual_v_dim) * 2)
 
         return KVCacheAnalysis(
             model_name=model_name,
@@ -193,6 +206,7 @@ class MemoryBenchmark:
             bytes_per_token_q4=float(bytes_q4),
             sem_dim=sem_dim,
             geo_dim=geo_dim,
+            v_dim=v_dim,
             bytes_per_token_dba_fp16=bytes_dba_fp16,
         )
 
@@ -264,6 +278,7 @@ class MemoryBenchmark:
         n_layers = 0
         kv_dim = 0
         dba_k_dim: int | None = None
+        dba_v_dim: int | None = None
 
         for module in model.modules():
             if isinstance(module, AttentionLayer):
@@ -274,6 +289,8 @@ class MemoryBenchmark:
                     cfg = module.config
                     if cfg.sem_dim and cfg.geo_dim:
                         dba_k_dim = cfg.sem_dim + cfg.geo_dim
+                        # Use actual v_dim from config
+                        dba_v_dim = cfg.v_dim
 
         # Bytes per element (including scale overhead for quantized formats)
         # These match the constants in upcycle.py for consistent reporting
@@ -288,9 +305,10 @@ class MemoryBenchmark:
         }.get(quantization, 2.0)
 
         if dba_k_dim is not None:
-            # DBA: K uses sem+geo dims, V uses full kv_dim
+            # DBA: K uses sem+geo dims, V uses actual v_dim
+            actual_v_dim = dba_v_dim if dba_v_dim is not None else kv_dim
             k_bytes = n_layers * batch_size * seq_len * dba_k_dim * bytes_per_elem
-            v_bytes = n_layers * batch_size * seq_len * kv_dim * bytes_per_elem
+            v_bytes = n_layers * batch_size * seq_len * actual_v_dim * bytes_per_elem
             total_bytes = k_bytes + v_bytes
         else:
             # Standard: K and V both use kv_dim
