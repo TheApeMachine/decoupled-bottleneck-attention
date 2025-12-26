@@ -1,0 +1,8 @@
+benchmark:
+  id: riddles
+  description: "Riddles benchmark"
+  data:
+    - prompt: "How many times do we find the letter r in the word strawberry?"
+      expected: "3"
+    - prompt: "Solve the riddle: In a fruit's sweet name, I'm hidden three, A triple threat within its juicy spree. Find me and you'll discover a secret delight."
+      expected: "strawberry"

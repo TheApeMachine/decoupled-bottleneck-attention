@@ -5,23 +5,20 @@ transformer model.
 from __future__ import annotations
 
 import unittest
+from typing import cast
+
 import torch
-from caramba.model.transformer import Transformer
-from caramba.config.topology import StackedTopologyConfig
+
+from caramba.model.transformer import TransformerModel
+from caramba.config.topology import StackedTopologyConfig, NodeConfig
 from caramba.config.layer import (
     LinearLayerConfig,
     LayerNormLayerConfig,
-    MultiheadLayerConfig,
     DropoutLayerConfig,
     LayerType,
+    AttentionLayerConfig,
 )
-from caramba.config.operation import (
-    DropoutOperationConfig,
-    LayerNormOperationConfig,
-    MatmulOperationConfig,
-    MultiheadOperationConfig,
-)
-from caramba.config.weight import DenseWeightConfig, MultiheadWeightConfig, NormWeightConfig
+
 
 class TransformerTest(unittest.TestCase):
     """
@@ -32,38 +29,30 @@ class TransformerTest(unittest.TestCase):
         """
         test the forward pass of the transformer model.
         """
-        transformer = Transformer(StackedTopologyConfig(layers=[
+        layers: list[NodeConfig] = [
             LinearLayerConfig(
                 type=LayerType.LINEAR,
-                operation=MatmulOperationConfig(),
-                weight=DenseWeightConfig(
-                    d_in=128,
-                    d_out=128,
-                    bias=True,
-                ),
+                d_in=128,
+                d_out=128,
+                bias=True,
             ),
             LayerNormLayerConfig(
                 type=LayerType.LAYER_NORM,
-                operation=LayerNormOperationConfig(eps=1e-5),
-                weight=NormWeightConfig(
-                    d_model=128,
-                    elementwise_affine=True,
-                ),
+                d_model=128,
+                eps=1e-5,
             ),
-            MultiheadLayerConfig(
-                type=LayerType.MULTIHEAD,
-                operation=MultiheadOperationConfig(),
-                weight=MultiheadWeightConfig(
-                    d_model=128,
-                    n_heads=4,
-                    dropout=0.1,
-                ),
+            AttentionLayerConfig(
+                type=LayerType.ATTENTION,
+                d_model=128,
+                n_heads=4,
+                dropout_p=0.1,
             ),
             DropoutLayerConfig(
                 type=LayerType.DROPOUT,
-                operation=DropoutOperationConfig(p=0.1),
+                p=0.1,
             ),
-        ]))
+        ]
+        transformer = TransformerModel(StackedTopologyConfig(layers=layers))
 
         x: torch.Tensor = torch.randn(1, 10, 128)
         self.assertEqual(transformer(x).shape, (1, 10, 128))

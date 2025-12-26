@@ -10,27 +10,23 @@ from typing_extensions import override
 from caramba.config.topology import BranchingTopologyConfig
 
 
-class Branching(nn.Module):
+class BranchingTopology(nn.Module):
     """
-    Branching provides a branching topology.
+    BranchingTopology provides a branching topology.
     """
-    def __init__(
-        self,
-        config: BranchingTopologyConfig,
-        layers: list[nn.Module],
-    ) -> None:
+    def __init__(self, config: BranchingTopologyConfig) -> None:
         super().__init__()
         self.config: BranchingTopologyConfig = config
-        if not layers or len(layers) == 0:
-            raise ValueError("layers must contain at least one nn.Module")
-        self.layers: nn.ModuleList = nn.ModuleList(layers)
+        self.layers: nn.ModuleList = nn.ModuleList(
+            [cfg.build() for _ in range(config.repeat) for cfg in config.layers]
+        )
 
     @override
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
         """
         forward pass for the branching topology.
         """
         return torch.cat(
-            [layer.forward(x) for layer in self.layers],
+            [layer.forward(x, ctx=ctx) for layer in self.layers],  # type: ignore[call-arg]
             dim=0,
         )

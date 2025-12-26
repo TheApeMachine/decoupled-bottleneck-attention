@@ -8,6 +8,8 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field
 
+from caramba.config import PositiveInt
+
 
 class EmbedderType(str, enum.Enum):
     """
@@ -34,8 +36,8 @@ class TokenEmbedderConfig(_EmbedderConfigBase):
     TokenEmbedderConfig provides the token embedder configuration.
     """
     type: Literal[EmbedderType.TOKEN] = EmbedderType.TOKEN
-    vocab_size: int
-    d_model: int
+    vocab_size: PositiveInt
+    d_model: PositiveInt
 
 
 EmbedderConfig: TypeAlias = Annotated[

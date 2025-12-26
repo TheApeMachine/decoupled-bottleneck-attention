@@ -8,17 +8,30 @@ of the platform is self-optimization, auto-tuning, and auto-fitting.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 from caramba.command import Command, CompileCommand, RunCommand
 from caramba.config.mode import Mode
 from caramba.config.manifest import Manifest
-from caramba.compiler import lower_manifest, validate_manifest
+from caramba.compiler import Compiler
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentCommand:
+    """Command to run a full experiment with benchmarks and artifact generation."""
+
+    manifest: Manifest
+    group: str | None
 
 
 class _Args(argparse.Namespace):
     command: str | None = None
     compile_manifest: Path | None = None
     print_plan: bool = False
+
+    # Experiment command args
+    experiment_manifest: Path | None = None
+    group: str | None = None
 
     entity: str | None = None
     project: str | None = None
@@ -30,10 +43,12 @@ class _Args(argparse.Namespace):
     resume: str | None = None
     seed: int = 1337
 
+
 class CLI(argparse.ArgumentParser):
     """
     CLI is a minimal, intent-first command line interface.
     """
+
     def __init__(self) -> None:
         super().__init__(
             prog="caramba",
@@ -52,6 +67,8 @@ class CLI(argparse.ArgumentParser):
             dest="command",
             parser_class=argparse.ArgumentParser,
         )
+
+        # Compile command
         compile_parser = subparsers.add_parser(
             "compile",
             help="Compile a manifest (parse → lower → validate), without building.",
@@ -70,6 +87,25 @@ class CLI(argparse.ArgumentParser):
             help="Print the lowered graph/plan.",
         )
 
+        # Run command (new: full experiment pipeline)
+        run_parser = subparsers.add_parser(
+            "run",
+            help="Run a full experiment: upcycle + benchmarks + artifact generation.",
+        )
+        _ = run_parser.add_argument(
+            "experiment_manifest",
+            type=Path,
+            metavar="manifest",
+            help="Manifest path (.json, .yml, or .yaml).",
+        )
+        _ = run_parser.add_argument(
+            "--group",
+            type=str,
+            default=None,
+            help="Group name to run. If not specified, runs the first group.",
+        )
+
+        # Legacy arguments for backward compatibility
         _ = self.add_argument(
             "--entity",
             type=str,
@@ -130,7 +166,7 @@ class CLI(argparse.ArgumentParser):
             help=" ".join([
                 "Dataset path (only used in 'train' mode).",
                 "If not provided, the dataset will be downloaded automatically.",
-            ])
+            ]),
         )
         _ = self.add_argument(
             "--ckpt",
@@ -174,7 +210,7 @@ class CLI(argparse.ArgumentParser):
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
 
-    def parse_command(self, argv: list[str] | None = None) -> Command:
+    def parse_command(self, argv: list[str] | None = None) -> Command | ExperimentCommand:
         """
         parse_command parses the CLI arguments into a typed command payload.
         """
@@ -184,15 +220,30 @@ class CLI(argparse.ArgumentParser):
             case "compile":
                 if args.compile_manifest is None:
                     raise ValueError("compile requires a manifest path.")
-                manifest = lower_manifest(Manifest.from_path(args.compile_manifest))
-                validate_manifest(manifest)
+                compiler = Compiler()
+                manifest = compiler.lowerer.lower_manifest(
+                    Manifest.from_path(args.compile_manifest)
+                )
+                compiler.validator.validate_manifest(manifest)
                 return CompileCommand(
                     manifest=manifest,
                     print_plan=bool(args.print_plan),
                 )
+            case "run":
+                if args.experiment_manifest is None:
+                    raise ValueError("run requires a manifest path.")
+                compiler = Compiler()
+                manifest = compiler.lowerer.lower_manifest(
+                    Manifest.from_path(args.experiment_manifest)
+                )
+                compiler.validator.validate_manifest(manifest)
+                return ExperimentCommand(
+                    manifest=manifest,
+                    group=args.group,
+                )
             case None:
                 manifest = self._parse_run_manifest(args)
-                validate_manifest(manifest)
+                Compiler().validator.validate_manifest(manifest)
                 return RunCommand(manifest=manifest)
             case _:
                 raise ValueError(f"Invalid command: {args.command}")
@@ -202,7 +253,7 @@ class CLI(argparse.ArgumentParser):
         _parse_run_manifest builds or loads a manifest for the run command.
         """
         if args.manifest.exists():
-            return lower_manifest(Manifest.from_path(args.manifest))
+            return Compiler().lowerer.lower_manifest(Manifest.from_path(args.manifest))
 
         raise ValueError(
             f"Manifest file not found: {args.manifest}. Provide --manifest PATH to "
@@ -221,8 +272,61 @@ class CLI(argparse.ArgumentParser):
         match command:
             case RunCommand() as c:
                 return c.manifest
+            case ExperimentCommand() as c:
+                return c.manifest
             case CompileCommand():
                 raise ValueError(
                     "compile is not supported via CLI.parse(); use `caramba compile` "
                     "via the console script entrypoint."
                 )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """
+    Main entry point for the CLI.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    cli = CLI()
+
+    try:
+        command = cli.parse_command(argv)
+
+        match command:
+            case CompileCommand() as cmd:
+                if cmd.print_plan:
+                    from caramba.compiler.plan import Planner
+
+                    print(Planner().format(cmd.manifest))
+                print("✓ Manifest compiled successfully")
+                return 0
+
+            case ExperimentCommand() as cmd:
+                from caramba.experiment import ExperimentRunner
+
+                runner = ExperimentRunner(cmd.manifest)
+                artifacts = runner.run(cmd.group)
+                print(f"\n✓ Experiment complete!")
+                print(f"  Generated {len(artifacts)} artifacts:")
+                for name, path in artifacts.items():
+                    print(f"    - {name}: {path}")
+                return 0
+
+            case RunCommand() as cmd:
+                # Legacy run behavior
+                from caramba.experiment import ExperimentRunner
+
+                runner = ExperimentRunner(cmd.manifest)
+                runner.run()
+                return 0
+
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

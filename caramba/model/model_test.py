@@ -14,10 +14,8 @@ from caramba.config.embedder import (
 )
 from caramba.config.layer import LayerType, LinearLayerConfig
 from caramba.config.model import ModelConfig, ModelType
-from caramba.config.operation import MatmulOperationConfig
 from caramba.config.topology import StackedTopologyConfig
-from caramba.config.weight import DenseWeightConfig
-from caramba.model.model import Model
+from caramba.model import Model
 
 
 class ModelTest(unittest.TestCase):
@@ -41,12 +39,9 @@ class ModelTest(unittest.TestCase):
                     layers=[
                         LinearLayerConfig(
                             type=LayerType.LINEAR,
-                            operation=MatmulOperationConfig(),
-                            weight=DenseWeightConfig(
-                                d_in=d_model,
-                                d_out=d_model,
-                                bias=False,
-                            ),
+                            d_in=d_model,
+                            d_out=d_model,
+                            bias=False,
                         ),
                     ],
                 ),
@@ -69,12 +64,9 @@ class ModelTest(unittest.TestCase):
                     layers=[
                         LinearLayerConfig(
                             type=LayerType.LINEAR,
-                            operation=MatmulOperationConfig(),
-                            weight=DenseWeightConfig(
-                                d_in=d_model,
-                                d_out=d_model,
-                                bias=False,
-                            ),
+                            d_in=d_model,
+                            d_out=d_model,
+                            bias=False,
                         ),
                     ],
                 ),

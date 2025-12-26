@@ -1,17 +1,48 @@
+# ============================================================================
+# Llama 3.2 1B → DBA Upcycle Experiment
+# ============================================================================
+# This manifest performs "attention surgery" on Llama 3.2 1B to use
+# Decoupled Bottleneck Attention (DBA), followed by distillation training
+# and comprehensive benchmarking for paper-ready results.
+#
+# Expected Results:
+# - Perplexity: ~1.02x teacher (minimal quality loss)
+# - Throughput: ~1.3-2x speedup (reduced KV-cache)
+# - Memory: ~5.3x KV-cache reduction
+#
+# Usage:
+#   caramba run caramba/config/presets/llama32_1b_dba.yml --group paper
+# ============================================================================
+
 version: 1
-name: llama32_1b_dba
-notes: "Llama 3.2 1B with DBA attention via upcycle."
+name: llama32_1b_dba_upcycle
+notes: "Llama 3.2 1B with Decoupled Bottleneck Attention via upcycle surgery."
+
 vars:
+  # Model architecture (matches Llama 3.2 1B)
   d_model: 2048
   n_heads: 32
   n_kv_heads: 8
+  head_dim: 64
   n_layers: 16
   d_ff: 8192
   vocab_size: 128256
-  sem_dim: 512
-  geo_dim: 1536
-  rope_base: 500000.0
-  rope_dim: 48
+  rope_theta: 500000.0
+
+  # DBA configuration - aggressive compression
+  # sem_dim + geo_dim = 384 (vs original 2048)
+  # This gives ~5.3x KV-cache reduction
+  sem_dim: 128    # Semantic bottleneck (content path)
+  geo_dim: 256    # Geometric path (position path, RoPE applied)
+
+  # Training parameters
+  batch_size: 1
+  block_size: 2048
+  blockwise_steps: 500
+  global_steps: 2000
+  blockwise_lr: 0.0001
+  global_lr: 0.00005
+
 defaults:
   tokenizer: llama
   val_frac: 0.05
@@ -22,92 +53,214 @@ defaults:
   wandb_mode: online
   eval_iters: 50
   save_every: 500
+
 model:
-  type: transformer
+  type: TransformerModel
   embedder:
     type: token
     vocab_size: "${vocab_size}"
     d_model: "${d_model}"
   topology:
-    type: stacked
+    type: StackedTopology
     layers:
-      - type: nested
+      # Transformer blocks (16 layers)
+      - type: NestedTopology
         repeat: "${n_layers}"
         layers:
-          - type: residual
+          # Self-attention with residual
+          - type: ResidualTopology
             layers:
-              - type: rms_norm
-                operation: { type: rms_norm, eps: 1e-5 }
-                weight: { type: rms_norm, d_model: "${d_model}" }
-              - type: attention
-                operation: { type: attention, is_causal: true, dropout_p: 0.0 }
-                weight:
-                  type: decoupled_attention
-                  d_model: "${d_model}"
-                  n_heads: "${n_heads}"
-                  n_kv_heads: "${n_kv_heads}"
-                  sem_dim: "${sem_dim}"
-                  geo_dim: "${geo_dim}"
-                  rope_base: "${rope_base}"
-                  rope_dim: "${rope_dim}"
-                  bias: false
-                  gate: true
-          - type: residual
+              - type: RMSNormLayer
+                d_model: "${d_model}"
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: "${d_model}"
+                n_heads: "${n_heads}"
+                n_kv_heads: "${n_kv_heads}"
+                mode: decoupled
+                sem_dim: "${sem_dim}"
+                geo_dim: "${geo_dim}"
+                rope_enabled: true
+                rope_base: "${rope_theta}"
+                is_causal: true
+                dropout_p: 0.0
+                decoupled_gate: true
+          # FFN with residual
+          - type: ResidualTopology
             layers:
-              - type: rms_norm
-                operation: { type: rms_norm, eps: 1e-5 }
-                weight: { type: rms_norm, d_model: "${d_model}" }
-              - type: swiglu
-                operation: { type: swiglu }
-                weight:
-                  type: swiglu
-                  d_model: "${d_model}"
-                  d_ff: "${d_ff}"
-                  bias: false
-      - type: rms_norm
-        operation: { type: rms_norm, eps: 1e-5 }
-        weight: { type: rms_norm, d_model: "${d_model}" }
-      - type: linear
-        operation: { type: matmul }
-        weight:
-          type: dense
-          d_in: "${d_model}"
-          d_out: "${vocab_size}"
-          bias: false
+              - type: RMSNormLayer
+                d_model: "${d_model}"
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: "${d_model}"
+                d_ff: "${d_ff}"
+                bias: false
+      # Final norm
+      - type: RMSNormLayer
+        d_model: "${d_model}"
+        eps: 1e-5
+      # LM head
+      - type: LinearLayer
+        d_in: "${d_model}"
+        d_out: "${vocab_size}"
+        bias: false
+
 groups:
-  - name: upcycle
-    description: "DBA upcycle from Llama 3.2 1B."
+  # ============================================================================
+  # Paper Experiment Group
+  # ============================================================================
+  # Full pipeline: upcycle + benchmarks + artifact generation
+  # ============================================================================
+  - name: paper
+    description: "Full DBA upcycle pipeline with benchmarks for paper publication."
     data: "fineweb_100m.npy"
     runs:
+      # Phase 1: Blockwise distillation
       - id: blockwise
         mode: train
         exp: dba_blockwise
         seed: 42
-        steps: 500
+        steps: "${blockwise_steps}"
         expected:
           phase: blockwise
+        verify:
+          type: compare
+          batches: 5
+          attention:
+            max_mean_l1: 0.05
+            max_max_l1: 0.25
+          logits:
+            max_mean_l1: 0.05
+            max_max_l1: 0.25
         train:
           phase: blockwise
-          batch_size: 1
-          block_size: 2048
-          lr: 0.0001
+          batch_size: "${batch_size}"
+          block_size: "${block_size}"
+          lr: "${blockwise_lr}"
           device: mps
           dtype: float32
-          # Use a local path or an hf:// URI:
-          # hf://org/repo/path/to/file.safetensors@revision
-          # hf://meta-llama/Llama-3.2-1B
           teacher_ckpt: "hf://meta-llama/Llama-3.2-1B"
+
+      # Phase 2: Global fine-tuning
       - id: finetune
         mode: train
         exp: dba_finetune
         seed: 42
-        steps: 2000
+        steps: "${global_steps}"
+        expected:
+          phase: global
+        verify:
+          type: eval
+          tokenizer: llama
+          max_new_tokens: 32
+          thresholds:
+            min_student_accuracy: 0.7
+            max_accuracy_drop: 0.1
+          cases:
+            - id: count_r
+              prompt: "How many times does the letter 'r' appear in 'strawberry'? Answer with just the number:"
+              answer: 3
+              kind: int_greedy
+            - id: capital_france
+              prompt: "What is the capital of France? Answer:"
+              choices: ["Paris", "London", "Berlin", "Madrid"]
+              answer: "Paris"
+              kind: choice_logprob
+        train:
+          phase: global
+          batch_size: "${batch_size}"
+          block_size: "${block_size}"
+          lr: "${global_lr}"
+          device: mps
+          dtype: float32
+
+    # ============================================================================
+    # Benchmarks
+    # ============================================================================
+    benchmarks:
+      # Perplexity benchmark
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: "fineweb_100m.npy"
+          block_size: 2048
+          batch_size: 1
+          num_batches: 100
+        models: ["teacher", "student"]
+        repeats: 1
+
+      # Latency benchmark
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: [128, 512, 1024, 2048]
+          generation_lengths: [64, 128, 256]
+          batch_sizes: [1]
+          warmup_runs: 3
+          timed_runs: 10
+          use_cache: true
+        models: ["teacher", "student"]
+        repeats: 1
+
+      # Memory benchmark
+      - id: memory
+        config:
+          type: memory
+          sequence_lengths: [512, 1024, 2048, 4096]
+          batch_sizes: [1]
+          measure_peak: true
+          measure_kvcache: true
+          quantization_modes: ["fp16", "q8", "q4"]
+        models: ["teacher", "student"]
+        repeats: 1
+
+  # ============================================================================
+  # Quick Validation Group
+  # ============================================================================
+  # Fast sanity check with reduced steps
+  # ============================================================================
+  - name: quick
+    description: "Quick validation run with reduced steps."
+    data: "fineweb_100m.npy"
+    runs:
+      - id: blockwise_quick
+        mode: train
+        exp: dba_blockwise_quick
+        seed: 42
+        steps: 50
+        expected:
+          phase: blockwise
+        train:
+          phase: blockwise
+          batch_size: 1
+          block_size: 512
+          lr: 0.0001
+          device: mps
+          dtype: float32
+          teacher_ckpt: "hf://meta-llama/Llama-3.2-1B"
+
+      - id: finetune_quick
+        mode: train
+        exp: dba_finetune_quick
+        seed: 42
+        steps: 100
         expected:
           phase: global
         train:
           phase: global
           batch_size: 1
-          block_size: 2048
+          block_size: 512
           lr: 0.00005
           device: mps
           dtype: float32
+
+    benchmarks:
+      - id: perplexity_quick
+        config:
+          type: perplexity
+          dataset: "fineweb_100m.npy"
+          block_size: 512
+          batch_size: 1
+          num_batches: 10
+        models: ["teacher", "student"]
+        repeats: 1

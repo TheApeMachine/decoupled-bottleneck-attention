@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
+from caramba.config import PositiveInt
 from caramba.config.defaults import Defaults
 from caramba.config.group import Group
 from caramba.config.model import ModelConfig
@@ -17,7 +18,7 @@ class Manifest(BaseModel):
     """
     Manifest is the control structure parsed from manifest.json/.yaml.
     """
-    version: int
+    version: PositiveInt
     name: str | None = None
     notes: str
     defaults: Defaults

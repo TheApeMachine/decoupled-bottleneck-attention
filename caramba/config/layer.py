@@ -2,157 +2,174 @@
 from __future__ import annotations
 
 import enum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
+from pydantic import Field
 
-from pydantic import BaseModel, BeforeValidator, Field
+from caramba.config import (
+    Config, PositiveFloat, PositiveInt, Probability
+)
 
-from caramba.config.operation import (
-    AttentionOperationConfig,
-    DropoutOperationConfig,
-    LayerNormOperationConfig,
-    MatmulOperationConfig,
-    MultiheadOperationConfig,
-    RMSNormOperationConfig,
-    SwiGLUOperationConfig,
-)
-from caramba.config.weight import (
-    DecoupledAttentionWeightConfig,
-    DenseWeightConfig,
-    LlamaAttentionWeightConfig,
-    MultiheadWeightConfig,
-    NormWeightConfig,
-    RMSNormWeightConfig,
-    SwiGLUWeightConfig,
-)
+
+class AttentionMode(str, enum.Enum):
+    """AttentionMode selects the attention variant."""
+    STANDARD = "standard"
+    GQA = "gqa"
+    DECOUPLED = "decoupled"
 
 
 class LayerType(str, enum.Enum):
-    """
-    LayerType enumerates the layer types
+    """LayerType enumerates the layer types
 
     This prevents having to deal with magic strings, giving
     us compile-time safety, and better error messages.
     """
-    LAYER_NORM = "layer_norm"
-    RMS_NORM = "rms_norm"
-    LINEAR = "linear"
-    MULTIHEAD = "multihead"
-    DROPOUT = "dropout"
-    ATTENTION = "attention"
-    SWIGLU = "swiglu"
+    LAYER_NORM = "LayerNormLayer"
+    RMS_NORM = "RMSNormLayer"
+    LINEAR = "LinearLayer"
+    DROPOUT = "DropoutLayer"
+    ATTENTION = "AttentionLayer"
+    SWIGLU = "SwiGLULayer"
 
     @classmethod
     def from_str(cls, s: str) -> LayerType:
-        """
-        from_str converts a string to a LayerType.
-        """
+        """Converts a string to a LayerType."""
         return cls(s)
 
-
-def _normalize_layer(v: object) -> object:
-    """
-    _normalize_layer normalizes the discriminated union "type" field.
-    """
-    if isinstance(v, BaseModel):
-        return v
-
-    if isinstance(v, dict):
-        layer_type = v.get("type")
-        if isinstance(layer_type, str):
-            out = dict(v)
-            out["type"] = LayerType.from_str(layer_type)
-            return out
-        if isinstance(layer_type, LayerType):
-            return v
-        raise TypeError(
-            "LayerConfig must be a dict with a 'type' of str or LayerType, "
-            "or a pydantic BaseModel; got "
-            f"{v!r}."
-        )
-
-    raise TypeError(
-        "LayerConfig must be a dict with a 'type' of str or LayerType, "
-        "or a pydantic BaseModel; got "
-        f"{v!r}."
-    )
+    @classmethod
+    def module_name(cls) -> str:
+        """Returns the module name for the layer type."""
+        return "caramba.layer"
 
 
-class _LayerConfigBase(BaseModel):
-    """
-    _LayerConfigBase provides the base type for layer configs.
-    """
-
-
-class LinearLayerConfig(_LayerConfigBase):
+class LinearLayerConfig(Config):
     """
     LinearLayerConfig provides the linear layer configuration.
     """
     type: Literal[LayerType.LINEAR] = LayerType.LINEAR
-    operation: MatmulOperationConfig
-    weight: DenseWeightConfig
+    d_in: PositiveInt
+    d_out: PositiveInt
+    bias: bool = True
 
 
-class LayerNormLayerConfig(_LayerConfigBase):
+class LayerNormLayerConfig(Config):
     """
     LayerNormLayerConfig provides the layer norm layer configuration.
     """
     type: Literal[LayerType.LAYER_NORM] = LayerType.LAYER_NORM
-    operation: LayerNormOperationConfig
-    weight: NormWeightConfig
+    d_model: PositiveInt
+    eps: PositiveFloat = 1e-5
 
 
-class RMSNormLayerConfig(_LayerConfigBase):
+class RMSNormLayerConfig(Config):
     """
     RMSNormLayerConfig provides the RMS norm layer configuration.
     """
     type: Literal[LayerType.RMS_NORM] = LayerType.RMS_NORM
-    operation: RMSNormOperationConfig
-    weight: RMSNormWeightConfig
+    d_model: PositiveInt
+    eps: PositiveFloat = 1e-5
+    elementwise_affine: bool = True
 
 
-class MultiheadLayerConfig(_LayerConfigBase):
-    """
-    MultiheadLayerConfig provides the multihead layer configuration.
-    """
-    type: Literal[LayerType.MULTIHEAD] = LayerType.MULTIHEAD
-    operation: MultiheadOperationConfig
-    weight: MultiheadWeightConfig
-
-
-class DropoutLayerConfig(_LayerConfigBase):
+class DropoutLayerConfig(Config):
     """
     DropoutLayerConfig provides the dropout layer configuration.
     """
     type: Literal[LayerType.DROPOUT] = LayerType.DROPOUT
-    operation: DropoutOperationConfig
+    p: Probability = 0.0
 
 
-class AttentionLayerConfig(_LayerConfigBase):
+class AttentionLayerConfig(Config):
     """
-    AttentionLayerConfig provides the attention layer configuration.
+    AttentionLayerConfig provides unified attention configuration.
+
+    Modes:
+    - standard: Full multi-head attention (d_model -> d_model)
+    - gqa: Grouped-query attention (fewer KV heads than Q heads)
+    - decoupled: DBA with separate semantic/geometric key paths
+
+    For decoupled mode, set sem_dim and geo_dim. RoPE is applied
+    only to the geometric path; semantic path is position-free.
     """
     type: Literal[LayerType.ATTENTION] = LayerType.ATTENTION
-    operation: AttentionOperationConfig
-    weight: LlamaAttentionWeightConfig | DecoupledAttentionWeightConfig
+
+    # Core dimensions
+    d_model: PositiveInt
+    n_heads: PositiveInt
+    n_kv_heads: PositiveInt | None = None  # None = same as n_heads
+
+    # Attention mode
+    mode: AttentionMode = AttentionMode.STANDARD
+
+    # Bottleneck dimension (optional, defaults to d_model)
+    attn_dim: PositiveInt | None = None
+
+    # Decoupled mode dimensions
+    sem_dim: PositiveInt | None = None  # Semantic key dimension
+    geo_dim: PositiveInt | None = None  # Geometric key dimension (RoPE applied here)
+
+    # RoPE settings
+    rope_enabled: bool = True
+    rope_base: float = 10000.0
+
+    # Decoupled gate (learned per-head sem/geo mixing)
+    decoupled_gate: bool = False
+    decoupled_gate_dynamic: bool = False  # Query-dependent gate
+
+    # Optional features
+    is_causal: bool = True
+    dropout_p: Probability = 0.0
+    bias: bool = False
+
+    # Learned temperature per head
+    learned_temp: bool = False
+
+    @property
+    def head_dim(self) -> int:
+        """Compute head dimension from attn_dim or d_model."""
+        dim = self.attn_dim if self.attn_dim is not None else self.d_model
+        return dim // self.n_heads
+
+    @property
+    def kv_heads(self) -> int:
+        """Number of KV heads (for GQA)."""
+        return self.n_kv_heads if self.n_kv_heads is not None else self.n_heads
+
+    @property
+    def sem_head_dim(self) -> int | None:
+        """Semantic head dimension for decoupled mode."""
+        if self.sem_dim is None:
+            return None
+        return self.sem_dim // self.n_heads
+
+    @property
+    def geo_head_dim(self) -> int | None:
+        """Geometric head dimension for decoupled mode."""
+        if self.geo_dim is None:
+            return None
+        return self.geo_dim // self.n_heads
+
+    @property
+    def v_dim(self) -> int:
+        """Value projection dimension."""
+        return self.attn_dim if self.attn_dim is not None else self.d_model
 
 
-class SwiGLULayerConfig(_LayerConfigBase):
+class SwiGLULayerConfig(Config):
     """
     SwiGLULayerConfig provides the SwiGLU layer configuration.
     """
     type: Literal[LayerType.SWIGLU] = LayerType.SWIGLU
-    operation: SwiGLUOperationConfig
-    weight: SwiGLUWeightConfig
+    d_model: PositiveInt
+    d_ff: PositiveInt
+    bias: bool = True
 
 
-LayerConfig = Annotated[
+LayerConfig: TypeAlias = Annotated[
     LinearLayerConfig
     | LayerNormLayerConfig
     | RMSNormLayerConfig
-    | MultiheadLayerConfig
     | DropoutLayerConfig
     | AttentionLayerConfig
     | SwiGLULayerConfig,
-    BeforeValidator(_normalize_layer),
     Field(discriminator="type"),
 ]

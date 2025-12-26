@@ -12,3 +12,4 @@ pydantic
 PyYAML
 huggingface_hub
 safetensors
+tensordict

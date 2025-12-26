@@ -1,5 +1,7 @@
 {
     "typeStubSearchPaths": [
         "./caramba/stubs"
-    ]
+    ],
+    "reportMissingParameterType": false,
+    "reportMissingTypeStubs": false
 }

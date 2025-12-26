@@ -7,27 +7,26 @@ import unittest
 import torch
 
 from caramba.config.layer import LayerType, SwiGLULayerConfig
-from caramba.config.operation import SwiGLUOperationConfig
-from caramba.config.weight import SwiGLUWeightConfig, WeightType
-from caramba.layer.swiglu import SwiGLU
+from caramba.layer.swiglu import SwiGLULayer
 
 
-class SwiGLUTest(unittest.TestCase):
+class SwiGLULayerTest(unittest.TestCase):
     """
-    SwiGLUTest provides tests for SwiGLU.
+    SwiGLULayerTest provides tests for SwiGLULayer.
     """
     def test_forward_shape(self) -> None:
         """
-        test SwiGLU output shape.
+        test SwiGLULayer output shape.
         """
         cfg = SwiGLULayerConfig(
             type=LayerType.SWIGLU,
-            operation=SwiGLUOperationConfig(),
-            weight=SwiGLUWeightConfig(type=WeightType.SWIGLU, d_model=8, d_ff=16),
+            d_model=8,
+            d_ff=16,
+            bias=True,
         )
-        layer = SwiGLU(cfg)
+        layer = SwiGLULayer(cfg)
         x = torch.randn(2, 3, 8)
-        y = layer.forward(x)
+        y = layer(x)
         self.assertEqual(tuple(y.shape), (2, 3, 8))
 
 

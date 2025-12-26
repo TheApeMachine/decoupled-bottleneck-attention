@@ -6,100 +6,107 @@ from __future__ import annotations
 import enum
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from caramba.config.layer import LayerConfig
+from caramba.config import Config, PositiveInt
 
 
 class TopologyType(str, enum.Enum):
     """
     TopologyType provides the network topology type.
     """
-    NESTED = "nested"
-    STACKED = "stacked"
-    RESIDUAL = "residual"
-    SEQUENTIAL = "sequential"
-    PARALLEL = "parallel"
-    BRANCHING = "branching"
-    CYCLIC = "cyclic"
-    RECURRENT = "recurrent"
+    BRANCHING = "BranchingTopology"
+    CYCLIC = "CyclicTopology"
+    NESTED = "NestedTopology"
+    PARALLEL = "ParallelTopology"
+    RECURRENT = "RecurrentTopology"
+    RESIDUAL = "ResidualTopology"
+    SEQUENTIAL = "SequentialTopology"
+    STACKED = "StackedTopology"
+
+    @classmethod
+    def from_str(cls, s: str) -> TopologyType:
+        """
+        Converts a string to a TopologyType.
+        """
+        return cls(s)
+
+    @classmethod
+    def module_name(cls) -> str:
+        """Returns the module name for the topology type."""
+        return "caramba.topology"
 
 
-class _TopologyConfigBase(BaseModel):
-    """
-    _TopologyConfigBase provides the base type for topology configs.
-    """
-
-
-class NestedTopologyConfig(_TopologyConfigBase):
+class NestedTopologyConfig(Config):
     """
     NestedTopologyConfig provides a nested topology.
     """
     type: Literal[TopologyType.NESTED] = TopologyType.NESTED
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class StackedTopologyConfig(_TopologyConfigBase):
+class StackedTopologyConfig(Config):
     """
     StackedTopologyConfig provides a simple sequential topology.
     """
     type: Literal[TopologyType.STACKED] = TopologyType.STACKED
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class ResidualTopologyConfig(_TopologyConfigBase):
+class ResidualTopologyConfig(Config):
     """
     ResidualTopologyConfig provides a residual topology.
     """
     type: Literal[TopologyType.RESIDUAL] = TopologyType.RESIDUAL
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class SequentialTopologyConfig(_TopologyConfigBase):
+class SequentialTopologyConfig(Config):
     """
     SequentialTopologyConfig provides a sequential topology.
     """
     type: Literal[TopologyType.SEQUENTIAL] = TopologyType.SEQUENTIAL
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class ParallelTopologyConfig(_TopologyConfigBase):
+class ParallelTopologyConfig(Config):
     """
     ParallelTopologyConfig provides a parallel topology.
     """
     type: Literal[TopologyType.PARALLEL] = TopologyType.PARALLEL
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class BranchingTopologyConfig(_TopologyConfigBase):
+class BranchingTopologyConfig(Config):
     """
     BranchingTopologyConfig provides a branching topology.
     """
     type: Literal[TopologyType.BRANCHING] = TopologyType.BRANCHING
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class CyclicTopologyConfig(_TopologyConfigBase):
+class CyclicTopologyConfig(Config):
     """
     CyclicTopologyConfig provides a cyclic topology.
     """
     type: Literal[TopologyType.CYCLIC] = TopologyType.CYCLIC
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
-class RecurrentTopologyConfig(_TopologyConfigBase):
+class RecurrentTopologyConfig(Config):
     """
     RecurrentTopologyConfig provides a recurrent topology.
     """
     type: Literal[TopologyType.RECURRENT] = TopologyType.RECURRENT
     layers: list["NodeConfig"]
-    repeat: int = Field(default=1, ge=1)
+    repeat: PositiveInt = 1
 
 
 TopologyConfig: TypeAlias = Annotated[

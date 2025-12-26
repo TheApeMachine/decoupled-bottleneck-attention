@@ -5,8 +5,7 @@ vars:
   d_model: 128
   n_heads: 4
   n_kv_heads: 4
-  rope_base: 10000.0
-  rope_dim: 32
+  head_dim: 32  # d_model / n_heads
   d_ff: 256
   n_blocks: 2
 defaults:
@@ -28,30 +27,24 @@ model:
       - type: residual
         layers:
           - type: rms_norm
-            operation: { type: rms_norm, eps: 1e-5 }
-            weight: { type: rms_norm, d_model: "${d_model}" }
+            d_model: "${d_model}"
+            eps: 1e-5
           - type: attention
-            operation: { type: attention, is_causal: true, dropout_p: 0.0 }
-            weight:
-              type: llama_attention
-              d_model: "${d_model}"
-              n_heads: "${n_heads}"
-              n_kv_heads: "${n_kv_heads}"
-              rope_base: "${rope_base}"
-              rope_dim: "${rope_dim}"
-              bias: false
+            d_model: "${d_model}"
+            n_q_heads: "${n_heads}"
+            n_kv_heads: "${n_kv_heads}"
+            head_dim: "${head_dim}"
+            is_causal: true
+            dropout_p: 0.0
       - type: residual
         layers:
           - type: rms_norm
-            operation: { type: rms_norm, eps: 1e-5 }
-            weight: { type: rms_norm, d_model: "${d_model}" }
+            d_model: "${d_model}"
+            eps: 1e-5
           - type: swiglu
-            operation: { type: swiglu }
-            weight:
-              type: swiglu
-              d_model: "${d_model}"
-              d_ff: "${d_ff}"
-              bias: false
+            d_model: "${d_model}"
+            d_ff: "${d_ff}"
+            bias: false
 groups:
   - name: default
     description: Default group
@@ -63,4 +56,3 @@ groups:
         seed: 1337
         steps: 1000
         expected: {}
-

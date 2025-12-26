@@ -8,7 +8,7 @@ import traceback
 
 from caramba.cli import CLI
 from caramba.command import CompileCommand, RunCommand
-from caramba.compiler.plan import format_manifest_plan
+from caramba.compiler import Compiler
 from caramba.trainer import Trainer
 
 
@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> None:
         match command:
             case CompileCommand() as c:
                 if c.print_plan:
-                    print(format_manifest_plan(c.manifest))
+                    print(Compiler().planner.format(c.manifest))
                 return
             case RunCommand() as c:
                 intent = c.manifest

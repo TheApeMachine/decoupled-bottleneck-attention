@@ -7,9 +7,7 @@ import unittest
 import torch
 
 from caramba.config.layer import LayerType, RMSNormLayerConfig
-from caramba.config.operation import RMSNormOperationConfig
-from caramba.config.weight import RMSNormWeightConfig, WeightType
-from caramba.layer.rms_norm import RMSNorm
+from caramba.layer.rms_norm import RMSNormLayer
 
 
 class RMSNormTest(unittest.TestCase):
@@ -20,18 +18,18 @@ class RMSNormTest(unittest.TestCase):
         """
         test RMSNorm output shape.
         """
-        cfg = RMSNormLayerConfig(
-            type=LayerType.RMS_NORM,
-            operation=RMSNormOperationConfig(eps=1e-5),
-            weight=RMSNormWeightConfig(type=WeightType.RMS_NORM, d_model=8),
+        norm = RMSNormLayer(
+            RMSNormLayerConfig(
+                type=LayerType.RMS_NORM,
+                d_model=8,
+                eps=1e-5,
+                elementwise_affine=True,
+            )
         )
-        layer = RMSNorm(cfg)
         x = torch.randn(2, 3, 8)
-        y = layer.forward(x)
+        y = norm(x)
         self.assertEqual(tuple(y.shape), (2, 3, 8))
 
 
 if __name__ == "__main__":
     unittest.main()
-
-

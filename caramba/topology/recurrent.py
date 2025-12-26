@@ -9,26 +9,23 @@ from typing_extensions import override
 from caramba.config.topology import RecurrentTopologyConfig
 
 
-class Recurrent(nn.Module):
+class RecurrentTopology(nn.Module):
     """
     Recurrent provides a recurrent topology.
     """
-    def __init__(
-        self,
-        config: RecurrentTopologyConfig,
-        layers: list[nn.Module],
-    ) -> None:
+    def __init__(self, config: RecurrentTopologyConfig) -> None:
         super().__init__()
         self.config: RecurrentTopologyConfig = config
-        self.layers: nn.ModuleList = nn.ModuleList(layers)
-        if len(self.layers) == 0:
+        built = [cfg.build() for _ in range(config.repeat) for cfg in config.layers]
+        if not built:
             raise ValueError("RecurrentTopology requires at least one layer")
+        self.layers: nn.ModuleList = nn.ModuleList(built)
 
     @override
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
         """
         forward pass for the recurrent topology.
         """
         for layer in self.layers:
-            x = layer.forward(x)
+            x = layer.forward(x, ctx=ctx)  # type: ignore[call-arg]
         return x
