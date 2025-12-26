@@ -105,6 +105,11 @@ class LatencyBenchmark:
 
         This is the baseline/worst-case measurement that re-computes attention
         over the full growing context at each decode step.
+
+        TTFT Semantics: For consistency with cached mode, TTFT is measured as
+        prefill + first decode step. This ensures TTFT is comparable across
+        cached and uncached benchmarks (both report time until first token
+        is actually generated, not just time to complete prefill).
         """
         vocab_size = self._get_vocab_size(model)
 
@@ -123,7 +128,9 @@ class LatencyBenchmark:
         self._sync_device()
 
         prefill_times: list[float] = []
+        first_decode_times: list[float] = []
         decode_times: list[float] = []
+        ttft_times: list[float] = []
         total_times: list[float] = []
 
         for _ in range(self.config.timed_runs):
@@ -137,10 +144,26 @@ class LatencyBenchmark:
             end_prefill = time.perf_counter()
             prefill_time = (end_prefill - start_prefill) * 1000
 
-            # Measure decode (autoregressive without cache)
+            # Measure first decode step separately (for TTFT)
+            start_first_decode = time.perf_counter()
+            with torch.no_grad():
+                if logits.dim() == 3:
+                    last_logits = logits[:, -1, :]
+                else:
+                    last_logits = logits
+                next_token = torch.argmax(last_logits, dim=-1, keepdim=True)
+                current_ids = torch.cat([current_ids, next_token], dim=-1)
+                logits = model(current_ids)
+            self._sync_device()
+            end_first_decode = time.perf_counter()
+            first_decode_time = (end_first_decode - start_first_decode) * 1000
+
+            ttft = prefill_time + first_decode_time
+
+            # Measure remaining decode steps
             start_decode = time.perf_counter()
             with torch.no_grad():
-                for _ in range(gen_len):
+                for _ in range(gen_len - 1):
                     if logits.dim() == 3:
                         last_logits = logits[:, -1, :]
                     else:
@@ -150,14 +173,18 @@ class LatencyBenchmark:
                     logits = model(current_ids)
             self._sync_device()
             end_decode = time.perf_counter()
-            decode_time = (end_decode - start_decode) * 1000
+            remaining_decode_time = (end_decode - start_decode) * 1000
+            total_decode_time = first_decode_time + remaining_decode_time
 
             prefill_times.append(prefill_time)
-            decode_times.append(decode_time)
-            total_times.append(prefill_time + decode_time)
+            first_decode_times.append(first_decode_time)
+            decode_times.append(total_decode_time)
+            ttft_times.append(ttft)
+            total_times.append(prefill_time + total_decode_time)
 
         avg_prefill = sum(prefill_times) / len(prefill_times)
         avg_decode = sum(decode_times) / len(decode_times)
+        avg_ttft = sum(ttft_times) / len(ttft_times)
         avg_total = sum(total_times) / len(total_times)
 
         tokens_generated = gen_len * batch_size
@@ -171,7 +198,7 @@ class LatencyBenchmark:
             decode_time_ms=avg_decode,
             total_time_ms=avg_total,
             tokens_per_second=tokens_per_second,
-            time_to_first_token_ms=avg_prefill,
+            time_to_first_token_ms=avg_ttft,
             use_cache=False,
         )
 

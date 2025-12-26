@@ -152,6 +152,8 @@ class TestKVCacheAnalysis(unittest.TestCase):
             sem_dim=128,
             geo_dim=256,
             bytes_per_token_dba_fp16=384.0,
+            bytes_per_token_dba_q8=192.0,
+            bytes_per_token_dba_q4=120.0,
         )
         self.assertEqual(analysis.sem_dim, 128)
         self.assertEqual(analysis.geo_dim, 256)
@@ -160,6 +162,9 @@ class TestKVCacheAnalysis(unittest.TestCase):
         self.assertIsNotNone(dba_bytes)
         # Type narrowing: after assertIsNotNone, dba_bytes is known to be float
         self.assertAlmostEqual(dba_bytes, 384.0)  # type: ignore[arg-type]
+        # Verify q8 and q4 estimates
+        self.assertIsNotNone(analysis.bytes_per_token_dba_q8)
+        self.assertIsNotNone(analysis.bytes_per_token_dba_q4)
 
 
 class TestMemoryResult(unittest.TestCase):
@@ -296,6 +301,44 @@ class TestMemoryBenchmark(unittest.TestCase):
         self.assertEqual(analysis.sem_dim, 16)
         self.assertEqual(analysis.geo_dim, 32)
         self.assertIsNotNone(analysis.bytes_per_token_dba_fp16)
+        # Verify all quantized DBA estimates are present
+        self.assertIsNotNone(analysis.bytes_per_token_dba_q8)
+        self.assertIsNotNone(analysis.bytes_per_token_dba_q4)
+
+    def test_kvcache_dba_quantized_estimates(self) -> None:
+        """DBA KV-cache estimates maintain correct ratios across quantization levels.
+
+        For DBA, the KV-cache stores sem_dim + geo_dim + v_dim elements per token per layer.
+        The byte estimates should scale according to:
+          - fp16: 2 bytes/element
+          - q8: 1 byte/element
+          - q4: 0.625 bytes/element
+        """
+        config = MemoryBenchmarkConfig(
+            sequence_lengths=[32],
+            batch_sizes=[1],
+            quantization_modes=["fp16", "q8", "q4"],
+        )
+        # Create DBA model with known dimensions
+        model = DBAModel(n_layers=2, d_model=64, n_heads=4, sem_dim=16, geo_dim=32)
+        model.eval()
+
+        benchmark = MemoryBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        analysis = result.kvcache_analysis
+        assert analysis is not None
+        assert analysis.bytes_per_token_dba_fp16 is not None
+        assert analysis.bytes_per_token_dba_q8 is not None
+        assert analysis.bytes_per_token_dba_q4 is not None
+
+        # Verify ratios are correct
+        fp16_to_q8_ratio = analysis.bytes_per_token_dba_fp16 / analysis.bytes_per_token_dba_q8
+        self.assertAlmostEqual(fp16_to_q8_ratio, 2.0, places=2)
+
+        fp16_to_q4_ratio = analysis.bytes_per_token_dba_fp16 / analysis.bytes_per_token_dba_q4
+        # fp16 (2.0) / q4 (0.625) = 3.2
+        self.assertAlmostEqual(fp16_to_q4_ratio, 3.2, places=2)
 
     def test_kvcache_estimation_scales_with_seq_len(self) -> None:
         """KV-cache memory estimation scales linearly with sequence length."""

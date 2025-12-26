@@ -31,7 +31,19 @@ class MemoryMeasurement:
 
 @dataclass
 class KVCacheAnalysis:
-    """Analysis of KV-cache memory usage."""
+    """Analysis of KV-cache memory usage.
+
+    For standard attention, K and V both use n_kv_heads * head_dim dimensions.
+    For DBA (decoupled bottleneck attention), the cache stores:
+      - k_sem: semantic keys (sem_dim per layer)
+      - k_geo: geometric keys (geo_dim per layer)
+      - v: values (v_dim per layer, may differ from standard kv_dim)
+
+    All byte estimates include appropriate overhead for quantized formats:
+      - fp16: 2 bytes/element
+      - q8: 1 byte/element (int8 + amortized scale)
+      - q4: 0.625 bytes/element (4-bit data + scale overhead)
+    """
 
     model_name: str
     n_layers: int
@@ -47,6 +59,8 @@ class KVCacheAnalysis:
     geo_dim: int | None = None
     v_dim: int | None = None  # Actual V dimension for decoupled attention
     bytes_per_token_dba_fp16: float | None = None
+    bytes_per_token_dba_q8: float | None = None
+    bytes_per_token_dba_q4: float | None = None
 
 
 @dataclass
@@ -189,11 +203,16 @@ class MemoryBenchmark:
         # DBA: cache sizing using actual dimensions
         # Cache stores: k_sem (sem_dim) + k_geo (geo_dim) + v (v_dim) per layer
         bytes_dba_fp16: float | None = None
+        bytes_dba_q8: float | None = None
+        bytes_dba_q4: float | None = None
         if sem_dim is not None and geo_dim is not None:
             # Use actual v_dim if available, otherwise fall back to kv_dim
             actual_v_dim = v_dim if v_dim is not None else kv_dim
-            # Total cached: sem_dim + geo_dim + v_dim per token per layer
-            bytes_dba_fp16 = float(n_layers * (sem_dim + geo_dim + actual_v_dim) * 2)
+            # Total cached elements: sem_dim + geo_dim + v_dim per token per layer
+            dba_elements_per_token = n_layers * (sem_dim + geo_dim + actual_v_dim)
+            bytes_dba_fp16 = float(dba_elements_per_token * 2.0)      # 2 bytes for fp16
+            bytes_dba_q8 = float(dba_elements_per_token * 1.0)        # 1 byte for q8
+            bytes_dba_q4 = float(dba_elements_per_token * 0.625)      # 0.625 bytes for q4
 
         return KVCacheAnalysis(
             model_name=model_name,
@@ -208,6 +227,8 @@ class MemoryBenchmark:
             geo_dim=geo_dim,
             v_dim=v_dim,
             bytes_per_token_dba_fp16=bytes_dba_fp16,
+            bytes_per_token_dba_q8=bytes_dba_q8,
+            bytes_per_token_dba_q4=bytes_dba_q4,
         )
 
     def _measure(

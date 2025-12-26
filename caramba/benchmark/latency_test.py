@@ -379,5 +379,84 @@ class TestLatencyMeasurementUseCache(unittest.TestCase):
         self.assertTrue(m.use_cache)
 
 
+class TestTTFTSemanticConsistency(unittest.TestCase):
+    """Tests for TTFT semantic consistency between cached and uncached modes.
+
+    TTFT (Time To First Token) should have consistent semantics across modes:
+    - Both cached and uncached modes report TTFT as prefill + first decode step
+    - This ensures TTFT is comparable across different benchmark configurations
+    """
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.device = torch.device("cpu")
+
+    def test_uncached_ttft_includes_first_decode(self) -> None:
+        """Uncached TTFT includes first decode step (consistent with cached mode)."""
+        config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=2,
+            use_cache=False,
+        )
+        model = DummyModel()
+        model.eval()
+
+        benchmark = LatencyBenchmark(config, self.device)
+        result = benchmark.run(model, "test_model")
+
+        for m in result.measurements:
+            # TTFT should be > prefill (it includes first decode step)
+            self.assertGreater(m.time_to_first_token_ms, m.prefill_time_ms)
+
+    def test_ttft_semantics_match_across_modes(self) -> None:
+        """Both cached and uncached TTFT have the same semantic definition.
+
+        Both modes should report TTFT as prefill + first decode, meaning
+        TTFT > prefill_time for both modes.
+        """
+        model = DummyModel()
+        model.eval()
+
+        # Run uncached benchmark
+        uncached_config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=2,
+            use_cache=False,
+        )
+        uncached_benchmark = LatencyBenchmark(uncached_config, self.device)
+        uncached_result = uncached_benchmark.run(model, "test_model_uncached")
+
+        # Run cached benchmark
+        cached_config = LatencyBenchmarkConfig(
+            prompt_lengths=[16],
+            generation_lengths=[4],
+            batch_sizes=[1],
+            warmup_runs=1,
+            timed_runs=2,
+            use_cache=True,
+        )
+        cached_benchmark = LatencyBenchmark(cached_config, self.device)
+        cached_result = cached_benchmark.run(model, "test_model_cached")
+
+        # Both should have TTFT > prefill (includes first decode step)
+        for m in uncached_result.measurements:
+            self.assertGreater(
+                m.time_to_first_token_ms, m.prefill_time_ms,
+                "Uncached TTFT should include first decode step"
+            )
+
+        for m in cached_result.measurements:
+            self.assertGreaterEqual(
+                m.time_to_first_token_ms, m.prefill_time_ms,
+                "Cached TTFT should include first decode step"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

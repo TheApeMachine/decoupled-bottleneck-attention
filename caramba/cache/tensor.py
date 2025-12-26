@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 
 from caramba.cache import QuantSpec, make_quantspec
@@ -130,7 +132,7 @@ class SeqCacheTensor:
             )
         old = self.pos
 
-        def apply(op):
+        def apply(op: Callable[[torch.Tensor, QuantSpec], tuple[torch.Tensor, torch.Tensor]]) -> None:
             qv, sv = op(x_new, self.spec)
             if self.q is None or self.s is None:
                 raise RuntimeError("Expected quant buffers for q8_0 cache")
