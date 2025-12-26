@@ -7,6 +7,7 @@ from torch import nn, Tensor
 from typing_extensions import override
 
 from caramba.config.topology import CyclicTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class CyclicTopology(nn.Module):
@@ -26,5 +27,5 @@ class CyclicTopology(nn.Module):
         forward pass for the cyclic topology.
         """
         for layer in self.layers:
-            x = layer.forward(x, ctx=ctx)  # type: ignore[call-arg]
+            x = unwrap_output(layer(x, ctx=ctx))  # type: ignore[call-arg]
         return x

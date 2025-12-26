@@ -15,20 +15,23 @@ from caramba.config.topology import (
     StackedTopologyConfig,
 )
 
-compiler = Compiler()
-
 
 class LowerTest(unittest.TestCase):
     """
     LowerTest provides tests for lowering.
     """
+
+    def setUp(self) -> None:
+        """Create a fresh Compiler instance for each test."""
+        self.compiler = Compiler()
+
     def test_expands_repeat_on_stacked(self) -> None:
         """
         test expanding repeat on stacked topology.
         """
         linear = LinearLayerConfig(d_in=4, d_out=4, bias=True)
         topo = StackedTopologyConfig(layers=[linear], repeat=3)
-        lowered = compiler.lowerer.lower_topology(topo)
+        lowered = self.compiler.lowerer.lower_topology(topo)
 
         self.assertEqual(lowered.repeat, 1)
         self.assertEqual(len(lowered.layers), 3)
@@ -40,7 +43,7 @@ class LowerTest(unittest.TestCase):
         linear = LinearLayerConfig(d_in=4, d_out=4, bias=True)
         inner = StackedTopologyConfig(layers=[linear], repeat=2)
         outer = NestedTopologyConfig(layers=[inner], repeat=3)
-        lowered = compiler.lowerer.lower_topology(outer)
+        lowered = self.compiler.lowerer.lower_topology(outer)
 
         self.assertIsInstance(lowered, NestedTopologyConfig)
         lowered_nested = cast(NestedTopologyConfig, lowered)
@@ -59,7 +62,7 @@ class LowerTest(unittest.TestCase):
         """
         linear = LinearLayerConfig(d_in=4, d_out=4, bias=False)
         topo = StackedTopologyConfig(layers=[linear], repeat=2)
-        lowered = compiler.lowerer.lower_topology(topo)
+        lowered = self.compiler.lowerer.lower_topology(topo)
 
         model = lowered.build()
         x = torch.randn(2, 3, 4)
@@ -72,7 +75,7 @@ class LowerTest(unittest.TestCase):
         linear = LinearLayerConfig(d_in=4, d_out=4, bias=False)
         inner = SequentialTopologyConfig(layers=[linear], repeat=1)
         outer = StackedTopologyConfig(layers=[inner], repeat=1)
-        lowered = compiler.lowerer.lower_topology(outer)
+        lowered = self.compiler.lowerer.lower_topology(outer)
 
         model = lowered.build()
         x = torch.randn(2, 3, 4)
@@ -89,7 +92,7 @@ class LowerTest(unittest.TestCase):
             ]
         )
         with self.assertRaises(ValueError):
-            compiler.validator.validate_topology(topo)
+            self.compiler.validator.validate_topology(topo)
 
 
 if __name__ == "__main__":

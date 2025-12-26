@@ -22,10 +22,24 @@ class RecurrentTopology(nn.Module):
         self.layers: nn.ModuleList = nn.ModuleList(built)
 
     @override
-    def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
+    def forward(
+        self, x: Tensor, *, ctx: object | None = None
+    ) -> Tensor | tuple[Tensor, list[object]]:
         """
         forward pass for the recurrent topology.
+
+        Returns x or (x, caches) depending on whether layers return tuples.
         """
+        caches: list[object] = []
         for layer in self.layers:
-            x = layer.forward(x, ctx=ctx)  # type: ignore[call-arg]
+            out = layer(x, ctx=ctx)  # type: ignore[call-arg]
+            # Handle layers that return (output, cache) tuples
+            if isinstance(out, tuple):
+                x, cache = out
+                caches.append(cache)
+            else:
+                x = out
+        # Return consistent with whether any caches were collected
+        if caches:
+            return x, caches
         return x

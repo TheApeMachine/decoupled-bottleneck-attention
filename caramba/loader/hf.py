@@ -51,16 +51,28 @@ class HFLoader:
         resolved_filename: str
         if filename is None:
             api = HfApi()
-            repo_files = set(api.list_repo_files(repo_id=repo_id, revision=self.revision))
+            try:
+                repo_files = set(api.list_repo_files(repo_id=repo_id, revision=self.revision))
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to list files for repo {repo_id!r} "
+                    f"(revision={self.revision!r}): {e}"
+                ) from e
             resolved_filename = next((f for f in _DEFAULT_FILES if f in repo_files), "")
             if not resolved_filename:
                 raise ValueError(f"No default model file found in {repo_id}")
         else:
             resolved_filename = filename
 
-        return Path(hf_hub_download(
-            repo_id=repo_id,
-            filename=resolved_filename,
-            revision=self.revision,
-            cache_dir=self.cache_dir,
-        ))
+        try:
+            return Path(hf_hub_download(
+                repo_id=repo_id,
+                filename=resolved_filename,
+                revision=self.revision,
+                cache_dir=self.cache_dir,
+            ))
+        except Exception as e:
+            raise ValueError(
+                f"Failed to download {resolved_filename!r} from {repo_id!r} "
+                f"(revision={self.revision!r}, cache_dir={self.cache_dir!r}): {e}"
+            ) from e

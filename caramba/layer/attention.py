@@ -22,6 +22,18 @@ if TYPE_CHECKING:
     from caramba.cache.layer import LayerKVCache
     from caramba.cache.decoupled import DecoupledLayerKVCache
 
+# Lazy-cached reference to InferContext to avoid per-call import overhead
+_InferContext: type | None = None
+
+
+def _get_infer_context_type() -> type:
+    """Get the InferContext type, caching it on first access."""
+    global _InferContext
+    if _InferContext is None:
+        from caramba.infer.context import InferContext
+        _InferContext = InferContext
+    return _InferContext
+
 
 def _neg_inf(dtype: torch.dtype) -> float:
     """Return a large negative value safe for the given dtype."""
@@ -226,12 +238,12 @@ class AttentionLayer(nn.Module):
             Tuple of (output, updated_cache)
         """
         # Extract cache and pos_offset from InferContext if provided
-        from caramba.infer.context import InferContext
-        if ctx is not None and isinstance(ctx, InferContext):
-            cache = ctx.next_cache()
-            pos_offset = ctx.pos_offset
-            if ctx.attn_mask is not None:
-                mask = ctx.attn_mask
+        InferContextType = _get_infer_context_type()
+        if ctx is not None and isinstance(ctx, InferContextType):
+            cache = ctx.next_cache()  # type: ignore[union-attr]
+            pos_offset = ctx.pos_offset  # type: ignore[union-attr]
+            if ctx.attn_mask is not None:  # type: ignore[union-attr]
+                mask = ctx.attn_mask  # type: ignore[union-attr]
 
         if self.mode == AttentionMode.DECOUPLED:
             # Cast to decoupled cache type (runtime check happens in forward)
@@ -276,13 +288,9 @@ class AttentionLayer(nn.Module):
             old_len = cache.pos
             _ = cache.append(self._merge(kh), self._merge(vh))
 
-            if T == 1 and old_len > 0:
-                # Decode: use full cached K/V
-                k_all, v_all = cache.get(dtype=qh.dtype)
-                kh = self._shape(k_all, self.head_dim, self.n_kv_heads)
-                vh = self._shape(v_all, self.head_dim, self.n_kv_heads)
-            elif old_len > 0:
-                # Prefill with existing cache
+            # Retrieve and reshape cached K/V when there's existing cache
+            # (applies to both decode T==1 and prefill with prior cache)
+            if old_len > 0:
                 k_all, v_all = cache.get(dtype=qh.dtype)
                 kh = self._shape(k_all, self.head_dim, self.n_kv_heads)
                 vh = self._shape(v_all, self.head_dim, self.n_kv_heads)
@@ -366,12 +374,9 @@ class AttentionLayer(nn.Module):
             old_len = cache.pos
             _ = cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
 
-            if T == 1 and old_len > 0:
-                k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)
-                ksh = self._shape(k_sem_all, sem_head_dim)
-                kgh = self._shape(k_geo_all, geo_head_dim)
-                vh = self._shape(v_all, v_head_dim)
-            elif old_len > 0:
+            # Retrieve and reshape cached K/V when there's existing cache
+            # (applies to both decode T==1 and prefill with prior cache)
+            if old_len > 0:
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)
                 ksh = self._shape(k_sem_all, sem_head_dim)
                 kgh = self._shape(k_geo_all, geo_head_dim)

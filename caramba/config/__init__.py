@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import enum
-import re
+import importlib
 from typing import Annotated, Protocol, TypeVar, cast
 
 from pydantic import AfterValidator, BaseModel
-
 from torch import nn
-import importlib
 
 
 T = TypeVar("T")
@@ -56,32 +54,46 @@ class Config(BaseModel):
         match validation_type:
             case ValidationType.SHOULD_BE_TRUE:
                 if not left:
-                    raise ValueError("value failed to validate")
+                    raise ValueError(
+                        f"Validation failed: {validation_type.name}: value={left!r} is not truthy"
+                    )
                 return left
             case ValidationType.SHOULD_BE_FALSE:
                 if left:
-                    raise ValueError("value failed to validate")
+                    raise ValueError(
+                        f"Validation failed: {validation_type.name}: value={left!r} is not falsy"
+                    )
                 return left
             case ValidationType.SHOULD_BE_EQUAL_TO:
                 if left != right:
-                    raise ValueError("value failed to validate")
+                    raise ValueError(
+                        f"Validation failed: {validation_type.name}: {left!r} != {right!r}"
+                    )
                 return left
             case ValidationType.SHOULD_BE_NOT_EQUAL_TO:
                 if left == right:
-                    raise ValueError("value failed to validate")
+                    raise ValueError(
+                        f"Validation failed: {validation_type.name}: {left!r} == {right!r}"
+                    )
                 return left
             case ValidationType.SHOULD_BE_POSITIVE:
                 # For numeric types, enforce strictly > 0.
                 if left <= 0:  # type: ignore[operator]
-                    raise ValueError("value failed to validate")
+                    raise ValueError(
+                        f"Validation failed: {validation_type.name}: {left!r} <= 0"
+                    )
                 return left
             case ValidationType.SHOULD_BE_NON_NEGATIVE:
                 # For numeric types, enforce >= 0.
                 if left < 0:  # type: ignore[operator]
-                    raise ValueError("value failed to validate")
+                    raise ValueError(
+                        f"Validation failed: {validation_type.name}: {left!r} < 0"
+                    )
                 return left
             case _:
-                raise ValueError("value failed to validate")
+                raise ValueError(
+                    f"Validation failed: unknown validation type {validation_type}"
+                )
 
     @staticmethod
     def check_range(
@@ -99,14 +111,14 @@ class Config(BaseModel):
         """
         v = float(value)
         if ge is not None and v < ge:
-            raise ValueError("value failed to validate")
+            raise ValueError(f"Validation failed: {v} < {ge} (expected >= {ge})")
         if gt is not None and v <= gt:
-            raise ValueError("value failed to validate")
+            raise ValueError(f"Validation failed: {v} <= {gt} (expected > {gt})")
         if le is not None and v > le:
-            raise ValueError("value failed to validate")
+            raise ValueError(f"Validation failed: {v} > {le} (expected <= {le})")
         if lt is not None and v >= lt:
-            raise ValueError("value failed to validate")
-        return value
+            raise ValueError(f"Validation failed: {v} >= {lt} (expected < {lt})")
+        return v
 
 
 # Centralized “validated primitive” aliases (use these in Config models).

@@ -7,24 +7,29 @@ to avoid O(N) cache entries during token-by-token decode.
 from __future__ import annotations
 
 import torch
+from torch import nn
 
 
-class RotaryEmbedding:
-    """RoPE with cached cos/sin tables."""
+class RotaryEmbedding(nn.Module):
+    """RoPE with cached cos/sin tables.
 
-    inv_freq: torch.Tensor
+    Subclasses nn.Module so that inv_freq moves with model.to(device).
+    """
+
+    inv_freq: torch.Tensor  # Registered buffer
     rot_dim: int
-    _cache: dict[tuple[str, str], tuple[torch.Tensor, torch.Tensor]]
 
     def __init__(self, rot_dim: int, base: float = 10000.0) -> None:
+        super().__init__()
         if rot_dim % 2 != 0:
             raise ValueError(f"rot_dim must be even, got {rot_dim}")
         self.rot_dim = int(rot_dim)
         inv_freq = 1.0 / (
             base ** (torch.arange(0, self.rot_dim, 2, dtype=torch.float32) / float(self.rot_dim))
         )
-        self.inv_freq = inv_freq
-        self._cache = {}
+        # Register as buffer so it moves with model.to(device)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self._cos_sin_cache: dict[tuple[str, str], tuple[torch.Tensor, torch.Tensor]] = {}
 
     @staticmethod
     def _next_pow2(n: int) -> int:
@@ -38,7 +43,7 @@ class RotaryEmbedding:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         seq_len = int(seq_len)
         key = (str(device), str(dtype))
-        cached = self._cache.get(key)
+        cached = self._cos_sin_cache.get(key)
 
         if cached is None:
             cached_len = 0
@@ -50,9 +55,7 @@ class RotaryEmbedding:
 
         if cached_len < seq_len:
             target_len = self._next_pow2(seq_len)
-            if target_len < seq_len:
-                target_len = seq_len
-
+            # _next_pow2(seq_len) always returns >= seq_len for positive seq_len
             start = cached_len
             t = torch.arange(start, target_len, device=device, dtype=torch.float32)
             inv = self.inv_freq.to(device=device, dtype=torch.float32)
@@ -62,7 +65,7 @@ class RotaryEmbedding:
 
             cos_cached = torch.cat([cos_cached, cos_new], dim=0)
             sin_cached = torch.cat([sin_cached, sin_new], dim=0)
-            self._cache[key] = (cos_cached, sin_cached)
+            self._cos_sin_cache[key] = (cos_cached, sin_cached)
 
         return (cos_cached[:seq_len], sin_cached[:seq_len])
 

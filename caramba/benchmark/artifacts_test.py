@@ -4,6 +4,7 @@ Unit tests for the artifacts generation module.
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,8 +54,8 @@ class TestComparisonSummary(unittest.TestCase):
             teacher_tokens_per_sec=150.0,
             student_tokens_per_sec=225.0,
             speedup=1.5,
-            teacher_kvcache_mb=2.0,
-            student_kvcache_mb=0.4,
+            teacher_kvcache_mb_per_token=2.0,
+            student_kvcache_mb_per_token=0.4,
             memory_reduction=5.0,
         )
         self.assertAlmostEqual(summary.teacher_perplexity, 8.5)
@@ -168,7 +169,6 @@ class TestArtifactGenerator(unittest.TestCase):
 
     def tearDown(self) -> None:
         """Clean up temporary files."""
-        import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_output_dir_created(self) -> None:

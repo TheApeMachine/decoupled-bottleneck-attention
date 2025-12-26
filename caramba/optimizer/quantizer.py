@@ -83,7 +83,7 @@ class Quantizer:
     @staticmethod
     def _check_kind(spec: QuantSpec, kind: str) -> None:
         if spec.kind != kind:
-            raise ValueError(spec.kind)
+            raise ValueError(f"Expected kind '{kind}', got '{spec.kind}'")
 
     @staticmethod
     def _check_scale(scale: torch.Tensor, spec: QuantSpec) -> None:
@@ -136,7 +136,7 @@ class Quantizer:
         else:
             if q.size(-1) != pad_dim:
                 raise ValueError(f"Expected q pad_dim {pad_dim}, got {q.size(-1)}")
-            q2 = q.reshape(-1, pad_dim).reshape(-1, nb, qb).to(torch.float32)
+            q2 = q.reshape(-1, nb, qb).to(torch.float32)
 
         s = scale.reshape(-1, nb).to(torch.float32).unsqueeze(-1)
         x2 = q2 * s

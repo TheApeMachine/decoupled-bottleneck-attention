@@ -18,20 +18,18 @@ class KVCacheKind(str, enum.Enum):
     NF4 = "nf4"
 
 
+CACHE_MODULE_NAME = "caramba.cache"
+
+
 class KVCacheType(str, enum.Enum):
     """KVCacheType enumerates the KV-cache policy types."""
     STANDARD = "LayerKVCache"
     DECOUPLED = "DecoupledLayerKVCache"
 
-    @classmethod
-    def from_str(cls, s: str) -> KVCacheType:
-        """Converts a string to a KVCacheType."""
-        return cls(s)
-
-    @classmethod
-    def module_name(cls) -> str:
+    @staticmethod
+    def module_name() -> str:
         """Returns the module name for the cache type."""
-        return "caramba.cache"
+        return CACHE_MODULE_NAME
 
 
 class KVCacheTensorConfig(Config):

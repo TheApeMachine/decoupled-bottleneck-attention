@@ -4,7 +4,7 @@ generate provides the text generation loop with KV-cache support.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 import torch
 from torch import Tensor, nn
@@ -15,9 +15,6 @@ from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
 from caramba.infer.context import InferContext
 from caramba.layer.attention import AttentionLayer
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass
@@ -33,6 +30,9 @@ class GenerateConfig:
     cache_kind: KVCacheKind = KVCacheKind.FP16
     cache_qblock: int = 32
     cache_residual_len: int = 0
+    # Diffusion head options
+    use_diffusion: bool = False  # Use diffusion head for sampling if available
+    diffusion_guidance_scale: float | None = None  # Override CFG scale
 
 
 def count_attention_layers(model: nn.Module) -> int:
@@ -42,6 +42,21 @@ def count_attention_layers(model: nn.Module) -> int:
         if isinstance(module, AttentionLayer):
             count += 1
     return count
+
+
+def has_diffusion_head(model: nn.Module) -> bool:
+    """Check if a model has an enabled diffusion head.
+
+    Args:
+        model: The model to check
+
+    Returns:
+        True if the model has a diffusion head attribute that is not None
+    """
+    return (
+        hasattr(model, "diffusion_head")
+        and getattr(model, "diffusion_head", None) is not None
+    )
 
 
 def get_attention_configs(model: nn.Module) -> list[AttentionLayerConfig]:
@@ -205,7 +220,16 @@ def generate(
     )
 
     ctx = InferContext(caches=caches, pos_offset=0)
-    generated = input_ids.clone()
+
+    # Pre-allocate buffer for generated tokens to avoid O(n^2) torch.cat
+    max_gen_len = seq_len + config.max_new_tokens
+    generated = torch.empty(
+        (batch_size, max_gen_len),
+        dtype=input_ids.dtype,
+        device=device,
+    )
+    generated[:, :seq_len] = input_ids
+    gen_len = seq_len
 
     # Prefill phase: process all input tokens at once
     # The model needs an embedding layer to convert token ids to embeddings
@@ -215,12 +239,12 @@ def generate(
         # Get the tokens to process
         if i == 0:
             # Prefill: process all input tokens
-            tokens = generated
+            tokens = generated[:, :gen_len]
             pos_offset = 0
         else:
             # Decode: process only the last token
-            tokens = generated[:, -1:]
-            pos_offset = generated.size(1) - 1
+            tokens = generated[:, gen_len - 1 : gen_len]
+            pos_offset = gen_len - 1
 
         # Reset context for this forward pass
         ctx.begin(pos_offset=pos_offset)
@@ -246,19 +270,25 @@ def generate(
             top_p=config.top_p,
         )
 
-        # Append to generated sequence
-        generated = torch.cat([generated, next_token.unsqueeze(-1)], dim=1)
+        # Append to generated sequence using pre-allocated buffer
+        generated[:, gen_len] = next_token
+        gen_len += 1
 
         # Check for EOS
         if config.eos_token_id is not None:
             if (next_token == config.eos_token_id).all():
                 break
 
-    return generated
+    return generated[:, :gen_len]
 
 
 class Generator:
-    """Stateful generator with persistent KV-cache."""
+    """Stateful generator with persistent KV-cache.
+
+    Supports both standard softmax-based sampling and diffusion-based
+    sampling when the model has a diffusion head. Diffusion sampling
+    is slower (multi-step) but can produce higher quality outputs.
+    """
 
     def __init__(
         self,
@@ -285,6 +315,9 @@ class Generator:
         self._caches: list[LayerKVCache | DecoupledLayerKVCache] | None = None
         self._ctx: InferContext | None = None
         self._pos: int = 0
+
+        # Check for diffusion head
+        self._has_diffusion = has_diffusion_head(model)
 
     def reset(self) -> None:
         """Reset the generator state (clear caches)."""
@@ -324,14 +357,63 @@ class Generator:
         assert self._ctx is not None
 
         self._ctx.begin(pos_offset=0)
-        hidden = self.model(input_ids, ctx=self._ctx)  # type: ignore[call-arg]
-        self._ctx.ensure_consumed()
 
+        # Use return_features path if we need diffusion sampling
+        use_diffusion = self.config.use_diffusion and self._has_diffusion
+        hidden: Tensor
+        if use_diffusion and hasattr(self.model, "forward"):
+            try:
+                result = self.model(input_ids, ctx=self._ctx, return_features=True)  # type: ignore[call-arg]
+                if isinstance(result, tuple) and len(result) == 2:
+                    self._last_features = result[0]
+                    hidden = result[0]  # Use features for diffusion
+                else:
+                    hidden = result if isinstance(result, Tensor) else result[0]  # type: ignore[index]
+                    self._last_features = None
+            except TypeError:
+                # Model doesn't support return_features
+                result2 = self.model(input_ids, ctx=self._ctx)  # type: ignore[call-arg]
+                hidden = result2 if isinstance(result2, Tensor) else result2[0]  # type: ignore[index]
+                self._last_features = None
+        else:
+            result3 = self.model(input_ids, ctx=self._ctx)  # type: ignore[call-arg]
+            hidden = result3 if isinstance(result3, Tensor) else result3[0]  # type: ignore[index]
+            self._last_features = None
+
+        self._ctx.ensure_consumed()
         self._pos = input_ids.size(1)
 
+        # Get logits
+        if use_diffusion and self._last_features is not None:
+            # Use slicing that works with Tensor
+            features_last = self._last_features.narrow(1, self._last_features.size(1) - 1, 1)
+            return self._sample_with_diffusion(features_last)
+
         if self.lm_head is not None:
-            return self.lm_head(hidden[:, -1, :])
-        return hidden[:, -1, :]
+            # Get last token hidden state
+            hidden_last = hidden.narrow(1, hidden.size(1) - 1, 1).squeeze(1)
+            return self.lm_head(hidden_last)
+        hidden_last = hidden.narrow(1, hidden.size(1) - 1, 1).squeeze(1)
+        return hidden_last
+
+    def _sample_with_diffusion(self, features_last: Tensor) -> Tensor:
+        """Sample logits using the diffusion head.
+
+        Args:
+            features_last: Features at the last position (B, 1, d_model)
+
+        Returns:
+            Logits (B, vocab_size)
+        """
+        if not hasattr(self.model, "sample_with_diffusion"):
+            raise RuntimeError(
+                "Model does not support sample_with_diffusion method"
+            )
+        return self.model.sample_with_diffusion(  # type: ignore[attr-defined]
+            features_last,
+            temperature=self.config.temperature,
+            guidance_scale=self.config.diffusion_guidance_scale,
+        )
 
     @torch.inference_mode()
     def decode_step(self, token_ids: Tensor) -> Tensor:
@@ -349,14 +431,41 @@ class Generator:
             token_ids = token_ids.unsqueeze(-1)
 
         self._ctx.begin(pos_offset=self._pos)
-        hidden = self.model(token_ids, ctx=self._ctx)  # type: ignore[call-arg]
-        self._ctx.ensure_consumed()
 
+        # Use return_features path if we need diffusion sampling
+        use_diffusion = self.config.use_diffusion and self._has_diffusion
+        hidden: Tensor
+        if use_diffusion and hasattr(self.model, "forward"):
+            try:
+                result = self.model(token_ids, ctx=self._ctx, return_features=True)  # type: ignore[call-arg]
+                if isinstance(result, tuple) and len(result) == 2:
+                    self._last_features = result[0]
+                    hidden = result[0]
+                else:
+                    hidden = result if isinstance(result, Tensor) else result[0]  # type: ignore[index]
+                    self._last_features = None
+            except TypeError:
+                result2 = self.model(token_ids, ctx=self._ctx)  # type: ignore[call-arg]
+                hidden = result2 if isinstance(result2, Tensor) else result2[0]  # type: ignore[index]
+                self._last_features = None
+        else:
+            result3 = self.model(token_ids, ctx=self._ctx)  # type: ignore[call-arg]
+            hidden = result3 if isinstance(result3, Tensor) else result3[0]  # type: ignore[index]
+            self._last_features = None
+
+        self._ctx.ensure_consumed()
         self._pos += token_ids.size(1)
 
+        # Get logits
+        if use_diffusion and self._last_features is not None:
+            features_last = self._last_features.narrow(1, self._last_features.size(1) - 1, 1)
+            return self._sample_with_diffusion(features_last)
+
         if self.lm_head is not None:
-            return self.lm_head(hidden[:, -1, :])
-        return hidden[:, -1, :]
+            hidden_last = hidden.narrow(1, hidden.size(1) - 1, 1).squeeze(1)
+            return self.lm_head(hidden_last)
+        hidden_last = hidden.narrow(1, hidden.size(1) - 1, 1).squeeze(1)
+        return hidden_last
 
     @torch.inference_mode()
     def generate(self, input_ids: Tensor) -> Tensor:
@@ -369,10 +478,18 @@ class Generator:
             Generated token ids (B, T + max_new_tokens)
         """
         self.reset()
-        batch_size = input_ids.size(0)
+        batch_size, seq_len = input_ids.shape
         self._ensure_caches(batch_size)
 
-        generated = input_ids.clone()
+        # Pre-allocate buffer for generated tokens to avoid O(n^2) torch.cat
+        max_gen_len = seq_len + self.config.max_new_tokens
+        generated = torch.empty(
+            (batch_size, max_gen_len),
+            dtype=input_ids.dtype,
+            device=input_ids.device,
+        )
+        generated[:, :seq_len] = input_ids
+        gen_len = seq_len
 
         # Prefill
         logits = self.prefill(input_ids)
@@ -385,7 +502,8 @@ class Generator:
                 top_p=self.config.top_p,
             )
 
-            generated = torch.cat([generated, next_token.unsqueeze(-1)], dim=1)
+            generated[:, gen_len] = next_token
+            gen_len += 1
 
             if self.config.eos_token_id is not None:
                 if (next_token == self.config.eos_token_id).all():
@@ -394,7 +512,7 @@ class Generator:
             # Decode step with the new token
             logits = self.decode_step(next_token)
 
-        return generated
+        return generated[:, :gen_len]
 
     def rollback(self, n_tokens: int) -> None:
         """Rollback the cache by n tokens (for speculative decoding).

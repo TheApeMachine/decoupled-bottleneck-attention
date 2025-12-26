@@ -10,7 +10,6 @@ import torch
 from torch import nn
 
 from caramba.config.benchmark import MemoryBenchmarkConfig
-from caramba.config.kvcache import KVCacheKind
 from caramba.layer.attention import AttentionLayer, AttentionMode
 
 
@@ -92,23 +91,64 @@ class MemoryBenchmark:
     def _analyze_kvcache(self, model: nn.Module, model_name: str) -> KVCacheAnalysis:
         """Analyze KV-cache structure from model architecture."""
         n_layers = 0
-        n_kv_heads = 0
-        head_dim = 0
-        attention_mode = "standard"
+        n_kv_heads: int | None = None
+        head_dim: int | None = None
+        attention_mode: str | None = None
         sem_dim: int | None = None
         geo_dim: int | None = None
 
         for module in model.modules():
             if isinstance(module, AttentionLayer):
                 n_layers += 1
-                n_kv_heads = module.n_kv_heads
-                head_dim = module.head_dim
-                attention_mode = module.mode.value
+                layer_n_kv_heads = module.n_kv_heads
+                layer_head_dim = module.head_dim
+                layer_mode = module.mode.value
+
+                # Validate consistency across layers
+                if n_kv_heads is None:
+                    n_kv_heads = layer_n_kv_heads
+                elif n_kv_heads != layer_n_kv_heads:
+                    raise ValueError(
+                        f"Inconsistent n_kv_heads across layers: {n_kv_heads} vs {layer_n_kv_heads}"
+                    )
+
+                if head_dim is None:
+                    head_dim = layer_head_dim
+                elif head_dim != layer_head_dim:
+                    raise ValueError(
+                        f"Inconsistent head_dim across layers: {head_dim} vs {layer_head_dim}"
+                    )
+
+                if attention_mode is None:
+                    attention_mode = layer_mode
+                elif attention_mode != layer_mode:
+                    raise ValueError(
+                        f"Inconsistent attention mode across layers: {attention_mode} vs {layer_mode}"
+                    )
 
                 if module.mode == AttentionMode.DECOUPLED:
                     cfg = module.config
-                    sem_dim = cfg.sem_dim
-                    geo_dim = cfg.geo_dim
+                    layer_sem_dim = cfg.sem_dim
+                    layer_geo_dim = cfg.geo_dim
+
+                    if sem_dim is None:
+                        sem_dim = layer_sem_dim
+                    elif sem_dim != layer_sem_dim:
+                        raise ValueError(
+                            f"Inconsistent sem_dim across layers: {sem_dim} vs {layer_sem_dim}"
+                        )
+
+                    if geo_dim is None:
+                        geo_dim = layer_geo_dim
+                    elif geo_dim != layer_geo_dim:
+                        raise ValueError(
+                            f"Inconsistent geo_dim across layers: {geo_dim} vs {layer_geo_dim}"
+                        )
+
+        # Use defaults if no attention layers found
+        n_kv_heads = n_kv_heads or 0
+        head_dim = head_dim or 0
+        attention_mode = attention_mode or "standard"
 
         # Calculate bytes per token
         # Standard: 2 * n_layers * n_kv_heads * head_dim * dtype_size (K and V)
@@ -157,9 +197,12 @@ class MemoryBenchmark:
         else:
             model_memory = 0.0  # Can't measure on CPU/MPS easily
 
+        # Determine vocab size from model
+        vocab_size = self._get_vocab_size(model)
+
         # Create input and run forward
         input_ids = torch.randint(
-            0, 32000,
+            0, vocab_size,
             (batch_size, seq_len),
             device=self.device,
             dtype=torch.long,
@@ -231,3 +274,18 @@ class MemoryBenchmark:
             total_bytes = 2 * n_layers * batch_size * seq_len * kv_dim * bytes_per_elem
 
         return total_bytes / (1024 * 1024)  # MB
+
+    def _get_vocab_size(self, model: nn.Module) -> int:
+        """Get vocab size from model, with fallback to default."""
+        # Try common config attributes
+        if hasattr(model, "config") and hasattr(model.config, "vocab_size"):  # type: ignore[union-attr]
+            return int(model.config.vocab_size)  # type: ignore[union-attr]
+
+        # Try getting from embedding layer
+        if hasattr(model, "get_input_embeddings"):
+            embedding = model.get_input_embeddings()  # type: ignore[operator]
+            if embedding is not None and hasattr(embedding, "num_embeddings"):
+                return int(embedding.num_embeddings)  # type: ignore[union-attr]
+
+        # Fallback to a reasonable default
+        return 32000

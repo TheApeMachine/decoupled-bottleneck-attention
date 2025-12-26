@@ -8,6 +8,7 @@ from torch import nn, Tensor
 from typing_extensions import override
 
 from caramba.config.topology import ParallelTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class ParallelTopology(nn.Module):
@@ -27,7 +28,8 @@ class ParallelTopology(nn.Module):
         """
         forward pass for the parallel topology.
         """
-        return torch.stack(
-            [layer.forward(x, ctx=ctx) for layer in self.layers],  # type: ignore[call-arg]
-            dim=0,
-        )
+        outputs = [
+            unwrap_output(layer(x, ctx=ctx))  # type: ignore[call-arg]
+            for layer in self.layers
+        ]
+        return torch.stack(outputs, dim=0)

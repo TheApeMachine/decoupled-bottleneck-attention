@@ -210,6 +210,21 @@ class CLI(argparse.ArgumentParser):
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
 
+    def _load_and_validate_manifest(self, manifest_path: Path) -> Manifest:
+        """
+        Load a manifest from path, lower it, and validate it.
+
+        Args:
+            manifest_path: Path to the manifest file.
+
+        Returns:
+            The lowered and validated manifest.
+        """
+        compiler = Compiler()
+        manifest = compiler.lowerer.lower_manifest(Manifest.from_path(manifest_path))
+        compiler.validator.validate_manifest(manifest)
+        return manifest
+
     def parse_command(self, argv: list[str] | None = None) -> Command | ExperimentCommand:
         """
         parse_command parses the CLI arguments into a typed command payload.
@@ -220,11 +235,7 @@ class CLI(argparse.ArgumentParser):
             case "compile":
                 if args.compile_manifest is None:
                     raise ValueError("compile requires a manifest path.")
-                compiler = Compiler()
-                manifest = compiler.lowerer.lower_manifest(
-                    Manifest.from_path(args.compile_manifest)
-                )
-                compiler.validator.validate_manifest(manifest)
+                manifest = self._load_and_validate_manifest(args.compile_manifest)
                 return CompileCommand(
                     manifest=manifest,
                     print_plan=bool(args.print_plan),
@@ -232,11 +243,7 @@ class CLI(argparse.ArgumentParser):
             case "run":
                 if args.experiment_manifest is None:
                     raise ValueError("run requires a manifest path.")
-                compiler = Compiler()
-                manifest = compiler.lowerer.lower_manifest(
-                    Manifest.from_path(args.experiment_manifest)
-                )
-                compiler.validator.validate_manifest(manifest)
+                manifest = self._load_and_validate_manifest(args.experiment_manifest)
                 return ExperimentCommand(
                     manifest=manifest,
                     group=args.group,

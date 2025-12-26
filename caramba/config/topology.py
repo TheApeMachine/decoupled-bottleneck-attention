@@ -24,15 +24,8 @@ class TopologyType(str, enum.Enum):
     SEQUENTIAL = "SequentialTopology"
     STACKED = "StackedTopology"
 
-    @classmethod
-    def from_str(cls, s: str) -> TopologyType:
-        """
-        Converts a string to a TopologyType.
-        """
-        return cls(s)
-
-    @classmethod
-    def module_name(cls) -> str:
+    @staticmethod
+    def module_name() -> str:
         """Returns the module name for the topology type."""
         return "caramba.topology"
 

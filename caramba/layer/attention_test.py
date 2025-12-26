@@ -48,7 +48,8 @@ class TestAttentionLayerStandard(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.rotary is not None
+        self.assertIsNotNone(layer.rotary)
+        assert layer.rotary is not None  # type guard for pyright
         self.assertEqual(layer.rotary.rot_dim, cfg.head_dim)
 
     def test_rope_disabled(self) -> None:
@@ -134,8 +135,10 @@ class TestAttentionLayerGQA(unittest.TestCase):
         kv_dim = self.n_kv_heads * cfg.head_dim
         q_dim = self.n_heads * cfg.head_dim
 
-        assert layer.k_proj is not None
-        assert layer.q_proj is not None
+        self.assertIsNotNone(layer.k_proj)
+        self.assertIsNotNone(layer.q_proj)
+        assert layer.k_proj is not None  # type guard for pyright
+        assert layer.q_proj is not None  # type guard for pyright
         self.assertEqual(layer.k_proj.out_features, kv_dim)
         self.assertEqual(layer.v_proj.out_features, kv_dim)
         self.assertEqual(layer.q_proj.out_features, q_dim)
@@ -195,8 +198,10 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.q_sem is not None
-        assert layer.k_sem is not None
+        self.assertIsNotNone(layer.q_sem)
+        self.assertIsNotNone(layer.k_sem)
+        assert layer.q_sem is not None  # type guard for pyright
+        assert layer.k_sem is not None  # type guard for pyright
         self.assertEqual(layer.q_sem.out_features, self.sem_dim)
         self.assertEqual(layer.k_sem.out_features, self.sem_dim)
 
@@ -212,8 +217,10 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.q_geo is not None
-        assert layer.k_geo is not None
+        self.assertIsNotNone(layer.q_geo)
+        self.assertIsNotNone(layer.k_geo)
+        assert layer.q_geo is not None  # type guard for pyright
+        assert layer.k_geo is not None  # type guard for pyright
         self.assertEqual(layer.q_geo.out_features, self.geo_dim)
         self.assertEqual(layer.k_geo.out_features, self.geo_dim)
 
@@ -231,8 +238,9 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         layer = AttentionLayer(cfg)
 
         # Should have rotary_geo but not rotary
-        assert layer.rotary_geo is not None
+        self.assertIsNotNone(layer.rotary_geo)
         self.assertIsNone(layer.rotary)
+        assert layer.rotary_geo is not None  # type guard for pyright
         self.assertEqual(layer.rotary_geo.rot_dim, cfg.geo_head_dim)
 
     def test_no_standard_projections(self) -> None:
@@ -263,7 +271,8 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.decoupled_gate_logit is not None
+        self.assertIsNotNone(layer.decoupled_gate_logit)
+        assert layer.decoupled_gate_logit is not None  # type guard for pyright
         self.assertEqual(layer.decoupled_gate_logit.shape, (self.n_heads,))
 
     def test_decoupled_gate_dynamic(self) -> None:
@@ -280,7 +289,8 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.decoupled_gate_proj is not None
+        self.assertIsNotNone(layer.decoupled_gate_proj)
+        assert layer.decoupled_gate_proj is not None  # type guard for pyright
         self.assertEqual(layer.decoupled_gate_proj.out_features, self.n_heads)
 
     def test_different_sem_geo_dims(self) -> None:
@@ -295,8 +305,10 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.q_sem is not None
-        assert layer.q_geo is not None
+        self.assertIsNotNone(layer.q_sem)
+        self.assertIsNotNone(layer.q_geo)
+        assert layer.q_sem is not None  # type guard for pyright
+        assert layer.q_geo is not None  # type guard for pyright
         self.assertEqual(layer.q_sem.out_features, 48)
         self.assertEqual(layer.q_geo.out_features, 16)
 
@@ -331,7 +343,7 @@ class TestAttentionWithCache(unittest.TestCase):
         x = torch.randn(self.batch_size, self.seq_len, self.d_model)
         y, updated_cache = layer(x, cache=cache)
 
-        assert updated_cache is not None
+        self.assertIsNotNone(updated_cache)
         self.assertEqual(updated_cache.pos, self.seq_len)
         self.assertEqual(y.shape, x.shape)
 
@@ -359,7 +371,7 @@ class TestAttentionWithCache(unittest.TestCase):
         x_decode = torch.randn(self.batch_size, 1, self.d_model)
         y_decode, updated_cache = layer(x_decode, cache=cache, pos_offset=self.seq_len)
 
-        assert updated_cache is not None
+        self.assertIsNotNone(updated_cache)
         self.assertEqual(updated_cache.pos, self.seq_len + 1)
         self.assertEqual(y_decode.shape, (self.batch_size, 1, self.d_model))
 
@@ -390,7 +402,7 @@ class TestAttentionWithCache(unittest.TestCase):
         x = torch.randn(self.batch_size, self.seq_len, self.d_model)
         y, updated_cache = layer(x, cache=cache)
 
-        assert updated_cache is not None
+        self.assertIsNotNone(updated_cache)
         self.assertEqual(updated_cache.pos, self.seq_len)
         self.assertEqual(y.shape, x.shape)
 
@@ -427,7 +439,7 @@ class TestAttentionWithCache(unittest.TestCase):
         x_decode = torch.randn(self.batch_size, 1, self.d_model)
         y_decode, updated_cache = layer(x_decode, cache=cache, pos_offset=self.seq_len)
 
-        assert updated_cache is not None
+        self.assertIsNotNone(updated_cache)
         self.assertEqual(updated_cache.pos, self.seq_len + 1)
         self.assertEqual(y_decode.shape, (self.batch_size, 1, self.d_model))
 
@@ -476,7 +488,8 @@ class TestLearnedTemperature(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        assert layer.logit_scale is not None
+        self.assertIsNotNone(layer.logit_scale)
+        assert layer.logit_scale is not None  # type guard for pyright
         self.assertEqual(layer.logit_scale.shape, (4,))
         self.assertTrue(layer.logit_scale.requires_grad)
 

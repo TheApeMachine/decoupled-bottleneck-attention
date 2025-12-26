@@ -9,6 +9,11 @@ from caramba.infer.generate import (
     create_caches,
     sample_next_token,
 )
+from caramba.infer.speculative import (
+    SpeculativeConfig,
+    SpeculativeGenerator,
+    speculative_generate,
+)
 
 __all__ = [
     "InferContext",
@@ -18,4 +23,7 @@ __all__ = [
     "generate",
     "create_caches",
     "sample_next_token",
+    "SpeculativeConfig",
+    "SpeculativeGenerator",
+    "speculative_generate",
 ]

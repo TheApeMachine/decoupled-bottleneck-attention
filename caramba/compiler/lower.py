@@ -3,7 +3,6 @@ lower provides a small lowering pass from user configs to canonical configs.
 """
 from __future__ import annotations
 
-from caramba.config import Config
 from caramba.config.manifest import Manifest
 from caramba.config.model import ModelConfig
 from caramba.config.topology import NodeConfig, TopologyConfig
@@ -44,6 +43,9 @@ class Lowerer:
         ]
 
     def is_topology(self, node: NodeConfig) -> bool:
-        """Check if node is a topology (has layers attribute)."""
-        return hasattr(node, "layers")
+        """Check if node is a topology (has layers attribute that is a list)."""
+        if not hasattr(node, "layers"):
+            return False
+        layers = getattr(node, "layers")
+        return isinstance(layers, list)
 

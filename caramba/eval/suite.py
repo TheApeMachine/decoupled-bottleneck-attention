@@ -70,18 +70,19 @@ def run_eval_verify(
     student.eval()
 
     results: list[EvalCaseResult] = []
-    for case in list(cfg.cases):
-        results.append(
-            _run_case(
-                teacher=teacher,
-                student=student,
-                case=case,
-                tokenizer=tokenizer,
-                max_new_tokens=int(cfg.max_new_tokens),
-                context_window=cfg.context_window,
-                device=device,
+    with torch.no_grad():
+        for case in list(cfg.cases):
+            results.append(
+                _run_case(
+                    teacher=teacher,
+                    student=student,
+                    case=case,
+                    tokenizer=tokenizer,
+                    max_new_tokens=int(cfg.max_new_tokens),
+                    context_window=cfg.context_window,
+                    device=device,
+                )
             )
-        )
     return EvalSummary(results=results)
 
 
@@ -122,8 +123,15 @@ def _run_case(
 
     match case.kind:
         case "choice_logprob":
-            assert isinstance(case.answer, str)
-            assert case.choices is not None
+            if not isinstance(case.answer, str):
+                raise TypeError(
+                    f"Case {case.id!r}: expected answer to be str for choice_logprob, "
+                    f"got {type(case.answer).__name__}"
+                )
+            if case.choices is None:
+                raise ValueError(
+                    f"Case {case.id!r}: choices must not be None for choice_logprob"
+                )
             t_choice = _pick_choice_by_logprob(
                 model=teacher,
                 prompt_ids=prompt_ids,
@@ -148,7 +156,11 @@ def _run_case(
                 student_answer=s_choice,
             )
         case "int_greedy":
-            assert isinstance(case.answer, int)
+            if not isinstance(case.answer, int):
+                raise TypeError(
+                    f"Case {case.id!r}: expected answer to be int for int_greedy, "
+                    f"got {type(case.answer).__name__}"
+                )
             t_text = _greedy_generate(
                 model=teacher,
                 prompt_ids=prompt_ids,
@@ -179,7 +191,7 @@ def _run_case(
 
 
 def _extract_first_int(text: str) -> int:
-    m = re.search(r"-?\\d+", str(text))
+    m = re.search(r"-?\d+", str(text))
     if m is None:
         return 0
     return int(m.group(0))

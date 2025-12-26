@@ -22,24 +22,13 @@ class StateReader:
         """
         return ".".join(p for p in parts if p)
 
-    def get(self, key: str) -> Tensor:
+    def _require_tensor(self, key: str, required: bool) -> Tensor | None:
         """
-        get returns a tensor for a required key.
-        """
-        if key not in self.state_dict:
-            raise ValueError(f"Missing state_dict key: {key}")
-        value = self.state_dict[key]
-        if not isinstance(value, Tensor):
-            raise ValueError(
-                f"Expected tensor for key {key}, got {type(value)!r}"
-            )
-        return value
-
-    def get_optional(self, key: str) -> Tensor | None:
-        """
-        get_optional returns a tensor for an optional key.
+        _require_tensor retrieves a tensor, optionally raising if missing.
         """
         if key not in self.state_dict:
+            if required:
+                raise ValueError(f"Missing state_dict key: {key}")
             return None
         value = self.state_dict[key]
         if not isinstance(value, Tensor):
@@ -47,6 +36,21 @@ class StateReader:
                 f"Expected tensor for key {key}, got {type(value)!r}"
             )
         return value
+
+    def get(self, key: str) -> Tensor:
+        """
+        get returns a tensor for a required key.
+        """
+        result = self._require_tensor(key, required=True)
+        # _require_tensor with required=True always returns Tensor or raises
+        assert result is not None
+        return result
+
+    def get_optional(self, key: str) -> Tensor | None:
+        """
+        get_optional returns a tensor for an optional key.
+        """
+        return self._require_tensor(key, required=False)
 
     def copy_dense(
         self,
@@ -81,8 +85,8 @@ class StateReader:
                 raise ValueError(
                     f"Expected tensor bias, got {type(dst_bias)!r}"
                 )
-            if bias is None:
-                raise ValueError("Expected source bias to be present")
+            # bias is guaranteed non-None here by the earlier mismatch check
+            assert bias is not None
             if dst_bias.shape != bias.shape:
                 raise ValueError(
                     f"Bias shape mismatch: {dst_bias.shape} vs {bias.shape}"

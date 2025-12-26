@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -48,10 +48,12 @@ class ComparisonSummary:
     student_tokens_per_sec: float
     speedup: float
 
-    # Memory
-    teacher_kvcache_mb: float
-    student_kvcache_mb: float
-    memory_reduction: float
+    # Memory (per-token KV-cache size in MB)
+    # These are per-token values converted to MB for readability.
+    # Multiply by sequence length to get total KV-cache size.
+    teacher_kvcache_mb_per_token: float
+    student_kvcache_mb_per_token: float
+    memory_reduction: float  # Ratio of teacher/student bytes per token
 
 
 class ArtifactGenerator:
@@ -144,8 +146,8 @@ class ArtifactGenerator:
             teacher_tokens_per_sec=t_tps,
             student_tokens_per_sec=s_tps,
             speedup=s_tps / t_tps if t_tps > 0 else 0.0,
-            teacher_kvcache_mb=t_mem / (1024 * 1024) if t_mem else 0.0,
-            student_kvcache_mb=s_mem / (1024 * 1024) if s_mem else 0.0,
+            teacher_kvcache_mb_per_token=t_mem / (1024 * 1024) if t_mem else 0.0,
+            student_kvcache_mb_per_token=s_mem / (1024 * 1024) if s_mem else 0.0,
             memory_reduction=t_mem / s_mem if s_mem > 0 else 0.0,
         )
 
@@ -266,7 +268,6 @@ class ArtifactGenerator:
             import matplotlib
             matplotlib.use("Agg")  # Non-interactive backend
             import matplotlib.pyplot as plt
-            import numpy as np
         except ImportError:
             # matplotlib not installed, skip charts
             return paths
@@ -292,13 +293,13 @@ class ArtifactGenerator:
         ax.set_title(f"Throughput ({summary.speedup:.2f}x speedup)")
         ax.bar_label(bars, fmt="%.0f")
 
-        # Memory comparison
+        # Memory comparison (per-token)
         ax = axes[2]
-        values = [summary.teacher_kvcache_mb, summary.student_kvcache_mb]
+        values = [summary.teacher_kvcache_mb_per_token, summary.student_kvcache_mb_per_token]
         bars = ax.bar(models, values, color=colors)
-        ax.set_ylabel("KV-Cache (MB) ↓")
+        ax.set_ylabel("KV-Cache (MB/token) ↓")
         ax.set_title(f"Memory ({summary.memory_reduction:.1f}x reduction)")
-        ax.bar_label(bars, fmt="%.2f")
+        ax.bar_label(bars, fmt="%.6f")
 
         plt.tight_layout()
         path = self.output_dir / "summary.png"
@@ -395,7 +396,7 @@ class ArtifactGenerator:
 \\midrule
 Perplexity $\\downarrow$ & {summary.teacher_perplexity:.2f} & {summary.student_perplexity:.2f} & {summary.perplexity_ratio:.2f}$\\times$ \\\\
 Throughput (tok/s) $\\uparrow$ & {summary.teacher_tokens_per_sec:.0f} & {summary.student_tokens_per_sec:.0f} & {summary.speedup:.2f}$\\times$ \\\\
-KV-Cache (bytes/tok) $\\downarrow$ & {summary.teacher_kvcache_mb * 1024 * 1024:.0f} & {summary.student_kvcache_mb * 1024 * 1024:.0f} & {summary.memory_reduction:.1f}$\\times$ \\\\
+KV-Cache (bytes/tok) $\\downarrow$ & {summary.teacher_kvcache_mb_per_token * 1024 * 1024:.0f} & {summary.student_kvcache_mb_per_token * 1024 * 1024:.0f} & {summary.memory_reduction:.1f}$\\times$ \\\\
 \\bottomrule
 \\end{{tabular}}
 \\end{{table}}

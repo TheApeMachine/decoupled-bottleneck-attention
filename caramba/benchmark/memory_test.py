@@ -156,8 +156,10 @@ class TestKVCacheAnalysis(unittest.TestCase):
         self.assertEqual(analysis.sem_dim, 128)
         self.assertEqual(analysis.geo_dim, 256)
         self.assertIsNotNone(analysis.bytes_per_token_dba_fp16)
-        assert analysis.bytes_per_token_dba_fp16 is not None
-        self.assertAlmostEqual(analysis.bytes_per_token_dba_fp16, 384.0)
+        dba_bytes = analysis.bytes_per_token_dba_fp16
+        self.assertIsNotNone(dba_bytes)
+        # Type narrowing: after assertIsNotNone, dba_bytes is known to be float
+        self.assertAlmostEqual(dba_bytes, 384.0)  # type: ignore[arg-type]
 
 
 class TestMemoryResult(unittest.TestCase):

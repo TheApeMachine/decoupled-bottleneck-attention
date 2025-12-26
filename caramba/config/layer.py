@@ -35,8 +35,8 @@ class LayerType(str, enum.Enum):
         """Converts a string to a LayerType."""
         return cls(s)
 
-    @classmethod
-    def module_name(cls) -> str:
+    @staticmethod
+    def module_name() -> str:
         """Returns the module name for the layer type."""
         return "caramba.layer"
 

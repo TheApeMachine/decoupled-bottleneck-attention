@@ -70,8 +70,22 @@ class Trace:
     ) -> Callable[[nn.Module, tuple[object, ...], object], None]:
         """
         _hook builds a forward hook that captures module outputs.
+
+        Handles both plain Tensor outputs and (Tensor, cache) tuples
+        from modules like AttentionLayer.
         """
         def _capture(_: nn.Module, __: tuple[object, ...], output: object) -> None:
+            # Handle (output, cache) tuples from attention layers
+            if isinstance(output, tuple) and len(output) >= 1:
+                first = output[0]
+                if isinstance(first, Tensor):
+                    self.outputs.append(first)
+                    return
+                raise ValueError(
+                    f"Trace expected Tensor as first tuple element from {name}, "
+                    f"got {type(first)!r}"
+                )
+
             if not isinstance(output, Tensor):
                 raise ValueError(
                     f"Trace expected Tensor output from {name}, got {type(output)!r}"

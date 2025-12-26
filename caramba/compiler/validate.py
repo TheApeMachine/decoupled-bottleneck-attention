@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from caramba.config.layer import (
+    AttentionMode,
     DropoutLayerConfig,
     LayerConfig,
     LinearLayerConfig,
@@ -26,11 +27,14 @@ class Validator:
     """Validator checks cross-layer shape invariants."""
 
     def validate_manifest(self, manifest: Manifest) -> None:
-        """Validate a full manifest."""
+        """Validate a full manifest including attention layer constraints."""
         self.validate_topology(manifest.model.topology, path="model.topology")
+        # Validate all attention layers
+        self._validate_all_attention_layers(manifest)
 
-    # Alias for backwards compat
-    validate = validate_manifest
+    def validate(self, manifest: Manifest) -> None:
+        """Alias for validate_manifest for backwards compatibility."""
+        return self.validate_manifest(manifest)
 
     def validate_topology(self, config: TopologyConfig, *, path: str = "model.topology") -> None:
         """Validate a topology config."""
@@ -145,25 +149,83 @@ class Validator:
             else:
                 yield node, node_path  # type: ignore[misc]
 
+    def _validate_all_attention_layers(self, manifest: Manifest) -> None:
+        """Validate all attention layers in the manifest."""
+        for layer, path in self.iter_layers(
+            manifest.model.topology, path="model.topology"
+        ):
+            if isinstance(layer, AttentionLayerConfig):
+                self.validate_attention(layer, path=path)
+
     def validate_attention(self, config: AttentionLayerConfig, *, path: str) -> None:
-        """Validate attention layer configuration."""
+        """Validate attention layer configuration.
+
+        Checks divisibility constraints for all attention modes:
+        - Standard/GQA: attn_dim must be divisible by n_heads
+        - Decoupled: sem_dim, geo_dim, v_dim must be divisible by n_heads
+        - All modes: n_heads must be divisible by n_kv_heads
+        """
         d_model = config.d_model
         n_heads = config.n_heads
         n_kv_heads = config.kv_heads  # Property that defaults to n_heads
-        head_dim = config.head_dim
 
-        # For standard/GQA modes, check d_model alignment
-        attn_dim = config.attn_dim if config.attn_dim is not None else d_model
-        if attn_dim != n_heads * head_dim:
-            raise ValueError(
-                f"{path}: expected attn_dim == n_heads * head_dim, got "
-                f"attn_dim={attn_dim}, n_heads={n_heads}, head_dim={head_dim}. "
-                "Fix: ensure attn_dim = n_heads * head_dim."
-            )
-
+        # Check n_heads divisible by n_kv_heads (required for all modes)
         if n_heads % n_kv_heads != 0:
             raise ValueError(
                 f"{path}: expected n_heads % n_kv_heads == 0, got "
                 f"n_heads={n_heads}, n_kv_heads={n_kv_heads}. "
                 "Fix: choose n_kv_heads that divides n_heads."
             )
+
+        if config.mode == AttentionMode.DECOUPLED:
+            # Decoupled mode specific validation
+            if config.sem_dim is None or config.geo_dim is None:
+                raise ValueError(
+                    f"{path}: decoupled mode requires sem_dim and geo_dim. "
+                    "Fix: set both sem_dim and geo_dim in the config."
+                )
+
+            sem_dim = config.sem_dim
+            geo_dim = config.geo_dim
+            v_dim = config.v_dim
+
+            if sem_dim % n_heads != 0:
+                raise ValueError(
+                    f"{path}: sem_dim must be divisible by n_heads, got "
+                    f"sem_dim={sem_dim}, n_heads={n_heads}. "
+                    "Fix: choose sem_dim that is divisible by n_heads."
+                )
+
+            if geo_dim % n_heads != 0:
+                raise ValueError(
+                    f"{path}: geo_dim must be divisible by n_heads, got "
+                    f"geo_dim={geo_dim}, n_heads={n_heads}. "
+                    "Fix: choose geo_dim that is divisible by n_heads."
+                )
+
+            if v_dim % n_heads != 0:
+                raise ValueError(
+                    f"{path}: v_dim must be divisible by n_heads, got "
+                    f"v_dim={v_dim}, n_heads={n_heads}. "
+                    "Fix: choose v_dim (or attn_dim) that is divisible by n_heads."
+                )
+
+            # RoPE requires even geo_head_dim
+            geo_head_dim = geo_dim // n_heads
+            if config.rope_enabled and geo_head_dim % 2 != 0:
+                raise ValueError(
+                    f"{path}: decoupled mode with RoPE requires even geo_head_dim, got "
+                    f"geo_head_dim={geo_head_dim}. "
+                    "Fix: adjust geo_dim so geo_dim / n_heads is even."
+                )
+        else:
+            # Standard/GQA mode validation
+            head_dim = config.head_dim
+            attn_dim = config.attn_dim if config.attn_dim is not None else d_model
+
+            if attn_dim != n_heads * head_dim:
+                raise ValueError(
+                    f"{path}: expected attn_dim == n_heads * head_dim, got "
+                    f"attn_dim={attn_dim}, n_heads={n_heads}, head_dim={head_dim}. "
+                    "Fix: ensure attn_dim = n_heads * head_dim."
+                )

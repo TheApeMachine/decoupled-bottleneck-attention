@@ -102,6 +102,9 @@ class BenchmarkRunner:
                         assert isinstance(spec.config, MemoryBenchmarkConfig)
                         benchmark = MemoryBenchmark(spec.config, self.device)
 
+                        # Note: Memory benchmarks measure architectural properties (bytes per token,
+                        # KV-cache structure) which are deterministic. Only the first run is used
+                        # since repeated runs produce identical results for the same model.
                         if "teacher" in spec.models:
                             result = benchmark.run(teacher, "teacher")
                             if teacher_memory is None:

@@ -3,6 +3,7 @@ runner provides the unified experiment orchestration.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from caramba.config.manifest import Manifest
 from caramba.config.train import TrainConfig
 from caramba.model import Model
 from caramba.trainer.upcycle import Upcycle
+
+logger = logging.getLogger(__name__)
 
 
 class ExperimentRunner:
@@ -46,8 +49,8 @@ class ExperimentRunner:
         """
         # Find the group to run
         group = self._find_group(group_name)
-        print(f"experiment: running group '{group.name}'")
-        print(f"  {group.description}")
+        logger.info("experiment: running group '%s'", group.name)
+        logger.info("  %s", group.description)
 
         # Get train config from first run
         train_config = self._get_train_config(group)
@@ -55,7 +58,11 @@ class ExperimentRunner:
         # Run upcycle training
         upcycle = Upcycle(self.manifest, group, train_config)
         for run in group.runs:
-            print(f"experiment: run '{run.id}' ({run.train.phase if run.train else 'no train'})")
+            logger.info(
+                "experiment: run '%s' (%s)",
+                run.id,
+                run.train.phase if run.train else "no train",
+            )
             upcycle.run(run)
 
         # Store references to trained models
@@ -65,10 +72,10 @@ class ExperimentRunner:
         # Run benchmarks if configured
         artifacts: dict[str, Path] = {}
         if group.benchmarks:
-            print(f"experiment: running {len(group.benchmarks)} benchmarks")
+            logger.info("experiment: running %d benchmarks", len(group.benchmarks))
             artifacts = self._run_benchmarks(group, upcycle)
 
-        print(f"experiment: complete, generated {len(artifacts)} artifacts")
+        logger.info("experiment: complete, generated %d artifacts", len(artifacts))
         return artifacts
 
     def _find_group(self, group_name: str | None) -> Group:
@@ -101,21 +108,34 @@ class ExperimentRunner:
         if not group.benchmarks:
             return {}
 
+        # Get output formats from manifest, with default fallback
+        default_formats = ["csv", "json", "png", "latex"]
+        output_formats = getattr(self.manifest, "output_formats", None)
+        if output_formats is None:
+            output_formats = default_formats
+        elif not isinstance(output_formats, list) or not all(isinstance(f, str) for f in output_formats):
+            logger.warning("Invalid output_formats in manifest, using defaults")
+            output_formats = default_formats
+
         # Build benchmark suite
         suite = BenchmarkSuite(
             benchmarks=group.benchmarks,
             output_dir=f"artifacts/{self.manifest.name or 'experiment'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            formats=["csv", "json", "png", "latex"],
+            formats=output_formats,
         )
 
-        # Build metadata
+        # Build metadata - safely retrieve topology type
         train_config = self._get_train_config(group)
+        model = getattr(self.manifest, "model", None)
+        topology = getattr(model, "topology", None) if model is not None else None
+        topology_type = str(getattr(topology, "type", "")) if topology is not None else ""
+
         metadata = ExperimentMetadata(
             name=self.manifest.name or "experiment",
             timestamp=datetime.now().isoformat(),
             manifest_path=str(self.manifest.name) if self.manifest.name else "",
             teacher_checkpoint=train_config.teacher_ckpt or "",
-            student_config=str(self.manifest.model.topology.type if hasattr(self.manifest.model, 'topology') else ""),
+            student_config=topology_type,
             device=train_config.device,
             notes=self.manifest.notes,
         )

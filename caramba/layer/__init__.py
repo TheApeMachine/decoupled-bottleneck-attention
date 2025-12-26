@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import math
+from typing import Optional
+
 import torch
-from torch import nn, Tensor
 import torch.nn.functional as F
+from torch import Tensor, nn
+
 from caramba.config.layer import LayerConfig
 
 
@@ -14,18 +18,22 @@ class Layer(nn.Module):
         super().__init__()
         self.config: LayerConfig = config
 
-    def forward(self, x: Tensor, mask=None) -> Tensor:
+    def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         """Forward pass for the layer."""
         raise NotImplementedError("Subclasses must implement forward pass.")
 
-    def cross_attention(self, Q, K, V, mask=None) -> tuple[Tensor, Tensor]:
+    def cross_attention(
+        self,
+        Q: Tensor,
+        K: Tensor,
+        V: Tensor,
+        mask: Optional[Tensor] = None,
+    ) -> tuple[Tensor, Tensor]:
         # Compute the dot products between Q and K, then scale
         d_k = Q.size(-1)
-        scores = torch.matmul(
-            Q, K.transpose(-2, -1)
-        ) / torch.sqrt(
-            torch.tensor(d_k, dtype=torch.float32)
-        )
+        # Use Python math.sqrt to avoid device mismatch and extra allocations
+        scale = math.sqrt(float(d_k))
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / scale
 
         # Apply mask if provided
         if mask is not None:

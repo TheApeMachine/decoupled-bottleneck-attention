@@ -4,6 +4,7 @@ Unit tests for the perplexity benchmark module.
 from __future__ import annotations
 
 import math
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,7 +73,6 @@ class TestPerplexityBenchmark(unittest.TestCase):
 
     def tearDown(self) -> None:
         """Clean up temporary files."""
-        import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_run_returns_result(self) -> None:

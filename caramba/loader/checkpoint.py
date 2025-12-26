@@ -22,7 +22,8 @@ class CheckpointLoader:
             return self.load_sharded(path)
         if path.suffix == ".safetensors":
             return self.load_safetensors(path)
-        return torch.load(path, map_location="cpu")
+        # Use weights_only=True for safety (requires PyTorch >= 1.13)
+        return torch.load(path, map_location="cpu", weights_only=True)
 
     def load_mapped(
         self,
@@ -37,9 +38,16 @@ class CheckpointLoader:
             raise ValueError("mapping must be non-empty")
 
         mapped = {dst: state_dict[src] for src, dst in mapping.items()}
-        missing, unexpected = model.load_state_dict(mapped, strict=strict)
-        if missing or unexpected:
-            raise ValueError(f"load failed: missing={missing}, unexpected={unexpected}")
+        try:
+            result = model.load_state_dict(mapped, strict=strict)
+        except RuntimeError as e:
+            # strict=True raises RuntimeError with missing/unexpected info
+            raise ValueError(f"load failed: {e}") from e
+        # strict=False returns (missing_keys, unexpected_keys)
+        if result is not None:
+            missing, unexpected = result
+            if missing or unexpected:
+                raise ValueError(f"load failed: missing={missing}, unexpected={unexpected}")
 
     def load_sharded(self, index_path: Path) -> dict[str, Tensor]:
         """Load from a sharded checkpoint index."""
@@ -51,6 +59,9 @@ class CheckpointLoader:
         out: dict[str, Tensor] = {}
         for shard in sorted(set(weight_map.values())):
             shard_path = index_path.parent / shard
+            # Prevent infinite recursion: shards should not be index files
+            if shard_path.name.endswith(".index.json"):
+                raise ValueError(f"Shard {shard} is an index file, expected tensor file")
             for key, value in self.load(shard_path).items():
                 if key in out:
                     raise ValueError(f"Duplicate key in shards: {key}")
@@ -85,17 +96,33 @@ class AttentionLoader:
         v_proj = getattr(student, "v_proj", None)
         out_proj = getattr(student, "out_proj", None)
 
-        if q_proj is not None and k_proj is not None:
+        # Check all four projections for new-style names
+        if q_proj is not None and k_proj is not None and v_proj is not None and out_proj is not None:
             self.copy(cast(nn.Linear, q_proj), q)
             self.copy(cast(nn.Linear, k_proj), k)
             self.copy(cast(nn.Linear, v_proj), v)
             self.copy(cast(nn.Linear, out_proj), o)
         else:
-            # Fallback to old attribute names
-            self.copy(cast(nn.Linear, student.query), q)  # type: ignore[attr-defined]
-            self.copy(cast(nn.Linear, student.key), k)  # type: ignore[attr-defined]
-            self.copy(cast(nn.Linear, student.value), v)  # type: ignore[attr-defined]
-            self.copy(cast(nn.Linear, student.out), o)  # type: ignore[attr-defined]
+            # Fallback to old attribute names per-projection
+            if q_proj is not None:
+                self.copy(cast(nn.Linear, q_proj), q)
+            elif hasattr(student, "query"):
+                self.copy(cast(nn.Linear, student.query), q)  # type: ignore[attr-defined]
+
+            if k_proj is not None:
+                self.copy(cast(nn.Linear, k_proj), k)
+            elif hasattr(student, "key"):
+                self.copy(cast(nn.Linear, student.key), k)  # type: ignore[attr-defined]
+
+            if v_proj is not None:
+                self.copy(cast(nn.Linear, v_proj), v)
+            elif hasattr(student, "value"):
+                self.copy(cast(nn.Linear, student.value), v)  # type: ignore[attr-defined]
+
+            if out_proj is not None:
+                self.copy(cast(nn.Linear, out_proj), o)
+            elif hasattr(student, "out"):
+                self.copy(cast(nn.Linear, student.out), o)  # type: ignore[attr-defined]
 
     def copy(self, dst: nn.Linear, src: Tensor) -> None:
         """Copy weight tensor to destination module."""

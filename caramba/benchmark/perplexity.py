@@ -33,19 +33,28 @@ class PerplexityBenchmark:
     def __init__(self, config: PerplexityBenchmarkConfig, device: torch.device) -> None:
         self.config = config
         self.device = device
+        self._dataset: NpyDataset | None = None
+        self._loader: DataLoader[tuple[Tensor, Tensor]] | None = None
+
+    def _get_loader(self) -> DataLoader[tuple[Tensor, Tensor]]:
+        """Lazily initialize and cache the dataset and dataloader."""
+        if self._dataset is None:
+            self._dataset = NpyDataset(self.config.dataset, block_size=self.config.block_size)
+        if self._loader is None:
+            self._loader = DataLoader(
+                self._dataset,
+                batch_size=self.config.batch_size,
+                shuffle=False,
+                drop_last=True,
+            )
+        return self._loader
 
     def run(self, model: nn.Module, model_name: str) -> PerplexityResult:
         """Run perplexity benchmark on a model."""
         model.eval()
 
-        # Load dataset
-        dataset = NpyDataset(self.config.dataset, block_size=self.config.block_size)
-        loader = DataLoader(
-            dataset,
-            batch_size=self.config.batch_size,
-            shuffle=False,
-            drop_last=True,
-        )
+        # Load dataset (cached across runs)
+        loader = self._get_loader()
 
         total_loss = 0.0
         total_tokens = 0

@@ -12,4 +12,4 @@ pydantic
 PyYAML
 huggingface_hub
 safetensors
-tensordict
+tensordict==0.6.2

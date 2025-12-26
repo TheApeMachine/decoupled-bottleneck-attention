@@ -10,7 +10,6 @@ import torch
 from torch import nn
 
 from caramba.config.benchmark import LatencyBenchmarkConfig
-from caramba.infer.generate import GenerateConfig
 
 
 @dataclass
@@ -80,18 +79,15 @@ class LatencyBenchmark:
         gen_len: int,
     ) -> LatencyMeasurement:
         """Measure latency for a specific configuration."""
+        # Determine vocab size from model
+        vocab_size = self._get_vocab_size(model)
+
         # Create random input tokens
         input_ids = torch.randint(
-            0, 32000,  # Assume vocab size
+            0, vocab_size,
             (batch_size, prompt_len),
             device=self.device,
             dtype=torch.long,
-        )
-
-        gen_config = GenerateConfig(
-            max_new_tokens=gen_len,
-            temperature=1.0,
-            top_p=1.0,
         )
 
         # Warmup runs
@@ -171,3 +167,18 @@ class LatencyBenchmark:
             tokens_per_second=tokens_per_second,
             time_to_first_token_ms=avg_prefill,
         )
+
+    def _get_vocab_size(self, model: nn.Module) -> int:
+        """Get vocab size from model, with fallback to default."""
+        # Try common config attributes
+        if hasattr(model, "config") and hasattr(model.config, "vocab_size"):  # type: ignore[union-attr]
+            return int(model.config.vocab_size)  # type: ignore[union-attr]
+
+        # Try getting from embedding layer
+        if hasattr(model, "get_input_embeddings"):
+            embedding = model.get_input_embeddings()  # type: ignore[operator]
+            if embedding is not None and hasattr(embedding, "num_embeddings"):
+                return int(embedding.num_embeddings)  # type: ignore[union-attr]
+
+        # Fallback to a reasonable default
+        return 32000

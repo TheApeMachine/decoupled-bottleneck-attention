@@ -3,7 +3,6 @@ dropout provides the dropout layer.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
 
 from torch import nn, Tensor
 from typing_extensions import override

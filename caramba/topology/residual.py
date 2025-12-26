@@ -8,6 +8,7 @@ from torch import Tensor, nn
 from typing_extensions import override
 
 from caramba.config.topology import ResidualTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class ResidualTopology(nn.Module):
@@ -21,7 +22,6 @@ class ResidualTopology(nn.Module):
             [cfg.build() for _ in range(config.repeat) for cfg in config.layers]
         )
 
-
     @override
     def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
         """
@@ -29,7 +29,5 @@ class ResidualTopology(nn.Module):
         """
         residual = x
         for layer in self.layers:
-            out = layer(x, ctx=ctx)  # type: ignore[call-arg]
-            # Handle layers that return (output, cache) tuples (e.g., AttentionLayer)
-            x = out[0] if isinstance(out, tuple) else out
+            x = unwrap_output(layer(x, ctx=ctx))  # type: ignore[call-arg]
         return residual + x

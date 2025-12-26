@@ -3,7 +3,6 @@ swiglu provides the SwiGLU MLP layer.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
 
 from torch import nn, Tensor
 from typing_extensions import override
@@ -20,7 +19,7 @@ class SwiGLULayer(nn.Module):
         self.config: SwiGLULayerConfig = config
         self.d_model: int = int(config.d_model)
         self.d_ff: int = int(config.d_ff)
-        self.bias: bool = bool(getattr(config, "bias", True))
+        self.bias: bool = bool(config.bias)
         self.w_gate = nn.Linear(
             self.d_model,
             self.d_ff,

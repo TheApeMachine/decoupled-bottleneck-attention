@@ -14,8 +14,9 @@ class TransformerModel(nn.Module):
     def __init__(self, config: TopologyConfig) -> None:
         super().__init__()
 
-        self.compiler = Compiler()
-        config = self.compiler.lowerer.lower_topology(config)
+        # Use local variable for compiler - only needed during init
+        compiler = Compiler()
+        config = compiler.lowerer.lower_topology(config)
         self.topology: nn.Module = config.build()
 
     def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:

@@ -17,3 +17,7 @@ class DropoutLayerTest(unittest.TestCase):
         x = torch.randn(2, 3, 8)
         y = dropout(x)
         self.assertEqual(tuple(y.shape), (2, 3, 8))
+
+
+if __name__ == "__main__":
+    unittest.main()

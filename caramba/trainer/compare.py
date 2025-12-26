@@ -4,6 +4,7 @@ compare provides teacher/student comparison utilities.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
@@ -13,27 +14,20 @@ from caramba.config.verify import CompareThreshold
 from caramba.model.trace import Trace
 
 
+@dataclass
 class CompareResult:
     """
     CompareResult holds aggregated comparison metrics.
     """
-    def __init__(
-        self,
-        *,
-        attention_mean_l1: float | None,
-        attention_max_l1: float | None,
-        logits_mean_l1: float | None,
-        logits_max_l1: float | None,
-        batches: int,
-    ) -> None:
-        """
-        __init__ initializes the compare result.
-        """
-        self.attention_mean_l1: float | None = attention_mean_l1
-        self.attention_max_l1: float | None = attention_max_l1
-        self.logits_mean_l1: float | None = logits_mean_l1
-        self.logits_max_l1: float | None = logits_max_l1
-        self.batches: int = int(batches)
+    attention_mean_l1: float | None
+    attention_max_l1: float | None
+    logits_mean_l1: float | None
+    logits_max_l1: float | None
+    batches: int
+
+    def __post_init__(self) -> None:
+        """Ensure batches is an int."""
+        self.batches = int(self.batches)
 
 
 def compare_teacher_student(

@@ -7,6 +7,7 @@ from torch import nn, Tensor
 from typing_extensions import override
 
 from caramba.config.topology import StackedTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class StackedTopology(nn.Module):
@@ -26,8 +27,5 @@ class StackedTopology(nn.Module):
         forward pass for the stacked network.
         """
         for layer in self.layers:
-            out = layer(x, ctx=ctx)  # type: ignore[call-arg]
-            # Handle layers that return (output, cache) tuples (e.g., AttentionLayer)
-            x = out[0] if isinstance(out, tuple) else out
-
+            x = unwrap_output(layer(x, ctx=ctx))  # type: ignore[call-arg]
         return x

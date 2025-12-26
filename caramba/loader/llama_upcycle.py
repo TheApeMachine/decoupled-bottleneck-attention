@@ -236,8 +236,11 @@ class LlamaUpcycle:
         # Use truncated SVD for efficiency
         try:
             U, S, Vh = torch.linalg.svd(teacher_weight.float(), full_matrices=False)
-        except RuntimeError:
-            # Fallback to simple truncation if SVD fails
+        except Exception as e:
+            # Fallback to simple truncation if SVD fails (e.g., RuntimeError, CUDA OOM)
+            # For CUDA OOM, try to free memory first
+            if "CUDA out of memory" in str(e) or "OutOfMemoryError" in type(e).__name__:
+                torch.cuda.empty_cache()
             sem_weight.data.copy_(teacher_weight[:sem_dim, :].to(sem_weight.dtype))
             geo_weight.data.copy_(teacher_weight[sem_dim:sem_dim + geo_dim, :].to(geo_weight.dtype))
             return

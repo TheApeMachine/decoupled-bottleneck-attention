@@ -8,6 +8,7 @@ import torch
 from typing_extensions import override
 
 from caramba.config.topology import BranchingTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class BranchingTopology(nn.Module):
@@ -26,7 +27,8 @@ class BranchingTopology(nn.Module):
         """
         forward pass for the branching topology.
         """
-        return torch.cat(
-            [layer.forward(x, ctx=ctx) for layer in self.layers],  # type: ignore[call-arg]
-            dim=0,
-        )
+        outputs = [
+            unwrap_output(layer(x, ctx=ctx))  # type: ignore[call-arg]
+            for layer in self.layers
+        ]
+        return torch.cat(outputs, dim=0)

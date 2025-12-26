@@ -18,6 +18,11 @@ class TiktokenTokenizerConfig(BaseModel):
     encoding: str
 
 
+# TokenizerConfig is currently a single-variant union.
+# Using Annotated with discriminator allows future extension to support
+# multiple tokenizer backends (e.g., HuggingFace, SentencePiece) without
+# breaking existing configs. To extend, add new tokenizer config classes
+# with distinct "type" literals and include them in the union below.
 TokenizerConfig = Annotated[
     TiktokenTokenizerConfig,
     Field(discriminator="type"),
