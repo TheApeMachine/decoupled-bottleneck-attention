@@ -1,5 +1,10 @@
-"""
-runner provides the unified experiment orchestration.
+"""Experiment orchestration.
+
+The ExperimentRunner coordinates all phases of an experiment:
+1. Parse and validate the manifest
+2. Run training (upcycling with distillation)
+3. Run benchmarks comparing teacher and student
+4. Generate artifacts for analysis and publication
 """
 from __future__ import annotations
 
@@ -16,46 +21,48 @@ from caramba.config.group import Group
 from caramba.config.manifest import Manifest
 from caramba.config.train import TrainConfig
 from caramba.console import logger
-from caramba.model import Model
 from caramba.trainer.upcycle import Upcycle
 
 
 class ExperimentRunner:
-    """
-    Unified experiment runner that orchestrates the complete pipeline.
+    """Unified experiment runner for the complete pipeline.
+
+    Takes a manifest and runs all configured groups through upcycling,
+    benchmarking, and artifact generation.
 
     Usage:
         manifest = Manifest.from_path("llama32_1b_dba.yml")
         runner = ExperimentRunner(manifest)
-        runner.run()  # Runs everything: upcycle + benchmarks + artifacts
+        artifacts = runner.run()  # Returns paths to generated artifacts
     """
 
     def __init__(self, manifest: Manifest) -> None:
+        """Initialize with a validated manifest."""
         self.manifest = manifest
         self.teacher: nn.Module | None = None
         self.student: nn.Module | None = None
 
     def run(self, group_name: str | None = None) -> dict[str, Path]:
-        """
-        Run the complete experiment pipeline.
+        """Run the complete experiment pipeline.
 
         Args:
             group_name: Optional group name to run. If None, runs the first group.
 
         Returns:
-            Dict of generated artifact paths.
+            Dict mapping artifact names to their file paths.
         """
-        # Find the group to run
         group = self._find_group(group_name)
 
         logger.header("Experiment", group.name)
         if group.description:
             logger.info(group.description)
-        logger.key_value({
-            "Runs": len(group.runs),
-            "Benchmarks": len(group.benchmarks) if group.benchmarks else 0,
-            "Data": group.data,
-        })
+        logger.key_value(
+            {
+                "Runs": len(group.runs),
+                "Benchmarks": len(group.benchmarks) if group.benchmarks else 0,
+                "Data": group.data,
+            }
+        )
 
         # Get train config from first run
         train_config = self._get_train_config(group)
@@ -116,11 +123,13 @@ class ExperimentRunner:
         if (
             output_formats is None
             or not isinstance(output_formats, list)
-            or not output_formats  # Empty list is invalid
+            or not output_formats
             or not all(isinstance(f, str) for f in output_formats)
         ):
             if output_formats is not None:
-                logger.warning("Invalid or empty output_formats in manifest, using defaults")
+                logger.warning(
+                    "Invalid or empty output_formats in manifest, using defaults"
+                )
             output_formats = list(default_formats)
 
         # Build benchmark suite
@@ -130,11 +139,13 @@ class ExperimentRunner:
             formats=output_formats,
         )
 
-        # Build metadata - safely retrieve topology type
+        # Build metadata
         train_config = self._get_train_config(group)
         model = getattr(self.manifest, "model", None)
         topology = getattr(model, "topology", None) if model is not None else None
-        topology_type = str(getattr(topology, "type", "")) if topology is not None else ""
+        topology_type = (
+            str(getattr(topology, "type", "")) if topology is not None else ""
+        )
 
         metadata = ExperimentMetadata(
             name=self.manifest.name or "experiment",
@@ -151,9 +162,12 @@ class ExperimentRunner:
         return runner.run(upcycle.teacher, upcycle.student)
 
 
-def run_experiment(manifest_path: str | Path, group: str | None = None) -> dict[str, Path]:
-    """
-    Convenience function to run an experiment from a manifest path.
+def run_experiment(
+    manifest_path: str | Path, group: str | None = None
+) -> dict[str, Path]:
+    """Convenience function to run an experiment from a manifest path.
+
+    Loads, compiles, and runs the manifest in one call.
 
     Args:
         manifest_path: Path to manifest YAML/JSON file.

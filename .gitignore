@@ -5,7 +5,7 @@ Sympathetic_Neurons_Research_Note_v2.docx.pdf
 Sympathetic_Neurons_Research_Note.docx.pdf
 wiki.train.tokens
 fineweb_100m.tokens
-data/
+./data/
 *.pt
 docs/v17 output differences.pdf
 docs/raw/
@@ -15,10 +15,7 @@ __pycache__/
 docs/RESEARCH_MASTER_PLAN.md
 EXPERIMENT_AUDIT.md
 fineweb_100m.npy
-.gitignore
 fineweb_100m.npy.meta
-.DS_Store
-.DS_Store
 fineweb_1b.npy
 *.meta
 critiques.md
@@ -36,7 +33,6 @@ paper.out
 *.wandb
 *.zip
 CRITIQUE.md
-.gitignore
 DIFFUSERS-ADDON.md
 AGENTS.md
 LLAMA32_1B_DBA_UPCYCLE.md

@@ -1,11 +1,10 @@
-"""
-artifacts provides artifact generation for paper-ready outputs.
+"""Artifact generation for paper-ready outputs.
 
-Generates:
-- CSV files with raw data
-- JSON summary reports
-- PNG charts for visual comparison
-- LaTeX tables for direct paper inclusion
+After benchmarking, we need to present results. This module generates:
+- CSV files: Raw data for further analysis
+- JSON reports: Structured summary with metadata
+- PNG charts: Visual comparisons
+- LaTeX tables: Ready for paper inclusion
 """
 from __future__ import annotations
 
@@ -16,14 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from caramba.benchmark.perplexity import PerplexityResult
 from caramba.benchmark.latency import LatencyResult
 from caramba.benchmark.memory import MemoryResult
+from caramba.benchmark.perplexity import PerplexityResult
 
 
 @dataclass
 class ExperimentMetadata:
-    """Metadata about the experiment."""
+    """Metadata describing the experiment."""
 
     name: str
     timestamp: str
@@ -36,39 +35,41 @@ class ExperimentMetadata:
 
 @dataclass
 class ComparisonSummary:
-    """Summary of teacher vs student comparison."""
+    """Summary comparing teacher and student model performance."""
 
-    # Perplexity
     teacher_perplexity: float
     student_perplexity: float
     perplexity_ratio: float
 
-    # Latency
     teacher_tokens_per_sec: float
     student_tokens_per_sec: float
     speedup: float
 
-    # Memory (per-token KV-cache size)
-    # Raw bytes per token - used for precise comparisons and LaTeX output
     teacher_kvcache_bytes_per_token: float
     student_kvcache_bytes_per_token: float
-    memory_reduction: float  # Ratio of teacher/student bytes per token
+    memory_reduction: float
 
     @property
     def teacher_kvcache_mb_per_token(self) -> float:
-        """Teacher KV-cache size in MB per token (for display purposes)."""
+        """Teacher KV-cache size in MB per token (for display)."""
         return self.teacher_kvcache_bytes_per_token / (1024 * 1024)
 
     @property
     def student_kvcache_mb_per_token(self) -> float:
-        """Student KV-cache size in MB per token (for display purposes)."""
+        """Student KV-cache size in MB per token (for display)."""
         return self.student_kvcache_bytes_per_token / (1024 * 1024)
 
 
 class ArtifactGenerator:
-    """Generates paper-ready artifacts from benchmark results."""
+    """Generates paper-ready artifacts from benchmark results.
+
+    Supports multiple output formats: CSV for data analysis, JSON for
+    programmatic access, PNG for figures, and LaTeX for direct paper
+    inclusion.
+    """
 
     def __init__(self, output_dir: str | Path) -> None:
+        """Set up the generator with an output directory."""
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -84,11 +85,10 @@ class ArtifactGenerator:
         student_memory: MemoryResult | None = None,
         formats: list[str] | None = None,
     ) -> dict[str, Path]:
-        """Generate all artifacts and return paths."""
+        """Generate all artifacts and return a dict of paths."""
         formats = formats or ["csv", "json", "png", "latex"]
         generated: dict[str, Path] = {}
 
-        # Generate summary
         summary = self._compute_summary(
             teacher_perplexity=teacher_perplexity,
             student_perplexity=student_perplexity,
@@ -138,15 +138,27 @@ class ArtifactGenerator:
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
     ) -> ComparisonSummary:
-        """Compute comparison summary from results."""
+        """Compute comparison summary from individual results."""
         t_ppl = teacher_perplexity.perplexity if teacher_perplexity else 0.0
         s_ppl = student_perplexity.perplexity if student_perplexity else 0.0
 
         t_tps = teacher_latency.avg_tokens_per_second if teacher_latency else 0.0
         s_tps = student_latency.avg_tokens_per_second if student_latency else 0.0
 
-        t_mem = teacher_memory.kvcache_analysis.bytes_per_token_fp16 if teacher_memory and teacher_memory.kvcache_analysis else 0.0
-        s_mem = student_memory.kvcache_analysis.bytes_per_token_dba_fp16 if student_memory and student_memory.kvcache_analysis and student_memory.kvcache_analysis.bytes_per_token_dba_fp16 else student_memory.kvcache_analysis.bytes_per_token_fp16 if student_memory and student_memory.kvcache_analysis else 0.0
+        t_mem = (
+            teacher_memory.kvcache_analysis.bytes_per_token_fp16
+            if teacher_memory and teacher_memory.kvcache_analysis
+            else 0.0
+        )
+        s_mem = (
+            student_memory.kvcache_analysis.bytes_per_token_dba_fp16
+            if student_memory
+            and student_memory.kvcache_analysis
+            and student_memory.kvcache_analysis.bytes_per_token_dba_fp16
+            else student_memory.kvcache_analysis.bytes_per_token_fp16
+            if student_memory and student_memory.kvcache_analysis
+            else 0.0
+        )
 
         return ComparisonSummary(
             teacher_perplexity=t_ppl,
@@ -155,7 +167,6 @@ class ArtifactGenerator:
             teacher_tokens_per_sec=t_tps,
             student_tokens_per_sec=s_tps,
             speedup=s_tps / t_tps if t_tps > 0 else 0.0,
-            # Store raw bytes per token directly from the analysis
             teacher_kvcache_bytes_per_token=t_mem if t_mem else 0.0,
             student_kvcache_bytes_per_token=s_mem if s_mem else 0.0,
             memory_reduction=t_mem / s_mem if s_mem > 0 else 0.0,
@@ -166,7 +177,7 @@ class ArtifactGenerator:
         metadata: ExperimentMetadata,
         summary: ComparisonSummary,
     ) -> Path:
-        """Write JSON summary report."""
+        """Write JSON summary report with metadata and comparison."""
         path = self.output_dir / "report.json"
 
         report = {
@@ -189,7 +200,7 @@ class ArtifactGenerator:
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
     ) -> dict[str, Path]:
-        """Write CSV files with raw data."""
+        """Write CSV files with raw benchmark data."""
         paths: dict[str, Path] = {}
 
         # Perplexity CSV
@@ -199,19 +210,23 @@ class ArtifactGenerator:
                 writer = csv.writer(f)
                 writer.writerow(["model", "perplexity", "loss", "num_tokens"])
                 if teacher_perplexity:
-                    writer.writerow([
-                        teacher_perplexity.model_name,
-                        teacher_perplexity.perplexity,
-                        teacher_perplexity.loss,
-                        teacher_perplexity.num_tokens,
-                    ])
+                    writer.writerow(
+                        [
+                            teacher_perplexity.model_name,
+                            teacher_perplexity.perplexity,
+                            teacher_perplexity.loss,
+                            teacher_perplexity.num_tokens,
+                        ]
+                    )
                 if student_perplexity:
-                    writer.writerow([
-                        student_perplexity.model_name,
-                        student_perplexity.perplexity,
-                        student_perplexity.loss,
-                        student_perplexity.num_tokens,
-                    ])
+                    writer.writerow(
+                        [
+                            student_perplexity.model_name,
+                            student_perplexity.perplexity,
+                            student_perplexity.loss,
+                            student_perplexity.num_tokens,
+                        ]
+                    )
             paths["perplexity.csv"] = path
 
         # Latency CSV
@@ -219,26 +234,37 @@ class ArtifactGenerator:
             path = self.output_dir / "latency.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow([
-                    "model", "prompt_len", "gen_len", "batch_size",
-                    "prefill_ms", "decode_ms", "total_ms", "tokens_per_sec",
-                    "ttft_ms", "use_cache",
-                ])
+                writer.writerow(
+                    [
+                        "model",
+                        "prompt_len",
+                        "gen_len",
+                        "batch_size",
+                        "prefill_ms",
+                        "decode_ms",
+                        "total_ms",
+                        "tokens_per_sec",
+                        "ttft_ms",
+                        "use_cache",
+                    ]
+                )
                 for result in [teacher_latency, student_latency]:
                     if result:
                         for m in result.measurements:
-                            writer.writerow([
-                                result.model_name,
-                                m.prompt_len,
-                                m.gen_len,
-                                m.batch_size,
-                                f"{m.prefill_time_ms:.2f}",
-                                f"{m.decode_time_ms:.2f}",
-                                f"{m.total_time_ms:.2f}",
-                                f"{m.tokens_per_second:.2f}",
-                                f"{m.time_to_first_token_ms:.2f}",
-                                getattr(m, "use_cache", False),
-                            ])
+                            writer.writerow(
+                                [
+                                    result.model_name,
+                                    m.prompt_len,
+                                    m.gen_len,
+                                    m.batch_size,
+                                    f"{m.prefill_time_ms:.2f}",
+                                    f"{m.decode_time_ms:.2f}",
+                                    f"{m.total_time_ms:.2f}",
+                                    f"{m.tokens_per_second:.2f}",
+                                    f"{m.time_to_first_token_ms:.2f}",
+                                    getattr(m, "use_cache", False),
+                                ]
+                            )
             paths["latency.csv"] = path
 
         # Memory CSV
@@ -246,22 +272,31 @@ class ArtifactGenerator:
             path = self.output_dir / "memory.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow([
-                    "model", "seq_len", "batch_size", "quantization",
-                    "peak_mb", "kvcache_mb", "model_mb",
-                ])
+                writer.writerow(
+                    [
+                        "model",
+                        "seq_len",
+                        "batch_size",
+                        "quantization",
+                        "peak_mb",
+                        "kvcache_mb",
+                        "model_mb",
+                    ]
+                )
                 for result in [teacher_memory, student_memory]:
                     if result:
                         for m in result.measurements:
-                            writer.writerow([
-                                result.model_name,
-                                m.seq_len,
-                                m.batch_size,
-                                m.quantization,
-                                f"{m.peak_memory_mb:.2f}",
-                                f"{m.kvcache_memory_mb:.2f}",
-                                f"{m.model_memory_mb:.2f}",
-                            ])
+                            writer.writerow(
+                                [
+                                    result.model_name,
+                                    m.seq_len,
+                                    m.batch_size,
+                                    m.quantization,
+                                    f"{m.peak_memory_mb:.2f}",
+                                    f"{m.kvcache_memory_mb:.2f}",
+                                    f"{m.model_memory_mb:.2f}",
+                                ]
+                            )
             paths["memory.csv"] = path
 
         return paths
@@ -274,21 +309,20 @@ class ArtifactGenerator:
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
     ) -> dict[str, Path]:
-        """Generate PNG charts."""
+        """Generate PNG charts for visual comparison."""
         paths: dict[str, Path] = {}
 
         try:
             import matplotlib
-            matplotlib.use("Agg")  # Non-interactive backend
+
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
         except ImportError:
-            # matplotlib not installed, skip charts
             return paths
 
         # Summary bar chart
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
-        # Perplexity comparison
         ax = axes[0]
         models = ["Teacher", "Student (DBA)"]
         values = [summary.teacher_perplexity, summary.student_perplexity]
@@ -298,7 +332,6 @@ class ArtifactGenerator:
         ax.set_title("Language Modeling Quality")
         ax.bar_label(bars, fmt="%.2f")
 
-        # Throughput comparison
         ax = axes[1]
         values = [summary.teacher_tokens_per_sec, summary.student_tokens_per_sec]
         bars = ax.bar(models, values, color=colors)
@@ -306,9 +339,11 @@ class ArtifactGenerator:
         ax.set_title(f"Throughput ({summary.speedup:.2f}x speedup)")
         ax.bar_label(bars, fmt="%.0f")
 
-        # Memory comparison (per-token)
         ax = axes[2]
-        values = [summary.teacher_kvcache_mb_per_token, summary.student_kvcache_mb_per_token]
+        values = [
+            summary.teacher_kvcache_mb_per_token,
+            summary.student_kvcache_mb_per_token,
+        ]
         bars = ax.bar(models, values, color=colors)
         ax.set_ylabel("KV-Cache (MB/token) ↓")
         ax.set_title(f"Memory ({summary.memory_reduction:.1f}x reduction)")
@@ -320,22 +355,20 @@ class ArtifactGenerator:
         plt.close()
         paths["summary.png"] = path
 
-        # Latency vs sequence length chart
+        # Latency vs context length chart
         if teacher_latency and student_latency:
             fig, ax = plt.subplots(figsize=(10, 6))
 
-            # Find reference slice programmatically:
-            # - Use smallest batch_size available
-            # - Use median gen_len available (or first if only one)
-            all_measurements = teacher_latency.measurements + student_latency.measurements
+            all_measurements = (
+                teacher_latency.measurements + student_latency.measurements
+            )
             if all_measurements:
                 batch_sizes = sorted(set(m.batch_size for m in all_measurements))
                 gen_lens = sorted(set(m.gen_len for m in all_measurements))
 
-                ref_batch = batch_sizes[0]  # Smallest batch size
-                ref_gen_len = gen_lens[len(gen_lens) // 2]  # Median gen_len
+                ref_batch = batch_sizes[0]
+                ref_gen_len = gen_lens[len(gen_lens) // 2]
 
-                # Group by prompt length, fixed gen_len and batch_size
                 t_data: dict[int, float] = {}
                 s_data: dict[int, float] = {}
 
@@ -352,11 +385,23 @@ class ArtifactGenerator:
                     t_y = [t_data.get(k, 0) for k in x]
                     s_y = [s_data.get(k, 0) for k in x]
 
-                    ax.plot(x, t_y, "o-", label="Teacher", color="#3498db", linewidth=2)
-                    ax.plot(x, s_y, "s-", label="Student (DBA)", color="#e74c3c", linewidth=2)
+                    ax.plot(
+                        x, t_y, "o-", label="Teacher", color="#3498db", linewidth=2
+                    )
+                    ax.plot(
+                        x,
+                        s_y,
+                        "s-",
+                        label="Student (DBA)",
+                        color="#e74c3c",
+                        linewidth=2,
+                    )
                     ax.set_xlabel("Prompt Length (tokens)")
                     ax.set_ylabel("Tokens/Second")
-                    ax.set_title(f"Throughput vs Context Length (gen_len={ref_gen_len}, batch={ref_batch})")
+                    ax.set_title(
+                        f"Throughput vs Context Length "
+                        f"(gen_len={ref_gen_len}, batch={ref_batch})"
+                    )
                     ax.legend()
                     ax.grid(True, alpha=0.3)
 
@@ -375,15 +420,33 @@ class ArtifactGenerator:
                 fig, ax = plt.subplots(figsize=(10, 6))
 
                 seq_lens = [512, 1024, 2048, 4096, 8192, 16384]
-                t_mem = [t_analysis.bytes_per_token_fp16 * s / (1024 * 1024) for s in seq_lens]
+                t_mem = [
+                    t_analysis.bytes_per_token_fp16 * s / (1024 * 1024)
+                    for s in seq_lens
+                ]
 
                 if s_analysis.bytes_per_token_dba_fp16:
-                    s_mem = [s_analysis.bytes_per_token_dba_fp16 * s / (1024 * 1024) for s in seq_lens]
+                    s_mem = [
+                        s_analysis.bytes_per_token_dba_fp16 * s / (1024 * 1024)
+                        for s in seq_lens
+                    ]
                 else:
-                    s_mem = [s_analysis.bytes_per_token_fp16 * s / (1024 * 1024) for s in seq_lens]
+                    s_mem = [
+                        s_analysis.bytes_per_token_fp16 * s / (1024 * 1024)
+                        for s in seq_lens
+                    ]
 
-                ax.plot(seq_lens, t_mem, "o-", label="Teacher", color="#3498db", linewidth=2)
-                ax.plot(seq_lens, s_mem, "s-", label="Student (DBA)", color="#e74c3c", linewidth=2)
+                ax.plot(
+                    seq_lens, t_mem, "o-", label="Teacher", color="#3498db", linewidth=2
+                )
+                ax.plot(
+                    seq_lens,
+                    s_mem,
+                    "s-",
+                    label="Student (DBA)",
+                    color="#e74c3c",
+                    linewidth=2,
+                )
                 ax.set_xlabel("Sequence Length (tokens)")
                 ax.set_ylabel("KV-Cache Memory (MB)")
                 ax.set_title("Memory Scaling with Context Length")
@@ -404,7 +467,7 @@ class ArtifactGenerator:
         metadata: ExperimentMetadata,
         summary: ComparisonSummary,
     ) -> Path:
-        """Write LaTeX tables for paper inclusion."""
+        """Write LaTeX tables for direct paper inclusion."""
         path = self.output_dir / "tables.tex"
 
         latex = f"""% Auto-generated by Caramba on {datetime.now().isoformat()}

@@ -1,3 +1,12 @@
+"""Sequence cache tensor with optional quantization.
+
+This is the core storage primitive for KV caches. It stores a
+[batch, max_seq_len, dim] tensor, optionally in quantized format
+(q8_0, q4_0, or nf4) to reduce memory.
+
+For quantized formats, a "residual" ring buffer keeps recent tokens
+in fp16 for higher precision during attention.
+"""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -5,14 +14,22 @@ from collections.abc import Callable
 import torch
 
 from caramba.cache import QuantSpec, make_quantspec
+from caramba.config.kvcache import KVCacheKind, KVCacheTensorConfig
 from caramba.optimizer.quantizer import Quantizer
-from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
 
 
 class SeqCacheTensor:
+    """A growable sequence cache with optional quantization.
+
+    Stores tokens as they're generated, supporting:
+    - fp16/fp32: Full precision storage
+    - q8_0: 8-bit quantization with per-block scales
+    - q4_0/nf4: 4-bit quantization for maximum compression
+
+    For quantized modes, an optional residual buffer keeps recent tokens
+    in fp16 for more accurate attention over the tail.
     """
-    SeqCacheTensor stores a [B, max_seq_len, dim] tensor in fp16/fp32/q8_0/q4_0/nf4.
-    """
+
     kind: KVCacheKind
     device: torch.device
     spec: QuantSpec
@@ -34,6 +51,7 @@ class SeqCacheTensor:
         cfg: KVCacheTensorConfig,
         device: torch.device,
     ) -> None:
+        """Allocate storage based on the cache kind."""
         self.quantizer = Quantizer()
         self.kind = cfg.kind
         self.device = device
@@ -44,7 +62,9 @@ class SeqCacheTensor:
         self.residual_len = int(max(0, cfg.residual_len))
         self._residual = None
         self._residual_len_eff = (
-            min(int(self.residual_len), int(self.max_seq_len)) if self.residual_len > 0 else 0
+            min(int(self.residual_len), int(self.max_seq_len))
+            if self.residual_len > 0
+            else 0
         )
 
         if self.kind in ("fp16", "fp32"):
@@ -104,14 +124,17 @@ class SeqCacheTensor:
 
     @property
     def is_quantized(self) -> bool:
+        """Whether this cache uses quantized storage."""
         return self.kind not in ("fp16", "fp32")
 
     def _residual_start(self) -> int:
+        """Start position of the residual window."""
         if self._residual is None:
             return self.pos
         return max(0, self.pos - self._residual_len_eff)
 
     def _residual_gather(self, start: int, end: int) -> torch.Tensor:
+        """Gather from the residual ring buffer."""
         if self._residual is None:
             raise RuntimeError("No residual buffer allocated")
         if not (0 <= start <= end <= self.pos):
@@ -123,6 +146,10 @@ class SeqCacheTensor:
         return self._residual.index_select(1, idx)
 
     def append(self, x_new: torch.Tensor) -> int:
+        """Append new tokens to the cache.
+
+        Returns the position before append (where new tokens were inserted).
+        """
         _b, tn, d = x_new.shape
         if d != self.spec.dim:
             raise ValueError(f"dim mismatch: expected {self.spec.dim}, got {d}")
@@ -132,7 +159,9 @@ class SeqCacheTensor:
             )
         old = self.pos
 
-        def apply(op: Callable[[torch.Tensor, QuantSpec], tuple[torch.Tensor, torch.Tensor]]) -> None:
+        def apply(
+            op: Callable[[torch.Tensor, QuantSpec], tuple[torch.Tensor, torch.Tensor]]
+        ) -> None:
             qv, sv = op(x_new, self.spec)
             if self.q is None or self.s is None:
                 raise RuntimeError("Expected quant buffers for q8_0 cache")
@@ -152,6 +181,7 @@ class SeqCacheTensor:
         else:
             raise ValueError(self.kind)
 
+        # Update residual ring buffer
         if self._residual is not None:
             rlen = self._residual_len_eff
             if rlen > 0:
@@ -166,7 +196,10 @@ class SeqCacheTensor:
                     self._residual[:, idx] = x_tail
                 else:
                     x_fp16 = x_new.to(torch.float16)
-                    idx = torch.arange(old, old + tn, device=self.device, dtype=torch.long) % rlen
+                    idx = (
+                        torch.arange(old, old + tn, device=self.device, dtype=torch.long)
+                        % rlen
+                    )
                     self._residual[:, idx] = x_fp16
 
         self.pos += tn
@@ -179,6 +212,7 @@ class SeqCacheTensor:
         *,
         dtype: torch.dtype = torch.float16,
     ) -> torch.Tensor:
+        """Get a slice of the cached sequence."""
         start = int(start)
         end = int(end)
         if start < 0 or end < start:
@@ -212,25 +246,35 @@ class SeqCacheTensor:
         if self.kind == "q8_0":
             if self.q is None or self.s is None:
                 raise RuntimeError("Expected quant buffers for q8_0 cache")
-            x = self.quantizer.dequantize_q8_0(self.q[:, start:end], self.s[:, start:end], self.spec)
+            x = self.quantizer.dequantize_q8_0(
+                self.q[:, start:end], self.s[:, start:end], self.spec
+            )
             return x.to(dtype)
         if self.kind == "q4_0":
             if self.q is None or self.s is None:
                 raise RuntimeError("Expected quant buffers for q4_0 cache")
-            x = self.quantizer.dequantize_q4_0(self.q[:, start:end], self.s[:, start:end], self.spec)
+            x = self.quantizer.dequantize_q4_0(
+                self.q[:, start:end], self.s[:, start:end], self.spec
+            )
             return x.to(dtype)
         if self.kind == "nf4":
             if self.q is None or self.s is None:
                 raise RuntimeError("Expected quant buffers for nf4 cache")
-            x = self.quantizer.dequantize_nf4(self.q[:, start:end], self.s[:, start:end], self.spec)
+            x = self.quantizer.dequantize_nf4(
+                self.q[:, start:end], self.s[:, start:end], self.spec
+            )
             return x.to(dtype)
         raise ValueError(self.kind)
 
     def get(self, *, dtype: torch.dtype = torch.float16) -> torch.Tensor:
+        """Get all cached tokens."""
         return self.get_slice(0, int(self.pos), dtype=dtype)
 
     def truncate(self, new_pos: int) -> None:
-        """Rollback the logical cache length to new_pos (for speculative decoding)."""
+        """Rollback the cache to a previous position.
+
+        Used for speculative decoding when tokens are rejected.
+        """
         new_pos = int(new_pos)
         if new_pos < 0 or new_pos > int(self.pos):
             raise ValueError(f"Invalid truncate new_pos={new_pos} for pos={self.pos}")

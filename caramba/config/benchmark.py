@@ -1,11 +1,11 @@
-"""
-benchmark provides config models for benchmarking pipelines.
+"""Benchmark configuration for measuring model quality and performance.
 
-Benchmarks measure:
-- Perplexity (language modeling quality)
-- Latency (tokens/second)
-- Memory (KV-cache, peak memory)
-- Accuracy (task-specific metrics)
+Benchmarks run after training to measure what matters:
+- Perplexity: language modeling quality
+- Latency: tokens per second
+- Memory: KV-cache and peak usage
+- Accuracy: downstream task performance
+- Generation: text quality assessment
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from caramba.config import PositiveFloat, PositiveInt, Probability
 
 
 class BenchmarkType(str, enum.Enum):
-    """Type of benchmark to run."""
+    """Types of benchmarks available."""
 
     PERPLEXITY = "perplexity"
     LATENCY = "latency"
@@ -28,22 +28,34 @@ class BenchmarkType(str, enum.Enum):
 
 
 class PerplexityBenchmarkConfig(BaseModel):
-    """Perplexity benchmark configuration."""
+    """Measure language modeling perplexity on a dataset.
+
+    Lower perplexity = better language modeling. This is the core
+    metric for comparing model quality after upcycling.
+    """
 
     type: Literal[BenchmarkType.PERPLEXITY] = BenchmarkType.PERPLEXITY
-    dataset: str  # path to .npy or HF dataset
+    dataset: str
     block_size: PositiveInt = 2048
     batch_size: PositiveInt = 1
-    num_batches: PositiveInt | None = None  # None = all
-    stride: PositiveInt | None = None  # for sliding window perplexity
+    num_batches: PositiveInt | None = None
+    stride: PositiveInt | None = None
 
 
 class LatencyBenchmarkConfig(BaseModel):
-    """Latency/throughput benchmark configuration."""
+    """Measure generation speed (tokens per second).
+
+    Tests different prompt lengths, generation lengths, and batch sizes
+    to characterize throughput across usage patterns.
+    """
 
     type: Literal[BenchmarkType.LATENCY] = BenchmarkType.LATENCY
-    prompt_lengths: list[PositiveInt] = Field(default_factory=lambda: [128, 512, 1024, 2048])
-    generation_lengths: list[PositiveInt] = Field(default_factory=lambda: [128, 256, 512])
+    prompt_lengths: list[PositiveInt] = Field(
+        default_factory=lambda: [128, 512, 1024, 2048]
+    )
+    generation_lengths: list[PositiveInt] = Field(
+        default_factory=lambda: [128, 256, 512]
+    )
     batch_sizes: list[PositiveInt] = Field(default_factory=lambda: [1, 4, 8])
     warmup_runs: PositiveInt = 3
     timed_runs: PositiveInt = 10
@@ -51,36 +63,53 @@ class LatencyBenchmarkConfig(BaseModel):
 
 
 class MemoryBenchmarkConfig(BaseModel):
-    """Memory usage benchmark configuration."""
+    """Measure memory usage (KV-cache and peak).
+
+    For DBA upcycling, we expect significant KV-cache reduction due to
+    the compressed attention dimensions.
+    """
 
     type: Literal[BenchmarkType.MEMORY] = BenchmarkType.MEMORY
-    sequence_lengths: list[PositiveInt] = Field(default_factory=lambda: [512, 1024, 2048, 4096])
+    sequence_lengths: list[PositiveInt] = Field(
+        default_factory=lambda: [512, 1024, 2048, 4096]
+    )
     batch_sizes: list[PositiveInt] = Field(default_factory=lambda: [1, 4, 8])
     measure_peak: bool = True
     measure_kvcache: bool = True
-    quantization_modes: list[str] = Field(default_factory=lambda: ["fp16", "q8", "q4"])
+    quantization_modes: list[str] = Field(
+        default_factory=lambda: ["fp16", "q8", "q4"]
+    )
 
 
 class AccuracyBenchmarkConfig(BaseModel):
-    """Task accuracy benchmark configuration."""
+    """Measure accuracy on downstream tasks.
+
+    Uses standard evaluation benchmarks like HellaSwag, WinoGrande, etc.
+    to assess whether model capabilities are preserved after upcycling.
+    """
 
     type: Literal[BenchmarkType.ACCURACY] = BenchmarkType.ACCURACY
-    tasks: list[str]  # e.g., ["hellaswag", "winogrande", "arc_easy"]
+    tasks: list[str]
     num_fewshot: PositiveInt = 0
-    limit: PositiveInt | None = None  # limit samples per task
+    limit: PositiveInt | None = None
 
 
 class GenerationBenchmarkConfig(BaseModel):
-    """Text generation quality benchmark."""
+    """Assess text generation quality.
+
+    Runs generation on curated prompts to qualitatively evaluate
+    the model's output quality.
+    """
 
     type: Literal[BenchmarkType.GENERATION] = BenchmarkType.GENERATION
-    prompts_file: str  # path to prompts YAML
+    prompts_file: str
     max_new_tokens: PositiveInt = 256
     temperature: PositiveFloat = 1.0
     top_p: Probability = 1.0
     repetition_penalty: PositiveFloat = 1.0
 
 
+# Union of all benchmark config types
 BenchmarkConfig = (
     PerplexityBenchmarkConfig
     | LatencyBenchmarkConfig
@@ -91,24 +120,31 @@ BenchmarkConfig = (
 
 
 class BenchmarkSpec(BaseModel):
-    """Specification for a single benchmark run."""
+    """Specification for running a benchmark.
+
+    Wraps a benchmark config with metadata like which models to test
+    and how many times to repeat for statistical confidence.
+    """
 
     id: str
     config: BenchmarkConfig = Field(discriminator="type")
     models: list[str] = Field(
         default_factory=lambda: ["teacher", "student"],
-        description="Which models to benchmark (teacher, student, or both)",
+        description="Which models to benchmark",
     )
     repeats: PositiveInt = 1
 
 
 class BenchmarkSuite(BaseModel):
-    """Complete benchmark suite configuration."""
+    """Complete benchmark suite for an experiment.
+
+    Collects multiple benchmarks and configures output formats.
+    """
 
     benchmarks: list[BenchmarkSpec]
     output_dir: str = "artifacts"
     formats: list[str] = Field(
         default_factory=lambda: ["csv", "json", "png"],
-        description="Output formats: csv, json, png (charts), latex",
+        description="Output formats: csv, json, png, latex",
     )
     comparison_baseline: str | None = "teacher"

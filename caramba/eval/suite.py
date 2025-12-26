@@ -1,5 +1,12 @@
-"""
-suite provides behavioral evaluation for teacher/student comparison.
+"""Behavioral evaluation for teacher/student comparison.
+
+After upcycling, we need to verify the student model behaves correctly—not
+just that its internal activations match the teacher. This module runs
+behavioral tests: prompt the model, check if it produces the right answer.
+
+Evaluation modes:
+- choice_logprob: Pick the most likely choice from a list (log-prob scoring)
+- int_greedy: Generate greedily and extract the first integer
 """
 from __future__ import annotations
 
@@ -7,16 +14,18 @@ import re
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor, nn
+from torch import nn
 
 from caramba.config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
 from caramba.eval.tokenizer import Tokenizer, build_tokenizer
 
 
 class EvalCaseResult:
+    """Records per-case outcomes for teacher and student.
+
+    Stores whether each model got the answer right and what they produced.
     """
-    EvalCaseResult records per-case outcomes for teacher and student.
-    """
+
     def __init__(
         self,
         *,
@@ -26,9 +35,7 @@ class EvalCaseResult:
         teacher_answer: str,
         student_answer: str,
     ) -> None:
-        """
-        __init__ initializes the case result.
-        """
+        """Initialize the case result."""
         self.case_id: str = str(case_id)
         self.teacher_ok: bool = bool(teacher_ok)
         self.student_ok: bool = bool(student_ok)
@@ -37,13 +44,14 @@ class EvalCaseResult:
 
 
 class EvalSummary:
+    """Aggregates evaluation metrics across all test cases.
+
+    Computes accuracy for both teacher and student, enabling comparison
+    to detect quality regressions from upcycling.
     """
-    EvalSummary aggregates suite metrics.
-    """
+
     def __init__(self, *, results: list[EvalCaseResult]) -> None:
-        """
-        __init__ initializes the summary.
-        """
+        """Compute aggregate metrics from individual results."""
         if not results:
             raise ValueError("results must be non-empty")
         self.results: list[EvalCaseResult] = results
@@ -62,8 +70,10 @@ def run_eval_verify(
     cfg: EvalVerifyConfig,
     device: torch.device,
 ) -> EvalSummary:
-    """
-    run_eval_verify runs the configured suite and returns an EvalSummary.
+    """Run the configured evaluation suite.
+
+    Runs all test cases against both teacher and student models,
+    returning an aggregate summary of their performance.
     """
     tokenizer = build_tokenizer(cfg.tokenizer)
     teacher.eval()
@@ -86,9 +96,13 @@ def run_eval_verify(
     return EvalSummary(results=results)
 
 
-def assert_eval_thresholds(*, summary: EvalSummary, thresholds: EvalThresholds) -> None:
-    """
-    assert_eval_thresholds validates suite metrics against thresholds.
+def assert_eval_thresholds(
+    *, summary: EvalSummary, thresholds: EvalThresholds
+) -> None:
+    """Validate evaluation metrics against thresholds.
+
+    Raises ValueError if the student accuracy is too low or the
+    accuracy drop from teacher to student is too large.
     """
     if summary.student_accuracy < float(thresholds.min_student_accuracy):
         raise ValueError(
@@ -117,6 +131,7 @@ def _run_case(
     context_window: int | None,
     device: torch.device,
 ) -> EvalCaseResult:
+    """Run a single evaluation case."""
     prompt_ids = tokenizer.encode(case.prompt)
     if not prompt_ids:
         raise ValueError(f"Case {case.id!r} encoded to empty prompt ids")
@@ -191,6 +206,7 @@ def _run_case(
 
 
 def _extract_first_int(text: str) -> int:
+    """Extract the first integer from text, defaulting to 0."""
     m = re.search(r"-?\d+", str(text))
     if m is None:
         return 0
@@ -206,6 +222,7 @@ def _pick_choice_by_logprob(
     device: torch.device,
     context_window: int | None,
 ) -> str:
+    """Pick the choice with highest log-probability continuation."""
     if not choices:
         raise ValueError("choices must be non-empty")
     best: tuple[float, str] | None = None
@@ -232,6 +249,7 @@ def _score_completion_logprob(
     device: torch.device,
     context_window: int | None,
 ) -> float:
+    """Score a completion by summing token log-probabilities."""
     if not prompt_ids:
         raise ValueError("prompt_ids must be non-empty")
     if not completion_ids:
@@ -274,6 +292,7 @@ def _score_completion_logprob_windowed(
     device: torch.device,
     context_window: int,
 ) -> float:
+    """Score completion with sliding window for long contexts."""
     if context_window <= 0:
         raise ValueError("context_window must be > 0")
 
@@ -301,6 +320,7 @@ def _greedy_generate(
     max_new_tokens: int,
     context_window: int | None,
 ) -> str:
+    """Generate tokens greedily (argmax at each step)."""
     ids = list(prompt_ids)
     for _ in range(int(max_new_tokens)):
         ctx = ids
@@ -311,5 +331,3 @@ def _greedy_generate(
         next_id = int(torch.argmax(logits[0, -1, :]).item())
         ids.append(next_id)
     return tokenizer.decode(ids[len(prompt_ids) :])
-
-

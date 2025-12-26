@@ -38,10 +38,24 @@ vars:
   # Training parameters
   batch_size: 1
   block_size: 2048
-  blockwise_steps: 500
+  blockwise_steps: 500  # Fallback if convergence not used
   global_steps: 2000
   blockwise_lr: 0.0001
   global_lr: 0.00005
+
+  # Convergence-based training - train each block until loss target met
+  convergence_target: 0.02    # Target loss per block (stop when reached)
+  convergence_patience: 100   # Steps without improvement before early stop
+  convergence_max_steps: 2000 # Safety limit per block
+
+  # Performance optimizations
+  cache_teacher: true         # Cache teacher outputs (saves ~30-40%)
+  use_amp: false              # Mixed precision (enable for faster training)
+  amp_dtype: "float16"        # AMP dtype: float16 or bfloat16
+  grad_accum_steps: 1         # Gradient accumulation steps
+  num_workers: 0              # DataLoader workers (0 = main process)
+  pin_memory: false           # Pin memory for CUDA
+  compile_model: false        # torch.compile (CUDA only, PyTorch 2.0+)
 
 defaults:
   tokenizer: llama
@@ -127,6 +141,7 @@ groups:
         verify:
           type: compare
           batches: 5
+          fail_fast: false  # Log warnings but continue to benchmarks
           attention:
             max_mean_l1: 0.05
             max_max_l1: 0.25
@@ -141,6 +156,18 @@ groups:
           device: mps
           dtype: float32
           teacher_ckpt: "hf://meta-llama/Llama-3.2-1B"
+          # Convergence-based training
+          convergence_target: "${convergence_target}"
+          convergence_patience: "${convergence_patience}"
+          convergence_max_steps: "${convergence_max_steps}"
+          # Performance optimizations
+          cache_teacher_outputs: "${cache_teacher}"
+          use_amp: "${use_amp}"
+          amp_dtype: "${amp_dtype}"
+          gradient_accumulation_steps: "${grad_accum_steps}"
+          num_workers: "${num_workers}"
+          pin_memory: "${pin_memory}"
+          compile_model: "${compile_model}"
 
       # Phase 2: Global fine-tuning
       - id: finetune

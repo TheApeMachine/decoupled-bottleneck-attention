@@ -1,4 +1,11 @@
+"""Decoupled KV cache for DBA attention.
+
+DBA (Decoupled Bottleneck Attention) uses separate projections for semantic
+and geometric keys, plus a separate value projection. This cache stores
+three tensors instead of two: k_sem, k_geo, and v.
+"""
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import torch
@@ -10,9 +17,18 @@ if TYPE_CHECKING:
 
 
 class DecoupledLayerKVCache:
+    """Stores k_sem, k_geo, and v caches for one DBA layer.
+
+    Unlike standard attention which caches K and V of size n_kv_heads × head_dim,
+    DBA caches:
+    - k_sem: semantic keys (sem_dim)
+    - k_geo: geometric keys (geo_dim)
+    - v: values (v_dim)
+
+    This is where the memory savings come from—these dimensions are typically
+    much smaller than the full kv_dim.
     """
-    DecoupledLayerKVCache stores decoupled k_sem/k_geo/v caches.
-    """
+
     k_sem: SeqCacheTensor
     k_geo: SeqCacheTensor
     v: SeqCacheTensor
@@ -30,6 +46,7 @@ class DecoupledLayerKVCache:
         v_cfg: KVCacheTensorConfig,
         device: torch.device,
     ) -> None:
+        """Allocate storage for all three cache tensors."""
         self.k_sem = SeqCacheTensor(
             batch_size=batch_size,
             max_seq_len=max_seq_len,
@@ -54,6 +71,7 @@ class DecoupledLayerKVCache:
 
     @property
     def pos(self) -> int:
+        """Current sequence position (how many tokens are cached)."""
         return int(self.k_sem.pos)
 
     def append(
@@ -62,6 +80,10 @@ class DecoupledLayerKVCache:
         k_geo_new: torch.Tensor,
         v_new: torch.Tensor,
     ) -> int:
+        """Append new tokens to all three caches.
+
+        Returns the position before the append (where new tokens start).
+        """
         k_pos = self.k_sem.append(k_sem_new)
         g_pos = self.k_geo.append(k_geo_new)
         v_pos = self.v.append(v_new)
@@ -74,6 +96,7 @@ class DecoupledLayerKVCache:
         *,
         dtype: torch.dtype = torch.float16,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Retrieve all cached tokens as (k_sem, k_geo, v)."""
         return (
             self.k_sem.get(dtype=dtype),
             self.k_geo.get(dtype=dtype),
@@ -81,6 +104,7 @@ class DecoupledLayerKVCache:
         )
 
     def truncate(self, new_pos: int) -> None:
+        """Rollback all caches to a previous position."""
         self.k_sem.truncate(new_pos)
         self.k_geo.truncate(new_pos)
         self.v.truncate(new_pos)

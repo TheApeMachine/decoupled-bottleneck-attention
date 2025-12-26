@@ -1,15 +1,23 @@
-"""logger is a custom logger based on rich."""
+"""Rich-based logger with caramba theming.
+
+Training runs produce lots of output. This logger makes it readable with:
+- Semantic colors (cyan=info, green=success, amber=warning, red=error)
+- Structured output (tables, panels, key-value pairs)
+- Progress bars and spinners
+- Training-specific helpers for consistent metrics display
+"""
 from __future__ import annotations
+
 from typing import Any, Generator
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
-    TextColumn,
-    BarColumn,
     TaskProgressColumn,
+    TextColumn,
     TimeRemainingColumn,
     track,
 )
@@ -19,31 +27,30 @@ from rich.theme import Theme
 
 
 # Caramba color theme - distinctive and cohesive
-CARAMBA_THEME = Theme({
-    "info": "bold #7dcfff",            # Soft cyan - informational
-    "success": "bold #9ece6a",         # Muted green - success
-    "warning": "bold #e0af68",         # Warm amber - warnings
-    "error": "bold #f7768e",           # Soft coral red - errors
-    "highlight": "bold #bb9af7",       # Lavender purple - emphasis
-    "muted": "dim #565f89",            # Slate gray - secondary info
-    "metric": "#7aa2f7",               # Sky blue - metrics/numbers
-    "path": "italic #73daca",          # Teal - file paths
-    "step": "#ff9e64",                 # Orange - step/progress indicators
-})
+CARAMBA_THEME = Theme(
+    {
+        "info": "bold #7dcfff",  # Soft cyan - informational
+        "success": "bold #9ece6a",  # Muted green - success
+        "warning": "bold #e0af68",  # Warm amber - warnings
+        "error": "bold #f7768e",  # Soft coral red - errors
+        "highlight": "bold #bb9af7",  # Lavender purple - emphasis
+        "muted": "dim #565f89",  # Slate gray - secondary info
+        "metric": "#7aa2f7",  # Sky blue - metrics/numbers
+        "path": "italic #73daca",  # Teal - file paths
+        "step": "#ff9e64",  # Orange - step/progress indicators
+    }
+)
 
 
 class Logger:
-    """
-    Logger wraps rich Console and provides a unified interface for logging.
+    """Unified logging interface with rich console output.
 
-    Provides a cohesive, beautiful console output experience with:
-    - Semantic log levels (info, warning, error, success)
-    - Structured data display (tables, panels)
-    - Progress tracking with spinners and bars
-    - Consistent theming throughout
+    Wraps Rich Console to provide semantic log levels, structured data
+    display, and progress tracking—all with consistent theming.
     """
 
     def __init__(self) -> None:
+        """Initialize with the caramba theme."""
         self.console = Console(theme=CARAMBA_THEME)
 
     # ─────────────────────────────────────────────────────────────────────
@@ -55,19 +62,19 @@ class Logger:
         self.console.print(message)
 
     def info(self, message: str) -> None:
-        """Log an informational message (cyan)."""
+        """Log an informational message (cyan ℹ)."""
         self.console.print(f"[info]ℹ[/info] {message}")
 
     def success(self, message: str) -> None:
-        """Log a success message (green checkmark)."""
+        """Log a success message (green ✓)."""
         self.console.print(f"[success]✓[/success] {message}")
 
     def warning(self, message: str) -> None:
-        """Log a warning message (amber)."""
+        """Log a warning message (amber ⚠)."""
         self.console.print(f"[warning]⚠[/warning] {message}")
 
     def error(self, message: str) -> None:
-        """Log an error message (red)."""
+        """Log an error message (red ✗)."""
         self.console.print(f"[error]✗[/error] {message}")
 
     # ─────────────────────────────────────────────────────────────────────
@@ -75,7 +82,11 @@ class Logger:
     # ─────────────────────────────────────────────────────────────────────
 
     def header(self, title: str, subtitle: str | None = None) -> None:
-        """Print a prominent section header."""
+        """Print a prominent section header.
+
+        Use this to mark major phases like "Blockwise Training" or
+        "Benchmark Results".
+        """
         header_text = Text()
         header_text.append("━" * 3 + " ", style="muted")
         header_text.append(title, style="highlight")
@@ -87,10 +98,12 @@ class Logger:
         self.console.print()
 
     def subheader(self, text: str) -> None:
-        """Print a subtle subheader."""
+        """Print a subtle subheader for subsections."""
         self.console.print(f"[muted]──[/muted] [highlight]{text}[/highlight]")
 
-    def panel(self, content: str, title: str | None = None, style: str = "muted") -> None:
+    def panel(
+        self, content: str, title: str | None = None, style: str = "muted"
+    ) -> None:
         """Display content in a bordered panel."""
         self.console.print(Panel(content, title=title, border_style=style))
 
@@ -100,11 +113,10 @@ class Logger:
         columns: list[str] | None = None,
         rows: list[list[str]] | None = None,
     ) -> Table:
-        """
-        Create and optionally populate a styled table.
+        """Create and optionally populate a styled table.
 
-        If columns and rows are provided, prints the table immediately.
-        Otherwise, returns a Table for manual population.
+        If columns and rows are provided, prints immediately. Otherwise
+        returns the Table for manual population.
         """
         table = Table(
             title=title,
@@ -137,12 +149,17 @@ class Logger:
         self.console.print(table)
 
     def metric(self, name: str, value: float | int | str, unit: str = "") -> None:
-        """Display a single metric with formatting."""
+        """Display a single metric with formatting.
+
+        Floats are formatted to 4 decimal places.
+        """
         if isinstance(value, float):
             formatted = f"{value:.4f}"
         else:
             formatted = str(value)
-        self.console.print(f"  [muted]{name}:[/muted] [metric]{formatted}[/metric]{unit}")
+        self.console.print(
+            f"  [muted]{name}:[/muted] [metric]{formatted}[/metric]{unit}"
+        )
 
     def step(self, current: int, total: int | None = None, message: str = "") -> None:
         """Display a step indicator for multi-phase operations."""
@@ -164,12 +181,9 @@ class Logger:
     # ─────────────────────────────────────────────────────────────────────
 
     def inspect(self, obj: object, **kwargs: Any) -> None:
-        """
-        Print an object using the Rich Console's print method.
+        """Print an object with rich formatting.
 
-        Delegates to self.console.print() which provides rich formatting
-        for supported object types. Accepts any keyword arguments supported
-        by Rich's Console.print() method (e.g., style, highlight, etc.).
+        Delegates to console.print() which handles dicts, lists, etc.
         """
         self.console.print(obj, **kwargs)
 
@@ -186,8 +200,7 @@ class Logger:
         )
 
     def spinner(self, description: str = "Processing...") -> Progress:
-        """
-        Create a spinner for indeterminate progress.
+        """Create a spinner for indeterminate progress.
 
         Usage:
             with logger.spinner("Loading model...") as progress:
@@ -202,8 +215,7 @@ class Logger:
         )
 
     def progress_bar(self) -> Progress:
-        """
-        Create a rich progress bar context for fine-grained control.
+        """Create a rich progress bar for fine-grained control.
 
         Usage:
             with logger.progress_bar() as progress:
@@ -231,18 +243,22 @@ class Logger:
         loss: float,
         extras: dict[str, float] | None = None,
     ) -> None:
-        """
-        Log a training step with consistent formatting.
+        """Log a training step with consistent formatting.
 
         Args:
-            phase: Training phase name (e.g., "blockwise", "global")
+            phase: Training phase (e.g., "blockwise", "global")
             step: Current step number
             loss: Loss value
-            extras: Optional dict of extra metrics (e.g., {"ce": 0.5, "diff": 0.1})
+            extras: Additional metrics like {"ce": 0.5, "diff": 0.1}
         """
-        parts = [f"[step]{phase}[/step] step=[metric]{step}[/metric] loss=[metric]{loss:.6f}[/metric]"]
+        parts = [
+            f"[step]{phase}[/step] step=[metric]{step}[/metric] "
+            f"loss=[metric]{loss:.6f}[/metric]"
+        ]
         if extras:
-            extra_str = " ".join(f"{k}=[metric]{v:.4f}[/metric]" for k, v in extras.items())
+            extra_str = " ".join(
+                f"{k}=[metric]{v:.4f}[/metric]" for k, v in extras.items()
+            )
             parts.append(f"({extra_str})")
         self.console.print(" ".join(parts))
 
@@ -274,7 +290,11 @@ _logger: Logger | None = None
 
 
 def get_logger() -> Logger:
-    """Get or create the singleton Logger instance."""
+    """Get or create the singleton Logger instance.
+
+    Using a singleton ensures consistent theming and avoids creating
+    multiple Console instances.
+    """
     global _logger
     if _logger is None:
         _logger = Logger()

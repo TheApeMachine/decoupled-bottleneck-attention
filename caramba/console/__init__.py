@@ -1,8 +1,8 @@
-"""
-console provides rich, structured console output for caramba.
+"""Rich, structured console output for caramba.
 
-This module exposes a singleton Logger instance for consistent,
-beautiful terminal output throughout the codebase.
+Machine learning code produces a lot of output: training progress, metrics,
+errors, and results. This module provides beautiful, consistent terminal
+output using Rich, with semantic log levels and structured data display.
 
 Usage:
     from caramba.console import logger

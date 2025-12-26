@@ -1,4 +1,9 @@
-"""Manifest: control interface for the training loop."""
+"""Manifest: the top-level experiment configuration file.
+
+A manifest defines everything needed for an experiment: model architecture,
+training settings, data paths, and benchmarks. It's loaded from YAML and
+supports variable substitution for reusable templates.
+"""
 from __future__ import annotations
 
 import json
@@ -15,9 +20,12 @@ from caramba.config.resolve import Resolver, normalize_type_names
 
 
 class Manifest(BaseModel):
+    """The complete experiment specification loaded from YAML.
+
+    Contains model architecture, training runs, and benchmark definitions.
+    Variable substitution allows reusing common values throughout the config.
     """
-    Manifest is the control structure parsed from manifest.json/.yaml.
-    """
+
     version: PositiveInt
     name: str | None = None
     notes: str
@@ -26,22 +34,27 @@ class Manifest(BaseModel):
     groups: list[Group]
 
     @classmethod
-    def from_path(cls, path: Path) -> Manifest:
-        """
-        from_path loads and validates a manifest payload.
+    def from_path(cls, path: Path) -> "Manifest":
+        """Load and validate a manifest from a JSON or YAML file.
+
+        Supports variable substitution via a `vars` section at the top level.
+        Variables can be referenced as `$var_name` throughout the config.
         """
         text = path.read_text(encoding="utf-8")
         match path.suffix.lower():
-            case ".json":          payload = json.loads(text)
-            case ".yml" | ".yaml": payload = yaml.safe_load(text)
-            case s: raise ValueError(f"Unsupported format '{s}'")
+            case ".json":
+                payload = json.loads(text)
+            case ".yml" | ".yaml":
+                payload = yaml.safe_load(text)
+            case s:
+                raise ValueError(f"Unsupported format '{s}'")
+
         if payload is None:
             raise ValueError("Manifest payload is empty.")
         if not isinstance(payload, dict):
-            raise ValueError(
-                f"Manifest payload must be a dict, got {type(payload)!r}"
-            )
+            raise ValueError(f"Manifest payload must be a dict, got {type(payload)!r}")
 
+        # Process variable substitution
         vars_payload = payload.pop("vars", None)
         if vars_payload is not None:
             if not isinstance(vars_payload, dict):
@@ -50,8 +63,7 @@ class Manifest(BaseModel):
                 )
             payload = Resolver(vars_payload).resolve(payload)
 
-        # Normalize legacy type names to canonical class names
-        # This allows presets to use shorthand like 'nested' → 'NestedTopology'
+        # Normalize shorthand type names (e.g., 'nested' → 'NestedTopology')
         payload = normalize_type_names(payload)
 
         return cls.model_validate(payload)

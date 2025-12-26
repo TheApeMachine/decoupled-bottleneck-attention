@@ -1,7 +1,9 @@
-"""
-residual provides the residual topology.
-"""
+"""Residual topology: layers with skip connection.
 
+Adds the input to the output of all layers, implementing a residual
+connection. This is the fundamental building block of modern transformers—
+without residuals, deep networks are very hard to train.
+"""
 from __future__ import annotations
 
 from torch import Tensor, nn
@@ -12,10 +14,15 @@ from caramba.topology.utils import unwrap_output
 
 
 class ResidualTopology(nn.Module):
+    """Apply layers then add the original input (residual connection).
+
+    The residual is taken before any layers and added after all layers.
+    For per-layer residuals, use a stacked topology with individual
+    residual blocks.
     """
-    Residual provides a residual topology.
-    """
+
     def __init__(self, config: ResidualTopologyConfig) -> None:
+        """Build all layers from config."""
         super().__init__()
         self.config: ResidualTopologyConfig = config
         self.layers: nn.ModuleList = nn.ModuleList(
@@ -24,9 +31,7 @@ class ResidualTopology(nn.Module):
 
     @override
     def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
-        """
-        forward pass for the residual topology.
-        """
+        """Forward through layers, then add the input residual."""
         residual = x
         for layer in self.layers:
             x = unwrap_output(layer(x, ctx=ctx))  # type: ignore[call-arg]

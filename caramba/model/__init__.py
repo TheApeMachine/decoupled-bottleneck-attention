@@ -1,48 +1,51 @@
-"""
-caramba.model contains model components.
-"""
+"""The Model class: composing embeddings, transformer layers, and output heads.
 
+A language model is more than just transformer blocks—it needs an embedder to
+convert token IDs to vectors, a stack of transformer layers to process them,
+and an output projection to produce vocabulary logits. This module ties all
+those pieces together based on a ModelConfig.
+"""
 from __future__ import annotations
 
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.model.embedder import Embedder
-from caramba.config.model import ModelConfig
 from caramba.config.diffusion import DiffusionHeadConfig
+from caramba.config.model import ModelConfig
 from caramba.layer.diffusion_head import (
-    DiffusionNextTokenHead,
     DIFFUSERS_AVAILABLE,
     DiffusionHeadConfig as RuntimeDiffusionConfig,
+    DiffusionNextTokenHead,
 )
+from caramba.model.embedder import Embedder
 
-# Type alias for runtime diffusion config return type
 RuntimeDiffusionConfigType = RuntimeDiffusionConfig
 
 
 class Model(nn.Module):
-    """
-    Model composes the embedder, network topology, and optional diffusion head.
+    """A complete language model: embeddings → transformer → output logits.
 
-    The diffusion head is a lightweight adapter that learns to denoise target
-    token embeddings conditioned on transformer features. It can be trained
-    while the backbone is frozen.
+    The Model class is the top-level container that wires together:
+    - An embedder (token IDs → vectors)
+    - A topology (the transformer layer stack)
+    - Optionally, a diffusion head for hybrid generation
+
+    For upcycling, we create two Models with identical configs except for
+    the attention type—one standard (teacher) and one DBA (student).
     """
 
     def __init__(self, config: ModelConfig) -> None:
-        """
-        Initialize the model.
+        """Build a model from configuration.
 
-        Args:
-            config: Model configuration including embedder, topology, and
-                    optional diffusion head settings.
+        The config specifies the embedder type, transformer topology, and
+        whether to include a diffusion head for hybrid token generation.
         """
         super().__init__()
-        self.config: ModelConfig = config
-        self.embedder: Embedder = Embedder(config.embedder)
-        self.topology: nn.Module = config.topology.build()
+        self.config = config
+        self.embedder = Embedder(config.embedder)
+        self.topology = config.topology.build()
 
-        # Optional diffusion head
+        # Optional diffusion head for denoising-based generation
         self.diffusion_head: DiffusionNextTokenHead | None = None
         if config.diffusion_head.enabled:
             if not DIFFUSERS_AVAILABLE:
@@ -50,15 +53,11 @@ class Model(nn.Module):
                     "diffusion_head.enabled=True but `diffusers` is not installed. "
                     "Install with: pip install diffusers"
                 )
-            # Convert pydantic config to runtime dataclass
-            # The to_runtime_config() method returns RuntimeDiffusionConfig
             runtime_cfg = config.diffusion_head.to_runtime_config()
-            # Verify it's the expected type at runtime (no cast needed)
             if not isinstance(runtime_cfg, RuntimeDiffusionConfig):
                 raise TypeError(
                     f"Expected RuntimeDiffusionConfig, got {type(runtime_cfg).__name__}"
                 )
-            # Get embed_dim from embedder config
             embed_dim = self._get_embed_dim()
             self.diffusion_head = DiffusionNextTokenHead(
                 embed_dim=embed_dim,
@@ -66,8 +65,9 @@ class Model(nn.Module):
             )
 
     def _get_embed_dim(self) -> int:
-        """Extract embedding dimension from embedder config."""
+        """Extract the embedding dimension for the diffusion head."""
         from caramba.config.embedder import TokenEmbedderConfig
+
         if isinstance(self.config.embedder, TokenEmbedderConfig):
             return self.config.embedder.d_model
         raise ValueError(
@@ -82,47 +82,36 @@ class Model(nn.Module):
         *,
         return_features: bool = False,
     ) -> Tensor | tuple[Tensor, Tensor]:
-        """
-        Forward pass through embedder and network.
+        """Run the full model: embed → transform → project to vocab.
 
         Args:
-            x: Input tensor (token ids if using token embedder)
-            return_features: If True, return (features, logits) instead of just logits.
-                           Features are the pre-logit hidden states useful for
-                           diffusion head training.
+            x: Token IDs, shape (B, T)
+            return_features: If True, also return pre-logit hidden states
+                            (needed for diffusion head training)
 
         Returns:
-            If return_features=False: logits (B, T, vocab_size)
-            If return_features=True: (features, logits) where features is (B, T, d_model)
+            Logits (B, T, vocab_size), or (features, logits) if return_features=True
         """
         x = self.embedder(x)
         features = self.topology(x)
 
         if return_features:
-            # Compute logits from features (tied embeddings)
             logits = self._features_to_logits(features)
             return features, logits
 
-        # Default path: return vocabulary logits (as documented)
         return self._features_to_logits(features)
 
     def _features_to_logits(self, features: Tensor) -> Tensor:
-        """Convert hidden features to vocabulary logits.
+        """Project hidden states to vocabulary logits.
 
-        Args:
-            features: Hidden states (B, T, d_model) or logits (B, T, vocab_size)
-                     depending on whether topology includes an LM head.
-
-        Returns:
-            Logits (B, T, vocab_size)
+        With tied embeddings, we reuse the embedding matrix as the output
+        projection (features @ embedding.weight.T). Without tied embeddings,
+        the topology already includes an LM head.
         """
-        # If tied_embeddings is disabled, topology already includes LM head
         if not self.config.tied_embeddings:
             return features
         if self.embedder.token_embedding is None:
-            # No tied embedding - features are already logits
             return features
-        # Tied embedding: logits = features @ embedding.weight.T
         return features @ self.embedder.token_embedding.weight.t()
 
     def diffusion_loss(
@@ -130,24 +119,17 @@ class Model(nn.Module):
         features: Tensor,
         target_ids: Tensor,
     ) -> Tensor:
-        """Compute diffusion head loss.
+        """Compute the diffusion denoising loss for hybrid training.
 
-        Args:
-            features: Transformer features (B, T, d_model)
-            target_ids: Target token ids (B, T)
-
-        Returns:
-            Scalar MSE loss
-
-        Raises:
-            RuntimeError: If diffusion head is not enabled
+        The diffusion head learns to denoise target embeddings conditioned
+        on transformer features. This provides an alternative generation
+        path that can be more controllable than pure autoregressive sampling.
         """
         if self.diffusion_head is None:
             raise RuntimeError("diffusion_loss called but diffusion_head is not enabled")
         if self.embedder.token_embedding is None:
             raise RuntimeError("diffusion_loss requires token embeddings")
 
-        # Get target embeddings
         target_emb = self.embedder.token_embedding(target_ids)
         return self.diffusion_head.diffusion_loss(cond=features, target_emb=target_emb)
 
@@ -158,18 +140,16 @@ class Model(nn.Module):
         temperature: float = 1.0,
         guidance_scale: float | None = None,
     ) -> Tensor:
-        """Sample next token logits using the diffusion head.
+        """Sample next-token logits using the diffusion head.
 
-        Args:
-            features_last: Features at the last position (B, 1, d_model)
-            temperature: Sampling temperature
-            guidance_scale: CFG scale (None = use config default)
-
-        Returns:
-            Logits (B, vocab_size)
+        Instead of directly using the model's logit output, we run a
+        denoising diffusion process conditioned on the last position's
+        features to generate a clean embedding, then project to logits.
         """
         if self.diffusion_head is None:
-            raise RuntimeError("sample_with_diffusion called but diffusion_head is not enabled")
+            raise RuntimeError(
+                "sample_with_diffusion called but diffusion_head is not enabled"
+            )
         if self.embedder.token_embedding is None:
             raise RuntimeError("sample_with_diffusion requires token embeddings")
 

@@ -1,5 +1,8 @@
-"""
-perplexity provides perplexity measurement for language models.
+"""Perplexity benchmark: measuring language modeling quality.
+
+Perplexity is exp(average cross-entropy loss) over tokens. Lower is better.
+For upcycling, we want the student's perplexity to be close to the teacher's,
+proving we've preserved model quality while changing the architecture.
 """
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ from caramba.data.npy import NpyDataset
 
 @dataclass
 class PerplexityResult:
-    """Result of a perplexity benchmark."""
+    """Results from a perplexity benchmark run."""
 
     model_name: str
     perplexity: float
@@ -28,9 +31,17 @@ class PerplexityResult:
 
 
 class PerplexityBenchmark:
-    """Measures perplexity on a dataset."""
+    """Measures perplexity on a token dataset.
 
-    def __init__(self, config: PerplexityBenchmarkConfig, device: torch.device) -> None:
+    Computes cross-entropy loss over the dataset and converts to perplexity.
+    The dataset is cached so multiple models can be evaluated without
+    reloading the data.
+    """
+
+    def __init__(
+        self, config: PerplexityBenchmarkConfig, device: torch.device
+    ) -> None:
+        """Set up the benchmark with config and target device."""
         self.config = config
         self.device = device
         self._dataset: NpyDataset | None = None
@@ -39,7 +50,9 @@ class PerplexityBenchmark:
     def _get_loader(self) -> DataLoader[tuple[Tensor, Tensor]]:
         """Lazily initialize and cache the dataset and dataloader."""
         if self._dataset is None:
-            self._dataset = NpyDataset(self.config.dataset, block_size=self.config.block_size)
+            self._dataset = NpyDataset(
+                self.config.dataset, block_size=self.config.block_size
+            )
         if self._loader is None:
             self._loader = DataLoader(
                 self._dataset,
@@ -50,10 +63,12 @@ class PerplexityBenchmark:
         return self._loader
 
     def run(self, model: nn.Module, model_name: str) -> PerplexityResult:
-        """Run perplexity benchmark on a model."""
-        model.eval()
+        """Run the perplexity benchmark on a model.
 
-        # Load dataset (cached across runs)
+        Iterates through the dataset, computing cross-entropy loss for each
+        batch, then converts total loss to perplexity.
+        """
+        model.eval()
         loader = self._get_loader()
 
         total_loss = 0.0
@@ -67,7 +82,6 @@ class PerplexityBenchmark:
 
                 logits = model(x)
 
-                # Compute cross-entropy loss
                 loss = F.cross_entropy(
                     logits.view(-1, logits.size(-1)),
                     y.view(-1),

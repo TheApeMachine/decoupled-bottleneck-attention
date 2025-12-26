@@ -1,5 +1,7 @@
-"""
-utils provides shared utilities for topology implementations.
+"""Shared utilities for topology implementations.
+
+Common helpers that multiple topologies need, like extracting the
+tensor output from layers that return (output, cache) tuples.
 """
 from __future__ import annotations
 
@@ -7,18 +9,10 @@ from torch import Tensor
 
 
 def unwrap_output(out: Tensor | tuple[Tensor, object]) -> Tensor:
-    """
-    Unwrap a layer output, handling both plain tensors and (output, cache) tuples.
+    """Extract the tensor from a layer output.
 
     Many layers (especially AttentionLayer) return (output, cache) tuples.
-    This helper extracts just the tensor output for topologies that don't
-    need to track caches.
-
-    Args:
-        out: Either a Tensor or a (Tensor, cache) tuple.
-
-    Returns:
-        The tensor output.
+    Topologies that don't track caches use this to get just the tensor.
     """
     if isinstance(out, tuple):
         return out[0]

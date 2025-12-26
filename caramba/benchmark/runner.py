@@ -1,7 +1,8 @@
-"""
-runner provides the unified benchmark runner.
+"""Benchmark runner: orchestrating all benchmarks and artifact generation.
 
-This orchestrates all benchmarking and artifact generation.
+The runner is the entry point for benchmarking. It executes all configured
+benchmarks on teacher and student models, then generates paper-ready
+artifacts (CSV, JSON, PNG, LaTeX).
 """
 from __future__ import annotations
 
@@ -25,9 +26,10 @@ from caramba.console import logger
 
 
 class BenchmarkRunner:
-    """
-    Unified benchmark runner that executes all configured benchmarks
-    and generates paper-ready artifacts.
+    """Runs all configured benchmarks and generates artifacts.
+
+    Orchestrates perplexity, latency, and memory benchmarks, comparing
+    teacher and student models to quantify the upcycling trade-offs.
     """
 
     def __init__(
@@ -36,6 +38,7 @@ class BenchmarkRunner:
         device: torch.device,
         metadata: ExperimentMetadata,
     ) -> None:
+        """Set up the runner with benchmark suite and experiment metadata."""
         self.suite = suite
         self.device = device
         self.metadata = metadata
@@ -47,14 +50,12 @@ class BenchmarkRunner:
         teacher: nn.Module,
         student: nn.Module,
     ) -> dict[str, Path]:
-        """
-        Run all benchmarks and generate artifacts.
+        """Run all benchmarks and generate artifacts.
 
-        Returns a dict of artifact paths.
+        Returns a dict mapping artifact names to their file paths.
         """
         logger.header("Benchmarks", f"{len(self.suite.benchmarks)} configured")
 
-        # Collect results
         teacher_perplexity: PerplexityResult | None = None
         student_perplexity: PerplexityResult | None = None
         teacher_latency: LatencyResult | None = None
@@ -73,13 +74,19 @@ class BenchmarkRunner:
 
                         if "teacher" in spec.models:
                             result = benchmark.run(teacher, "teacher")
-                            if teacher_perplexity is None or result.perplexity < teacher_perplexity.perplexity:
+                            if (
+                                teacher_perplexity is None
+                                or result.perplexity < teacher_perplexity.perplexity
+                            ):
                                 teacher_perplexity = result
                             logger.metric("teacher", result.perplexity, " ppl")
 
                         if "student" in spec.models:
                             result = benchmark.run(student, "student")
-                            if student_perplexity is None or result.perplexity < student_perplexity.perplexity:
+                            if (
+                                student_perplexity is None
+                                or result.perplexity < student_perplexity.perplexity
+                            ):
                                 student_perplexity = result
                             logger.metric("student", result.perplexity, " ppl")
 
@@ -91,38 +98,48 @@ class BenchmarkRunner:
                             result = benchmark.run(teacher, "teacher")
                             if teacher_latency is None:
                                 teacher_latency = result
-                            logger.metric("teacher", result.avg_tokens_per_second, " tok/s")
+                            logger.metric(
+                                "teacher", result.avg_tokens_per_second, " tok/s"
+                            )
 
                         if "student" in spec.models:
                             result = benchmark.run(student, "student")
                             if student_latency is None:
                                 student_latency = result
-                            logger.metric("student", result.avg_tokens_per_second, " tok/s")
+                            logger.metric(
+                                "student", result.avg_tokens_per_second, " tok/s"
+                            )
 
                     case BenchmarkType.MEMORY:
                         assert isinstance(spec.config, MemoryBenchmarkConfig)
                         benchmark = MemoryBenchmark(spec.config, self.device)
 
-                        # Note: Memory benchmarks measure architectural properties (bytes per token,
-                        # KV-cache structure) which are deterministic. Only the first run is used
-                        # since repeated runs produce identical results for the same model.
                         if "teacher" in spec.models:
                             result = benchmark.run(teacher, "teacher")
                             if teacher_memory is None:
                                 teacher_memory = result
                             if result.kvcache_analysis:
-                                logger.metric("teacher", result.kvcache_analysis.bytes_per_token_fp16, " bytes/tok")
+                                logger.metric(
+                                    "teacher",
+                                    result.kvcache_analysis.bytes_per_token_fp16,
+                                    " bytes/tok",
+                                )
 
                         if "student" in spec.models:
                             result = benchmark.run(student, "student")
                             if student_memory is None:
                                 student_memory = result
                             if result.kvcache_analysis:
-                                kv_bytes = result.kvcache_analysis.bytes_per_token_dba_fp16 or result.kvcache_analysis.bytes_per_token_fp16
+                                kv_bytes = (
+                                    result.kvcache_analysis.bytes_per_token_dba_fp16
+                                    or result.kvcache_analysis.bytes_per_token_fp16
+                                )
                                 logger.metric("student", kv_bytes, " bytes/tok")
 
                     case _:
-                        logger.warning(f"skipping unsupported benchmark type: {spec.config.type}")
+                        logger.warning(
+                            f"skipping unsupported benchmark type: {spec.config.type}"
+                        )
 
         # Generate artifacts
         logger.info("Generating artifacts...")
@@ -146,13 +163,14 @@ class BenchmarkRunner:
 
 
 class QuickBenchmark:
-    """
-    Quick benchmark for sanity checking during development.
+    """Quick benchmark for sanity checking during development.
 
-    Runs a minimal set of benchmarks with reduced iterations.
+    Runs a minimal set of benchmarks with reduced iterations,
+    useful for verifying a model works before full benchmarking.
     """
 
     def __init__(self, device: torch.device) -> None:
+        """Set up the quick benchmark."""
         self.device = device
 
     def run(
@@ -161,10 +179,9 @@ class QuickBenchmark:
         dataset_path: str,
         num_batches: int = 10,
     ) -> dict[str, float]:
-        """Run quick benchmark and return metrics dict."""
+        """Run quick benchmark and return key metrics."""
         model.eval()
 
-        # Quick perplexity
         ppl_config = PerplexityBenchmarkConfig(
             dataset=dataset_path,
             block_size=512,
@@ -174,7 +191,6 @@ class QuickBenchmark:
         ppl_benchmark = PerplexityBenchmark(ppl_config, self.device)
         ppl_result = ppl_benchmark.run(model, "model")
 
-        # Quick memory analysis
         mem_config = MemoryBenchmarkConfig(
             sequence_lengths=[512],
             batch_sizes=[1],

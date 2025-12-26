@@ -1,11 +1,15 @@
-"""Unified attention layer supporting standard, GQA, and decoupled (DBA) modes.
+"""Unified attention layer supporting standard, GQA, and DBA modes.
 
-Modes:
-- standard: Full multi-head attention
-- gqa: Grouped-query attention (fewer KV heads than Q heads)
-- decoupled: DBA with separate semantic (content) and geometric (position) key paths
+Attention is the core mechanism that lets tokens "look at" each other.
+This module supports three modes:
+- standard: Full multi-head attention (every head has its own K/V)
+- gqa: Grouped-query attention (fewer K/V heads, shared across Q heads)
+- decoupled: DBA with separate semantic and geometric key paths
+
+The decoupled (DBA) mode is our research contribution—it splits attention
+into content-based (semantic) and position-based (geometric) components,
+enabling significant KV-cache compression.
 """
-
 from __future__ import annotations
 
 import math
@@ -19,10 +23,10 @@ from caramba.config.layer import AttentionLayerConfig, AttentionMode
 from caramba.layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
-    from caramba.cache.layer import LayerKVCache
     from caramba.cache.decoupled import DecoupledLayerKVCache
+    from caramba.cache.layer import LayerKVCache
 
-# Lazy-cached reference to InferContext to avoid per-call import overhead
+# Lazy-cached reference to avoid per-call import overhead
 _InferContext: type | None = None
 
 
@@ -31,21 +35,34 @@ def _get_infer_context_type() -> type:
     global _InferContext
     if _InferContext is None:
         from caramba.infer.context import InferContext
+
         _InferContext = InferContext
     return _InferContext
 
 
 def _neg_inf(dtype: torch.dtype) -> float:
-    """Return a large negative value safe for the given dtype."""
+    """Return a large negative value safe for the given dtype.
+
+    Float16 has limited range, so we use -65504 instead of -1e9.
+    """
     if dtype == torch.float16:
         return -65504.0
     return -1e9
 
 
 class AttentionLayer(nn.Module):
-    """Unified attention with standard/GQA/decoupled (DBA) support."""
+    """Multi-head attention with standard/GQA/DBA support.
 
-    # Declare all attributes with types
+    The mode determines the attention computation:
+    - standard/gqa: Traditional Q·K^T → softmax → V pipeline
+    - decoupled: (Q_sem·K_sem^T + Q_geo·K_geo^T) → softmax → V
+
+    DBA's key insight is that content routing (semantic) and position
+    patterns (geometric) are separate concerns that can use compressed
+    key projections, reducing KV-cache memory dramatically.
+    """
+
+    # Type declarations for all attributes
     q_proj: nn.Linear | None
     k_proj: nn.Linear | None
     v_proj: nn.Linear
@@ -65,6 +82,11 @@ class AttentionLayer(nn.Module):
     _v_head_dim: int
 
     def __init__(self, config: AttentionLayerConfig) -> None:
+        """Initialize attention based on the configured mode.
+
+        The config specifies dimensions, number of heads, RoPE settings,
+        and mode-specific parameters (sem_dim, geo_dim for DBA).
+        """
         super().__init__()
         self.config = config
         self.mode = config.mode
@@ -73,26 +95,25 @@ class AttentionLayer(nn.Module):
         self.head_dim = config.head_dim
         self.dropout = nn.Dropout(config.dropout_p)
 
-        # Compute group size for GQA
         if self.n_heads % self.n_kv_heads != 0:
             raise ValueError(
-                f"n_heads ({self.n_heads}) must be divisible by n_kv_heads ({self.n_kv_heads})"
+                f"n_heads ({self.n_heads}) must be divisible by "
+                f"n_kv_heads ({self.n_kv_heads})"
             )
         self.group_size = self.n_heads // self.n_kv_heads
 
-        # Mode-specific initialization
         if self.mode == AttentionMode.DECOUPLED:
             self._init_decoupled(config)
         else:
             self._init_standard(config)
 
-        # Learned temperature per head
+        # Optional learned temperature scaling per head
         self.logit_scale = None
         if config.learned_temp:
             self.logit_scale = nn.Parameter(torch.zeros(self.n_heads))
 
     def _init_standard(self, config: AttentionLayerConfig) -> None:
-        """Initialize standard/GQA attention projections."""
+        """Set up projections for standard/GQA attention."""
         d_model = config.d_model
         attn_dim = config.attn_dim if config.attn_dim else d_model
         kv_dim = self.n_kv_heads * self.head_dim
@@ -102,16 +123,14 @@ class AttentionLayer(nn.Module):
         self.v_proj = nn.Linear(d_model, kv_dim, bias=config.bias)
         self.out_proj = nn.Linear(attn_dim, d_model, bias=config.bias)
 
-        # RoPE for standard/GQA
         if config.rope_enabled:
             self.rotary = RotaryEmbedding(self.head_dim, base=config.rope_base)
         else:
             self.rotary = None
 
-        # Pre-computed scale
         self._scale = 1.0 / math.sqrt(float(self.head_dim))
 
-        # Decoupled projections (not used in this mode)
+        # Decoupled projections unused in this mode
         self.q_sem = None
         self.k_sem = None
         self.q_geo = None
@@ -124,7 +143,15 @@ class AttentionLayer(nn.Module):
         self.decoupled_gate_proj = None
 
     def _init_decoupled(self, config: AttentionLayerConfig) -> None:
-        """Initialize decoupled (DBA) attention projections."""
+        """Set up projections for DBA attention.
+
+        DBA has two key paths:
+        - Semantic (no RoPE): learns content/topic similarity
+        - Geometric (with RoPE): learns position-based patterns
+
+        These are combined before softmax, allowing the model to learn
+        which path to emphasize for different attention patterns.
+        """
         d_model = config.d_model
 
         if config.sem_dim is None or config.geo_dim is None:
@@ -140,19 +167,17 @@ class AttentionLayer(nn.Module):
         if sem_head_dim is None or geo_head_dim is None:
             raise ValueError("Could not compute sem/geo head dims")
 
-        # Semantic projections (no RoPE - content similarity only)
+        # Semantic projections (content similarity, no position encoding)
         self.q_sem = nn.Linear(d_model, sem_dim, bias=config.bias)
         self.k_sem = nn.Linear(d_model, sem_dim, bias=config.bias)
 
-        # Geometric projections (RoPE applied - position similarity)
+        # Geometric projections (position patterns, RoPE applied)
         self.q_geo = nn.Linear(d_model, geo_dim, bias=config.bias)
         self.k_geo = nn.Linear(d_model, geo_dim, bias=config.bias)
 
-        # Value and output
         self.v_proj = nn.Linear(d_model, v_dim, bias=config.bias)
         self.out_proj = nn.Linear(v_dim, d_model, bias=config.bias)
 
-        # RoPE only for geometric path
         if config.rope_enabled:
             if geo_head_dim % 2 != 0:
                 raise ValueError("Decoupled mode with RoPE requires even geo_head_dim")
@@ -160,12 +185,11 @@ class AttentionLayer(nn.Module):
         else:
             self.rotary_geo = None
 
-        # Scales
         self._sem_scale = 1.0 / math.sqrt(float(sem_head_dim))
         self._geo_scale = 1.0 / math.sqrt(float(geo_head_dim))
         self._v_head_dim = v_dim // self.n_heads
 
-        # Optional per-head gating between semantic and geometric
+        # Optional learned gate between semantic and geometric paths
         if config.decoupled_gate:
             self.decoupled_gate_logit = nn.Parameter(torch.zeros(self.n_heads))
             if config.decoupled_gate_dynamic:
@@ -177,20 +201,20 @@ class AttentionLayer(nn.Module):
             self.decoupled_gate_logit = None
             self.decoupled_gate_proj = None
 
-        # Standard projections (not used in this mode)
+        # Standard projections unused in this mode
         self.q_proj = None
         self.k_proj = None
         self.rotary = None
         self._scale = None
 
     def _shape(self, x: Tensor, head_dim: int, n_heads: int | None = None) -> Tensor:
-        """Reshape (B, T, D) -> (B, H, T, head_dim)."""
+        """Reshape (B, T, D) → (B, H, T, head_dim) for attention."""
         B, T, _ = x.shape
         H = n_heads if n_heads is not None else self.n_heads
         return x.view(B, T, H, head_dim).transpose(1, 2).contiguous()
 
     def _merge(self, x: Tensor) -> Tensor:
-        """Reshape (B, H, T, head_dim) -> (B, T, D)."""
+        """Reshape (B, H, T, head_dim) → (B, T, D) after attention."""
         B, H, T, hd = x.shape
         return x.transpose(1, 2).contiguous().view(B, T, H * hd)
 
@@ -203,7 +227,11 @@ class AttentionLayer(nn.Module):
         return q * scale
 
     def _decoupled_gate(self, x: Tensor) -> Tensor | None:
-        """Compute per-head semantic/geometric mixing gate."""
+        """Compute per-head semantic/geometric mixing weights.
+
+        Returns a gate value in [0, 1] where 1 means fully semantic
+        and 0 means fully geometric.
+        """
         if self.decoupled_gate_logit is None:
             return None
         gate_bias = self.decoupled_gate_logit.view(1, -1, 1, 1).to(
@@ -212,7 +240,9 @@ class AttentionLayer(nn.Module):
         if self.decoupled_gate_proj is None:
             gate_logit = gate_bias
         else:
-            dyn = self.decoupled_gate_proj(x).transpose(1, 2).unsqueeze(-1).to(torch.float32)
+            dyn = (
+                self.decoupled_gate_proj(x).transpose(1, 2).unsqueeze(-1).to(torch.float32)
+            )
             gate_logit = gate_bias + dyn
         return torch.sigmoid(gate_logit).to(dtype=x.dtype)
 
@@ -225,19 +255,18 @@ class AttentionLayer(nn.Module):
         pos_offset: int = 0,
         ctx: object | None = None,
     ) -> tuple[Tensor, "LayerKVCache | DecoupledLayerKVCache | None"]:
-        """Forward pass with optional KV cache.
+        """Compute attention and return output with updated cache.
 
         Args:
-            x: Input tensor (B, T, d_model)
-            mask: Optional attention mask (B, 1, T, S) or None for causal
+            x: Input features (B, T, d_model)
+            mask: Optional attention mask (B, 1, T, S)
             cache: Optional KV cache for incremental decoding
-            pos_offset: Position offset for RoPE (for cached generation)
+            pos_offset: Position offset for RoPE in cached generation
             ctx: Optional InferContext containing caches and position info
 
         Returns:
-            Tuple of (output, updated_cache)
+            (output, updated_cache) tuple
         """
-        # Extract cache and pos_offset from InferContext if provided
         InferContextType = _get_infer_context_type()
         if ctx is not None and isinstance(ctx, InferContextType):
             cache = ctx.next_cache()  # type: ignore[union-attr]
@@ -246,12 +275,14 @@ class AttentionLayer(nn.Module):
                 mask = ctx.attn_mask  # type: ignore[union-attr]
 
         if self.mode == AttentionMode.DECOUPLED:
-            # Cast to decoupled cache type (runtime check happens in forward)
             decoupled_cache = cast("DecoupledLayerKVCache | None", cache)
-            return self._forward_decoupled(x, mask=mask, cache=decoupled_cache, pos_offset=pos_offset)
-        # Cast to standard cache type
+            return self._forward_decoupled(
+                x, mask=mask, cache=decoupled_cache, pos_offset=pos_offset
+            )
         standard_cache = cast("LayerKVCache | None", cache)
-        return self._forward_standard(x, mask=mask, cache=standard_cache, pos_offset=pos_offset)
+        return self._forward_standard(
+            x, mask=mask, cache=standard_cache, pos_offset=pos_offset
+        )
 
     def _forward_standard(
         self,
@@ -261,7 +292,7 @@ class AttentionLayer(nn.Module):
         cache: "LayerKVCache | None",
         pos_offset: int,
     ) -> tuple[Tensor, "LayerKVCache | None"]:
-        """Standard/GQA attention forward."""
+        """Standard/GQA attention: Q·K^T → softmax → V."""
         B, T, _ = x.shape
 
         if self.q_proj is None or self.k_proj is None:
@@ -275,35 +306,29 @@ class AttentionLayer(nn.Module):
         kh = self._shape(k, self.head_dim, self.n_kv_heads)
         vh = self._shape(v, self.head_dim, self.n_kv_heads)
 
-        # Apply RoPE
         if self.rotary is not None:
             qh = self.rotary.rotate(qh, pos_offset)
             kh = self.rotary.rotate(kh, pos_offset)
 
-        # Apply learned temperature
         qh = self._apply_logit_scale(qh)
 
-        # Handle cache
         if cache is not None:
             old_len = cache.pos
             _ = cache.append(self._merge(kh), self._merge(vh))
-
-            # Retrieve and reshape cached K/V when there's existing cache
-            # (applies to both decode T==1 and prefill with prior cache)
             if old_len > 0:
                 k_all, v_all = cache.get(dtype=qh.dtype)
                 kh = self._shape(k_all, self.head_dim, self.n_kv_heads)
                 vh = self._shape(v_all, self.head_dim, self.n_kv_heads)
 
-        # Expand KV heads for GQA
         if self.group_size > 1:
             kh = kh.repeat_interleave(self.group_size, dim=1)
             vh = vh.repeat_interleave(self.group_size, dim=1)
 
-        # Compute attention
         is_causal = self.config.is_causal and mask is None and T > 1 and cache is None
         out = F.scaled_dot_product_attention(
-            qh, kh, vh,
+            qh,
+            kh,
+            vh,
             attn_mask=mask,
             dropout_p=self.config.dropout_p if self.training else 0.0,
             is_causal=is_causal,
@@ -321,7 +346,13 @@ class AttentionLayer(nn.Module):
         cache: "DecoupledLayerKVCache | None",
         pos_offset: int,
     ) -> tuple[Tensor, "DecoupledLayerKVCache | None"]:
-        """Decoupled (DBA) attention forward."""
+        """DBA attention: (Q_sem·K_sem^T + Q_geo·K_geo^T) → softmax → V.
+
+        The semantic path captures content-based routing (what tokens to
+        attend to based on meaning). The geometric path captures position-
+        based patterns (local attention, recency bias). Combining them
+        before softmax lets the model learn the right balance.
+        """
         B, T, _ = x.shape
         ninfty = _neg_inf(x.dtype)
 
@@ -339,13 +370,13 @@ class AttentionLayer(nn.Module):
         if sem_head_dim is None or geo_head_dim is None:
             raise RuntimeError("Head dims not set")
 
-        # Semantic path (no RoPE)
+        # Semantic path (no RoPE—pure content similarity)
         q_sem = self.q_sem(x)
         k_sem = self.k_sem(x)
         qsh = self._shape(q_sem, sem_head_dim)
         ksh = self._shape(k_sem, sem_head_dim)
 
-        # Geometric path (with RoPE)
+        # Geometric path (with RoPE—position patterns)
         q_geo = self.q_geo(x)
         k_geo = self.k_geo(x)
         qgh = self._shape(q_geo, geo_head_dim)
@@ -355,58 +386,48 @@ class AttentionLayer(nn.Module):
             qgh = self.rotary_geo.rotate(qgh, pos_offset)
             kgh = self.rotary_geo.rotate(kgh, pos_offset)
 
-        # Value
         v = self.v_proj(x)
         vh = self._shape(v, v_head_dim)
 
-        # Apply learned temperature
         qsh = self._apply_logit_scale(qsh)
         qgh = self._apply_logit_scale(qgh)
 
-        # Apply gating
+        # Apply learned gating between paths
         g = self._decoupled_gate(x)
         if g is not None:
             qsh = qsh * (2.0 * g)
             qgh = qgh * (2.0 - 2.0 * g)
 
-        # Handle cache
         if cache is not None:
             old_len = cache.pos
             _ = cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
-
-            # Retrieve and reshape cached K/V when there's existing cache
-            # (applies to both decode T==1 and prefill with prior cache)
             if old_len > 0:
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)
                 ksh = self._shape(k_sem_all, sem_head_dim)
                 kgh = self._shape(k_geo_all, geo_head_dim)
                 vh = self._shape(v_all, v_head_dim)
 
-        # Compute decoupled scores: semantic + geometric
+        # Combine semantic and geometric scores
         sem_scores = torch.matmul(qsh, ksh.transpose(-2, -1)) * self._sem_scale
         geo_scores = torch.matmul(qgh, kgh.transpose(-2, -1)) * self._geo_scale
         scores = sem_scores + geo_scores
 
-        # Apply mask
+        # Apply masking
         if mask is not None:
             scores = scores.masked_fill(~mask, ninfty)
         elif self.config.is_causal and T > 1 and cache is None:
-            # Build causal mask
             causal = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
             scores = scores.masked_fill(~causal.view(1, 1, T, T), ninfty)
         elif self.config.is_causal and cache is not None:
-            # Causal mask for cached generation
             cache_len = ksh.size(2)
             key_pos = torch.arange(cache_len, device=x.device).view(1, 1, 1, cache_len)
             q_pos = (cache.pos - T + torch.arange(T, device=x.device)).view(1, 1, T, 1)
             keep = key_pos <= q_pos
             scores = scores.masked_fill(~keep, ninfty)
 
-        # Softmax and dropout
         attn = F.softmax(scores.float(), dim=-1).to(x.dtype)
         attn = self.dropout(attn)
 
-        # Output
         out = torch.matmul(attn, vh)
         y = self.out_proj(self._merge(out))
 

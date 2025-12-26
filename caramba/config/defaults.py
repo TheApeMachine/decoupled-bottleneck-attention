@@ -1,5 +1,8 @@
-"""
-defaults provides the default values for the training loop.
+"""Default settings that apply across all runs in a manifest.
+
+These are convenience settings that would otherwise need to be repeated
+in every run configuration. Things like tokenizer choice, wandb settings,
+and checkpoint frequency.
 """
 from __future__ import annotations
 
@@ -9,9 +12,12 @@ from caramba.config import PositiveInt, Probability
 
 
 class Defaults(BaseModel):
+    """Global defaults shared across all runs in a manifest.
+
+    Override these per-run when needed, but having sensible defaults
+    reduces boilerplate in experiment configs.
     """
-    Defaults provides the default values for the training loop.
-    """
+
     tokenizer: str = "tiktoken"
     val_frac: Probability = 0.1
     instrument: str = "rich"

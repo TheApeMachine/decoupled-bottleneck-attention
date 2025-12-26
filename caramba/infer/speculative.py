@@ -1,14 +1,14 @@
-"""Speculative decoding with a draft model for faster inference.
+"""Speculative decoding for faster inference.
 
-Speculative decoding uses a smaller/faster "draft" model to propose multiple tokens,
-then verifies them in parallel with the larger "target" model. When the draft model's
-predictions align with the target, we get multiple tokens per forward pass.
+Standard autoregressive generation is memory-bound: we process one token
+at a time, mostly waiting on memory. Speculative decoding uses a smaller
+draft model to propose K tokens, then verifies them in parallel with the
+target model. When predictions align, we get multiple tokens per forward.
 
 References:
-- Leviathan et al. "Fast Inference from Transformers via Speculative Decoding" (2023)
-- Chen et al. "Accelerating Large Language Model Decoding with Speculative Sampling" (2023)
+- Leviathan et al. "Fast Inference from Transformers via Speculative Decoding"
+- Chen et al. "Accelerating LLM Decoding with Speculative Sampling"
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,19 +17,16 @@ from typing import Callable
 import torch
 from torch import Tensor, nn
 
-from caramba.cache.layer import LayerKVCache
 from caramba.cache.decoupled import DecoupledLayerKVCache
-from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.cache.layer import LayerKVCache
+from caramba.config.kvcache import KVCacheKind
 from caramba.infer.context import InferContext
 from caramba.infer.generate import (
-    create_caches,
-    sample_next_token,
-    get_attention_configs,
     GenerateConfig,
+    create_caches,
+    get_attention_configs,
+    sample_next_token,
 )
-from caramba.layer.attention import AttentionLayer
-
 
 __all__ = [
     "SpeculativeConfig",
@@ -40,22 +37,22 @@ __all__ = [
 
 @dataclass
 class SpeculativeConfig:
-    """Configuration for speculative decoding."""
-    # Number of tokens to draft per speculation step
+    """Configuration for speculative decoding.
+
+    Key parameter is spec_k: how many tokens to draft before verification.
+    Higher K means more potential tokens per forward, but lower acceptance
+    rate if draft quality is poor.
+    """
+
     spec_k: int = 4
-    # Method: "reject_sampling" or "typical_acceptance"
     spec_method: str = "reject_sampling"
-    # Whether to sample an extra token when all drafts are accepted
     spec_extra_token: bool = True
-    # Disable speculation when acceptance rate falls below this threshold
     spec_disable_below_accept: float = 0.0
-    # Generation parameters (inherited from GenerateConfig)
     max_new_tokens: int = 64
     temperature: float = 1.0
     top_k: int | None = None
     top_p: float | None = None
     eos_token_id: int | None = None
-    # Cache configuration
     max_seq_len: int = 2048
     cache_kind: KVCacheKind = KVCacheKind.FP16
     cache_qblock: int = 32
@@ -71,20 +68,16 @@ def sampling_probs(
 ) -> Tensor:
     """Compute sampling probabilities with temperature and top-k.
 
-    Note: This function creates a copy of the logits tensor to avoid
-    mutating the input in-place, which could cause side effects for callers.
+    Creates a copy to avoid mutating input logits.
     """
     if temperature <= 0:
-        # Greedy: one-hot on argmax
         idx = logits.argmax(dim=-1, keepdim=True)
         return torch.zeros_like(logits).scatter_(-1, idx, 1.0)
 
-    # Create a copy to avoid mutating the input tensor
     scaled_logits = logits / temperature
 
     if top_k is not None and top_k > 0:
         v, _ = torch.topk(scaled_logits, min(top_k, scaled_logits.size(-1)))
-        # Create a new tensor with masking applied (no in-place modification)
         mask = scaled_logits < v[:, [-1]]
         scaled_logits = scaled_logits.masked_fill(mask, float("-inf"))
 
@@ -99,7 +92,7 @@ def sample_with_probs(
     temperature: float,
     top_k: int | None,
 ) -> tuple[Tensor, Tensor]:
-    """Sample with (temperature, top_k) and return (token, probs)."""
+    """Sample a token and return (token, probabilities)."""
     p = sampling_probs(logits, temperature=float(temperature), top_k=top_k)
     if temperature <= 0:
         return p.argmax(dim=-1, keepdim=True), p
@@ -116,90 +109,77 @@ def verify_speculative(
     top_k: int | None,
     eps: float = 1e-8,
 ) -> tuple[int, Tensor]:
-    """Parallel verification for speculative decoding (rejection sampling).
+    """Verify draft tokens using rejection sampling.
 
-    This implementation handles batch size B=1. For B>1, each batch element
-    would need independent acceptance tracking. The current implementation
-    uses the minimum accepted count across the batch for simplicity.
-
-    Args:
-        main_next: Main model logits for the position before proposed tokens (B, V)
-        main_block: Main model logits for proposed positions (B, K, V)
-        proposed: Proposed token ids from draft model (B, K)
-        q_probs: Draft model probabilities for each proposed token
-        temperature: Sampling temperature
-        top_k: Top-k filtering
-        eps: Small epsilon for numerical stability
-
-    Returns:
-        Tuple of (num_accepted, next_token)
-        - num_accepted: Minimum number of accepted tokens across batch (0 to K)
-        - next_token: The next token to append (B, 1)
+    For each proposed token, compute acceptance probability p(x)/q(x).
+    If rejected, sample from the residual distribution (p - q)+.
+    Returns (num_accepted, next_token).
     """
     B = proposed.size(0)
     k = proposed.size(1)
     device = proposed.device
 
-    # Track per-batch acceptance status
-    # accepted_mask[b] = True means batch element b is still accepting tokens
     accepted_mask = torch.ones(B, dtype=torch.bool, device=device)
-    # Track the position where each batch element was rejected (-1 means all accepted so far)
     reject_pos = torch.full((B,), k, dtype=torch.long, device=device)
-    # Store the next token for each batch element
     next_tokens = torch.zeros((B, 1), dtype=torch.long, device=device)
 
     for i in range(k):
-        # Get main model distribution for the current step
         if i == 0:
             p = sampling_probs(main_next, temperature=temperature, top_k=top_k, eps=eps)
         else:
-            p = sampling_probs(main_block[:, i - 1, :], temperature=temperature, top_k=top_k, eps=eps)
+            p = sampling_probs(
+                main_block[:, i - 1, :], temperature=temperature, top_k=top_k, eps=eps
+            )
 
         q = q_probs[i].float()
 
-        # Acceptance probability: p(x)/q(x)
-        token = proposed[:, i:i + 1]
-        p_tok = p.gather(-1, token).squeeze(-1)  # (B,)
-        q_tok = q.gather(-1, token).squeeze(-1).clamp_min(float(eps))  # (B,)
+        token = proposed[:, i : i + 1]
+        p_tok = p.gather(-1, token).squeeze(-1)
+        q_tok = q.gather(-1, token).squeeze(-1).clamp_min(float(eps))
 
-        # Per-batch rejection check
         accept_ratio = (p_tok / q_tok).clamp(max=1.0)
         rand_vals = torch.rand_like(accept_ratio)
         rejected_now = (rand_vals > accept_ratio) & accepted_mask
 
         if rejected_now.any():
-            # For rejected batch elements, sample from normalized difference
             diff = (p - q).clamp(min=0)
-            diff_sum = diff.sum(dim=-1, keepdim=True)  # (B, 1)
-            valid_diff = torch.isfinite(diff_sum.squeeze(-1)) & (diff_sum.squeeze(-1) > float(eps))
+            diff_sum = diff.sum(dim=-1, keepdim=True)
+            valid_diff = torch.isfinite(diff_sum.squeeze(-1)) & (
+                diff_sum.squeeze(-1) > float(eps)
+            )
 
             for b in range(B):
                 if rejected_now[b]:
                     reject_pos[b] = i
                     accepted_mask[b] = False
                     if valid_diff[b]:
-                        next_tokens[b] = torch.multinomial(diff[b:b+1] / diff_sum[b:b+1], 1)
+                        next_tokens[b] = torch.multinomial(
+                            diff[b : b + 1] / diff_sum[b : b + 1], 1
+                        )
                     else:
-                        next_tokens[b] = torch.multinomial(p[b:b+1], 1)
+                        next_tokens[b] = torch.multinomial(p[b : b + 1], 1)
 
-    # For batch elements that accepted all tokens, sample from final distribution
     all_accepted_mask = accepted_mask
     if all_accepted_mask.any():
-        p_final = sampling_probs(main_block[:, -1, :], temperature=temperature, top_k=top_k, eps=eps)
+        p_final = sampling_probs(
+            main_block[:, -1, :], temperature=temperature, top_k=top_k, eps=eps
+        )
         if temperature <= 0:
             final_tokens = p_final.argmax(dim=-1, keepdim=True)
         else:
             final_tokens = torch.multinomial(p_final, 1)
         next_tokens[all_accepted_mask] = final_tokens[all_accepted_mask]
 
-    # Return the minimum accepted count across the batch for compatibility
-    # with the existing interface that expects a single count
     num_accepted = int(reject_pos.min().item())
     return num_accepted, next_tokens
 
 
 class SpeculativeGenerator:
-    """Stateful speculative generator with draft and target model caches."""
+    """Stateful speculative generator with draft and target model caches.
+
+    Maintains separate KV-caches for both models, synced to the same
+    position. When speculation fails, rolls back both caches.
+    """
 
     def __init__(
         self,
@@ -211,16 +191,7 @@ class SpeculativeGenerator:
         draft_lm_head: nn.Module | None = None,
         device: torch.device | None = None,
     ) -> None:
-        """Initialize the speculative generator.
-
-        Args:
-            target_model: The main/target transformer model (larger, more accurate)
-            draft_model: The draft transformer model (smaller, faster)
-            config: Speculative decoding configuration
-            target_lm_head: Optional LM head for target model
-            draft_lm_head: Optional LM head for draft model
-            device: Device for cache allocation
-        """
+        """Set up with target (large) and draft (small) models."""
         self.target_model = target_model
         self.draft_model = draft_model
         self.config = config or SpeculativeConfig()
@@ -228,19 +199,17 @@ class SpeculativeGenerator:
         self.draft_lm_head = draft_lm_head
         self.device = device or torch.device("cpu")
 
-        # Caches will be created on first generation
         self._target_caches: list[LayerKVCache | DecoupledLayerKVCache] | None = None
         self._draft_caches: list[LayerKVCache | DecoupledLayerKVCache] | None = None
         self._target_ctx: InferContext | None = None
         self._draft_ctx: InferContext | None = None
         self._pos: int = 0
 
-        # Stats
         self._accept_total: int = 0
         self._propose_total: int = 0
 
     def reset(self) -> None:
-        """Reset the generator state (clear caches and stats)."""
+        """Clear caches and stats."""
         self._target_caches = None
         self._draft_caches = None
         self._target_ctx = None
@@ -251,13 +220,13 @@ class SpeculativeGenerator:
 
     @property
     def acceptance_rate(self) -> float:
-        """Get the current acceptance rate."""
+        """Current acceptance rate (accepted / proposed)."""
         if self._propose_total == 0:
             return 1.0
         return float(self._accept_total) / float(self._propose_total)
 
     def _ensure_caches(self, batch_size: int) -> None:
-        """Ensure caches are allocated for the given batch size."""
+        """Allocate caches for both models."""
         if self._target_caches is not None:
             return
 
@@ -291,7 +260,7 @@ class SpeculativeGenerator:
         lm_head: nn.Module | None,
         pos_offset: int,
     ) -> Tensor:
-        """Run forward pass and get logits."""
+        """Single token forward pass."""
         ctx.begin(pos_offset=pos_offset)
         hidden = model(tokens, ctx=ctx)  # type: ignore[call-arg]
         ctx.ensure_consumed()
@@ -308,7 +277,7 @@ class SpeculativeGenerator:
         lm_head: nn.Module | None,
         pos_offset: int,
     ) -> Tensor:
-        """Run forward pass for a block of tokens and get all logits."""
+        """Multi-token forward pass, returns logits for all positions."""
         ctx.begin(pos_offset=pos_offset)
         hidden = model(tokens, ctx=ctx)  # type: ignore[call-arg]
         ctx.ensure_consumed()
@@ -317,20 +286,21 @@ class SpeculativeGenerator:
             return lm_head(hidden)
         return hidden
 
-    def _rollback(self, caches: list[LayerKVCache | DecoupledLayerKVCache], new_pos: int) -> None:
-        """Rollback caches to a previous position."""
+    def _rollback(
+        self, caches: list[LayerKVCache | DecoupledLayerKVCache], new_pos: int
+    ) -> None:
+        """Truncate all caches to a previous position."""
         for cache in caches:
             cache.truncate(new_pos)
 
     @torch.inference_mode()
     def generate(self, input_ids: Tensor) -> Tensor:
-        """Generate tokens using speculative decoding.
+        """Generate using speculative decoding.
 
-        Args:
-            input_ids: Initial token ids (B, T)
-
-        Returns:
-            Generated token ids (B, T + max_new_tokens)
+        Alternates between:
+        1. Draft K tokens with the draft model
+        2. Verify in parallel with the target model
+        3. Accept/reject and update caches
         """
         self.reset()
         batch_size, seq_len = input_ids.shape
@@ -343,7 +313,6 @@ class SpeculativeGenerator:
 
         cfg = self.config
 
-        # Pre-allocate buffer for generated tokens
         max_gen_len = seq_len + cfg.max_new_tokens
         generated = torch.empty(
             (batch_size, max_gen_len),
@@ -364,7 +333,6 @@ class SpeculativeGenerator:
 
         self._pos = seq_len
 
-        # Get initial logits
         if self.target_lm_head is not None:
             target_logits = self.target_lm_head(target_hidden[:, -1:, :])[:, 0, :]
         else:
@@ -378,14 +346,12 @@ class SpeculativeGenerator:
         while gen_len < seq_len + cfg.max_new_tokens:
             remaining = seq_len + cfg.max_new_tokens - gen_len
 
-            # Check if we should disable speculation due to low acceptance
             use_speculation = True
             if cfg.spec_disable_below_accept > 0 and self._propose_total > 10:
                 if self.acceptance_rate < cfg.spec_disable_below_accept:
                     use_speculation = False
 
             if not use_speculation or remaining <= 1:
-                # Fall back to standard decoding
                 next_token = sample_next_token(
                     target_logits,
                     temperature=cfg.temperature,
@@ -395,30 +361,39 @@ class SpeculativeGenerator:
                 generated[:, gen_len] = next_token
                 gen_len += 1
 
-                if cfg.eos_token_id is not None and (next_token == cfg.eos_token_id).all():
+                if (
+                    cfg.eos_token_id is not None
+                    and (next_token == cfg.eos_token_id).all()
+                ):
                     break
 
-                # Update both models with the new token
                 target_logits = self._get_logits(
-                    self.target_model, next_token.unsqueeze(-1),
-                    self._target_ctx, self.target_lm_head, self._pos,
+                    self.target_model,
+                    next_token.unsqueeze(-1),
+                    self._target_ctx,
+                    self.target_lm_head,
+                    self._pos,
                 )
                 draft_logits = self._get_logits(
-                    self.draft_model, next_token.unsqueeze(-1),
-                    self._draft_ctx, self.draft_lm_head, self._pos,
+                    self.draft_model,
+                    next_token.unsqueeze(-1),
+                    self._draft_ctx,
+                    self.draft_lm_head,
+                    self._pos,
                 )
                 self._pos += 1
                 continue
 
-            # Speculative decoding
             k = min(cfg.spec_k, remaining - 1)
             k = max(1, k)
 
-            # Save cache positions for potential rollback
-            target_pos_before = self._target_caches[0].pos if self._target_caches else self._pos
-            draft_pos_before = self._draft_caches[0].pos if self._draft_caches else self._pos
+            target_pos_before = (
+                self._target_caches[0].pos if self._target_caches else self._pos
+            )
+            draft_pos_before = (
+                self._draft_caches[0].pos if self._draft_caches else self._pos
+            )
 
-            # Draft k tokens
             proposed: list[Tensor] = []
             q_probs: list[Tensor] = []
 
@@ -431,21 +406,24 @@ class SpeculativeGenerator:
                 proposed.append(tok)
                 q_probs.append(p)
 
-                # Update draft model with proposed token
                 draft_logits = self._get_logits(
-                    self.draft_model, tok,
-                    self._draft_ctx, self.draft_lm_head, self._pos + len(proposed) - 1,
+                    self.draft_model,
+                    tok,
+                    self._draft_ctx,
+                    self.draft_lm_head,
+                    self._pos + len(proposed) - 1,
                 )
 
-            proposed_t = torch.cat(proposed, dim=1)  # (B, k)
+            proposed_t = torch.cat(proposed, dim=1)
 
-            # Verify with target model
             target_block = self._get_logits_block(
-                self.target_model, proposed_t,
-                self._target_ctx, self.target_lm_head, self._pos,
+                self.target_model,
+                proposed_t,
+                self._target_ctx,
+                self.target_lm_head,
+                self._pos,
             )
 
-            # Run verification
             accepted_k, next_tok = verify_speculative(
                 target_logits,
                 target_block,
@@ -455,59 +433,57 @@ class SpeculativeGenerator:
                 top_k=cfg.top_k,
             )
 
-            # Update stats
             self._accept_total += accepted_k
             self._propose_total += k
 
-            # Accept tokens and update generated sequence
             if accepted_k > 0:
-                generated[:, gen_len:gen_len + accepted_k] = proposed_t[:, :accepted_k]
+                generated[:, gen_len : gen_len + accepted_k] = proposed_t[:, :accepted_k]
                 gen_len += accepted_k
 
-            # Add the next token (either from rejection sampling or final acceptance)
             generated[:, gen_len] = next_tok.squeeze(-1)
             gen_len += 1
 
-            # Rollback caches to correct position
             correct_pos = target_pos_before + accepted_k + 1
             self._rollback(self._target_caches, correct_pos)
             self._rollback(self._draft_caches, correct_pos)
             self._pos = correct_pos
 
-            # Re-compute caches for the correct token sequence
-            # We need to re-append the accepted tokens + next_tok to rebuild cache state
             if accepted_k < k:
-                # Some tokens were rejected, need to rebuild cache
                 tokens_to_add = generated[:, target_pos_before:gen_len]
 
-                # Clear and re-run forward for correct sequence
                 self._rollback(self._target_caches, target_pos_before)
                 self._rollback(self._draft_caches, draft_pos_before)
 
                 target_logits = self._get_logits_block(
-                    self.target_model, tokens_to_add,
-                    self._target_ctx, self.target_lm_head, target_pos_before,
+                    self.target_model,
+                    tokens_to_add,
+                    self._target_ctx,
+                    self.target_lm_head,
+                    target_pos_before,
                 )[:, -1, :]
                 draft_logits = self._get_logits_block(
-                    self.draft_model, tokens_to_add,
-                    self._draft_ctx, self.draft_lm_head, draft_pos_before,
+                    self.draft_model,
+                    tokens_to_add,
+                    self._draft_ctx,
+                    self.draft_lm_head,
+                    draft_pos_before,
                 )[:, -1, :]
                 self._pos = gen_len
             else:
-                # All accepted, use last logits from target
                 target_logits = target_block[:, -1, :]
-                # Need to get draft logits for next iteration
                 draft_logits = self._get_logits(
-                    self.draft_model, next_tok,
-                    self._draft_ctx, self.draft_lm_head, self._pos - 1,
+                    self.draft_model,
+                    next_tok,
+                    self._draft_ctx,
+                    self.draft_lm_head,
+                    self._pos - 1,
                 )
 
-            # Check for EOS
             if cfg.eos_token_id is not None:
                 for i in range(accepted_k + 1):
                     pos = gen_len - accepted_k - 1 + i
                     if pos < gen_len and (generated[:, pos] == cfg.eos_token_id).all():
-                        return generated[:, :pos + 1]
+                        return generated[:, : pos + 1]
 
         return generated[:, :gen_len]
 
@@ -523,19 +499,10 @@ def speculative_generate(
     draft_lm_head: nn.Module | None = None,
     log_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> Tensor:
-    """Generate tokens using speculative decoding (stateless API).
+    """Stateless API for speculative generation.
 
-    Args:
-        target_model: The main/target transformer model
-        draft_model: The draft transformer model
-        input_ids: Initial token ids (B, T)
-        config: Speculative decoding configuration
-        target_lm_head: Optional LM head for target model
-        draft_lm_head: Optional LM head for draft model
-        log_callback: Optional callback for logging stats
-
-    Returns:
-        Generated token ids (B, T + max_new_tokens)
+    Creates a fresh SpeculativeGenerator, runs generation, and optionally
+    reports stats via log_callback.
     """
     generator = SpeculativeGenerator(
         target_model,
@@ -549,10 +516,12 @@ def speculative_generate(
     result = generator.generate(input_ids)
 
     if log_callback is not None:
-        log_callback({
-            "accept_total": generator._accept_total,
-            "propose_total": generator._propose_total,
-            "acceptance_rate": generator.acceptance_rate,
-        })
+        log_callback(
+            {
+                "accept_total": generator._accept_total,
+                "propose_total": generator._propose_total,
+                "acceptance_rate": generator.acceptance_rate,
+            }
+        )
 
     return result

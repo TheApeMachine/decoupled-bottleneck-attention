@@ -1,9 +1,12 @@
-"""
-latency provides latency/throughput measurement for language models.
+"""Latency benchmark: measuring generation speed.
 
-Supports two measurement modes:
-- use_cache=False: Re-forward full growing context each step (baseline/worst case)
-- use_cache=True: Use KV-cache with Generator for realistic inference throughput
+Latency benchmarks measure tokens per second and time to first token.
+Two modes are supported:
+- use_cache=False: Re-forward full context each step (worst case)
+- use_cache=True: KV-cache based generation (realistic inference)
+
+For DBA models, we expect similar or better latency since the smaller
+attention dimensions reduce compute, even though we need two attention paths.
 """
 from __future__ import annotations
 
@@ -15,12 +18,12 @@ from torch import nn
 
 from caramba.benchmark.utils import get_model_vocab_size
 from caramba.config.benchmark import LatencyBenchmarkConfig
-from caramba.infer.generate import Generator, GenerateConfig, sample_next_token
+from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
 
 
 @dataclass
 class LatencyMeasurement:
-    """Single latency measurement."""
+    """Single latency measurement for a specific configuration."""
 
     prompt_len: int
     gen_len: int
@@ -30,38 +33,51 @@ class LatencyMeasurement:
     total_time_ms: float
     tokens_per_second: float
     time_to_first_token_ms: float
-    use_cache: bool = False  # Whether KV-cache was used
+    use_cache: bool = False
 
 
 @dataclass
 class LatencyResult:
-    """Result of a latency benchmark."""
+    """Complete latency benchmark results for a model."""
 
     model_name: str
     measurements: list[LatencyMeasurement] = field(default_factory=list)
 
     @property
     def avg_tokens_per_second(self) -> float:
+        """Average throughput across all measurements."""
         if not self.measurements:
             return 0.0
-        return sum(m.tokens_per_second for m in self.measurements) / len(self.measurements)
+        return sum(m.tokens_per_second for m in self.measurements) / len(
+            self.measurements
+        )
 
     @property
     def avg_time_to_first_token_ms(self) -> float:
+        """Average TTFT across all measurements."""
         if not self.measurements:
             return 0.0
-        return sum(m.time_to_first_token_ms for m in self.measurements) / len(self.measurements)
+        return sum(m.time_to_first_token_ms for m in self.measurements) / len(
+            self.measurements
+        )
 
 
 class LatencyBenchmark:
-    """Measures latency and throughput of generation."""
+    """Measures generation latency and throughput.
 
-    def __init__(self, config: LatencyBenchmarkConfig, device: torch.device) -> None:
+    Tests multiple combinations of prompt length, generation length, and
+    batch size to characterize performance across usage patterns.
+    """
+
+    def __init__(
+        self, config: LatencyBenchmarkConfig, device: torch.device
+    ) -> None:
+        """Set up the benchmark with config and target device."""
         self.config = config
         self.device = device
 
     def run(self, model: nn.Module, model_name: str) -> LatencyResult:
-        """Run latency benchmark on a model."""
+        """Run the latency benchmark, testing all configured combinations."""
         model.eval()
         result = LatencyResult(model_name=model_name)
 
@@ -85,10 +101,7 @@ class LatencyBenchmark:
         prompt_len: int,
         gen_len: int,
     ) -> LatencyMeasurement:
-        """Measure latency for a specific configuration.
-
-        Dispatches to cached or uncached measurement based on config.use_cache.
-        """
+        """Dispatch to cached or uncached measurement based on config."""
         if self.config.use_cache:
             return self._measure_with_cache(model, batch_size, prompt_len, gen_len)
         else:
@@ -103,18 +116,14 @@ class LatencyBenchmark:
     ) -> LatencyMeasurement:
         """Measure latency without KV-cache (re-forward full context each step).
 
-        This is the baseline/worst-case measurement that re-computes attention
-        over the full growing context at each decode step.
-
-        TTFT Semantics: For consistency with cached mode, TTFT is measured as
-        prefill + first decode step. This ensures TTFT is comparable across
-        cached and uncached benchmarks (both report time until first token
-        is actually generated, not just time to complete prefill).
+        This is the baseline/worst-case measurement. TTFT is measured as
+        prefill + first decode step for consistency with cached mode.
         """
         vocab_size = self._get_vocab_size(model)
 
         input_ids = torch.randint(
-            0, vocab_size,
+            0,
+            vocab_size,
             (batch_size, prompt_len),
             device=self.device,
             dtype=torch.long,
@@ -144,7 +153,7 @@ class LatencyBenchmark:
             end_prefill = time.perf_counter()
             prefill_time = (end_prefill - start_prefill) * 1000
 
-            # Measure first decode step separately (for TTFT)
+            # Measure first decode step (part of TTFT)
             start_first_decode = time.perf_counter()
             with torch.no_grad():
                 if logits.dim() == 3:
@@ -188,7 +197,9 @@ class LatencyBenchmark:
         avg_total = sum(total_times) / len(total_times)
 
         tokens_generated = gen_len * batch_size
-        tokens_per_second = tokens_generated / (avg_total / 1000) if avg_total > 0 else 0
+        tokens_per_second = (
+            tokens_generated / (avg_total / 1000) if avg_total > 0 else 0
+        )
 
         return LatencyMeasurement(
             prompt_len=prompt_len,
@@ -211,51 +222,48 @@ class LatencyBenchmark:
     ) -> LatencyMeasurement:
         """Measure latency with KV-cache (realistic inference throughput).
 
-        Uses the Generator class to properly handle KV-cache management,
-        providing accurate time-to-first-token (prefill + first decode)
-        and decode throughput measurements.
-
-        Note: Cache allocation is performed BEFORE the timed region to measure
-        steady-state inference cost (not including one-time cache setup).
+        Uses the Generator class for proper cache management. Cache allocation
+        is done before timing to measure steady-state inference cost.
         """
         vocab_size = self._get_vocab_size(model)
 
         input_ids = torch.randint(
-            0, vocab_size,
+            0,
+            vocab_size,
             (batch_size, prompt_len),
             device=self.device,
             dtype=torch.long,
         )
 
-        # Configure generator with greedy decoding
         gen_config = GenerateConfig(
             max_new_tokens=gen_len,
-            temperature=0.0,  # Greedy
+            temperature=0.0,
             max_seq_len=prompt_len + gen_len + 1,
         )
 
-        # Warmup with fresh generator (includes cache allocation)
+        # Warmup
         for _ in range(self.config.warmup_runs):
             g = Generator(model, config=gen_config, device=self.device)
             with torch.no_grad():
                 _ = g.prefill(input_ids)
-                logits = g.decode_step(torch.zeros(batch_size, dtype=torch.long, device=self.device))
+                logits = g.decode_step(
+                    torch.zeros(batch_size, dtype=torch.long, device=self.device)
+                )
 
         self._sync_device()
 
         prefill_times: list[float] = []
         decode_times: list[float] = []
-        ttft_times: list[float] = []  # Time to first token
+        ttft_times: list[float] = []
         total_times: list[float] = []
 
         for _ in range(self.config.timed_runs):
-            # Create generator and allocate caches BEFORE timing
-            # This measures steady-state inference, not one-time setup
+            # Pre-allocate caches before timing
             g = Generator(model, config=gen_config, device=self.device)
-            g._ensure_caches(batch_size)  # Pre-allocate caches
+            g._ensure_caches(batch_size)
             self._sync_device()
 
-            # Measure prefill (now excludes cache allocation)
+            # Measure prefill
             start_prefill = time.perf_counter()
             with torch.no_grad():
                 logits = g.prefill(input_ids)
@@ -263,7 +271,7 @@ class LatencyBenchmark:
             end_prefill = time.perf_counter()
             prefill_time = (end_prefill - start_prefill) * 1000
 
-            # Sample first token (part of TTFT)
+            # First decode step (part of TTFT)
             start_first_decode = time.perf_counter()
             with torch.no_grad():
                 next_token = sample_next_token(logits, temperature=0.0)
@@ -274,7 +282,7 @@ class LatencyBenchmark:
 
             ttft = prefill_time + first_decode_time
 
-            # Measure remaining decode steps
+            # Remaining decode steps
             start_decode = time.perf_counter()
             with torch.no_grad():
                 for _ in range(gen_len - 1):
@@ -295,7 +303,9 @@ class LatencyBenchmark:
         avg_total = sum(total_times) / len(total_times)
 
         tokens_generated = gen_len * batch_size
-        tokens_per_second = tokens_generated / (avg_total / 1000) if avg_total > 0 else 0
+        tokens_per_second = (
+            tokens_generated / (avg_total / 1000) if avg_total > 0 else 0
+        )
 
         return LatencyMeasurement(
             prompt_len=prompt_len,
@@ -317,5 +327,5 @@ class LatencyBenchmark:
             torch.mps.synchronize()
 
     def _get_vocab_size(self, model: nn.Module) -> int:
-        """Get vocab size from model, with fallback to default."""
+        """Get vocab size from model."""
         return get_model_vocab_size(model, default=32000)

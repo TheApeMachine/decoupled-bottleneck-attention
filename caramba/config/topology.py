@@ -1,5 +1,8 @@
-"""
-topology provides the network topology configuration.
+"""Network topology configuration: how layers are composed.
+
+A transformer isn't just a list of layers—layers are grouped into blocks,
+blocks have residual connections, etc. Topology configs describe these
+composition patterns declaratively, allowing flexible architecture experiments.
 """
 from __future__ import annotations
 
@@ -7,14 +10,20 @@ import enum
 from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
-from caramba.config.layer import LayerConfig
+
 from caramba.config import Config, PositiveInt
+from caramba.config.layer import LayerConfig
 
 
 class TopologyType(str, enum.Enum):
+    """Available topology patterns for composing layers.
+
+    STACKED: Simple sequential stack
+    RESIDUAL: Layers with residual (skip) connections
+    NESTED: Recursive composition (topologies containing topologies)
+    PARALLEL: Multiple paths run in parallel
     """
-    TopologyType provides the network topology type.
-    """
+
     BRANCHING = "BranchingTopology"
     CYCLIC = "CyclicTopology"
     NESTED = "NestedTopology"
@@ -26,82 +35,89 @@ class TopologyType(str, enum.Enum):
 
     @staticmethod
     def module_name() -> str:
-        """Returns the module name for the topology type."""
+        """Return the Python module containing topology implementations."""
         return "caramba.topology"
 
 
 class NestedTopologyConfig(Config):
+    """A topology that contains other topologies or layers.
+
+    Use this for recursive composition, like transformer blocks that
+    contain attention and MLP sub-blocks.
     """
-    NestedTopologyConfig provides a nested topology.
-    """
+
     type: Literal[TopologyType.NESTED] = TopologyType.NESTED
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class StackedTopologyConfig(Config):
+    """A simple sequential stack of layers.
+
+    Layers are run in order: output of layer N is input to layer N+1.
     """
-    StackedTopologyConfig provides a simple sequential topology.
-    """
+
     type: Literal[TopologyType.STACKED] = TopologyType.STACKED
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class ResidualTopologyConfig(Config):
+    """Layers with residual (skip) connections.
+
+    Output = input + layers(input). This is the standard transformer
+    pattern where attention and MLP blocks add to the residual stream.
     """
-    ResidualTopologyConfig provides a residual topology.
-    """
+
     type: Literal[TopologyType.RESIDUAL] = TopologyType.RESIDUAL
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class SequentialTopologyConfig(Config):
-    """
-    SequentialTopologyConfig provides a sequential topology.
-    """
+    """Sequential layer composition (similar to STACKED)."""
+
     type: Literal[TopologyType.SEQUENTIAL] = TopologyType.SEQUENTIAL
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class ParallelTopologyConfig(Config):
+    """Multiple paths run in parallel, then combined.
+
+    All branches receive the same input; outputs are concatenated or summed.
     """
-    ParallelTopologyConfig provides a parallel topology.
-    """
+
     type: Literal[TopologyType.PARALLEL] = TopologyType.PARALLEL
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class BranchingTopologyConfig(Config):
-    """
-    BranchingTopologyConfig provides a branching topology.
-    """
+    """A topology with multiple branching paths."""
+
     type: Literal[TopologyType.BRANCHING] = TopologyType.BRANCHING
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class CyclicTopologyConfig(Config):
-    """
-    CyclicTopologyConfig provides a cyclic topology.
-    """
+    """A topology with cycles (for experimental architectures)."""
+
     type: Literal[TopologyType.CYCLIC] = TopologyType.CYCLIC
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
 class RecurrentTopologyConfig(Config):
-    """
-    RecurrentTopologyConfig provides a recurrent topology.
-    """
+    """A topology with recurrent connections."""
+
     type: Literal[TopologyType.RECURRENT] = TopologyType.RECURRENT
     layers: list["NodeConfig"]
     repeat: PositiveInt = 1
 
 
+# Union of all topology types for discriminated parsing
 TopologyConfig: TypeAlias = Annotated[
     NestedTopologyConfig
     | StackedTopologyConfig
@@ -115,4 +131,5 @@ TopologyConfig: TypeAlias = Annotated[
 ]
 
 
+# A node in the topology tree can be either a layer or a sub-topology
 NodeConfig: TypeAlias = LayerConfig | TopologyConfig

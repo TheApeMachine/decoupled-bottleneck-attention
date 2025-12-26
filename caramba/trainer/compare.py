@@ -1,5 +1,9 @@
-"""
-compare provides teacher/student comparison utilities.
+"""Teacher/student comparison for verifying distillation quality.
+
+After training, we need to verify that the student model produces outputs
+similar to the teacher. This module runs both models on the same inputs
+and measures how much their outputs diverge, helping catch training failures
+before expensive benchmarking.
 """
 from __future__ import annotations
 
@@ -16,9 +20,12 @@ from caramba.model.trace import Trace
 
 @dataclass
 class CompareResult:
+    """Aggregated metrics from comparing teacher and student models.
+
+    We track both mean and max L1 error because they catch different problems:
+    mean catches overall drift, max catches catastrophic single-layer failures.
     """
-    CompareResult holds aggregated comparison metrics.
-    """
+
     attention_mean_l1: float | None
     attention_max_l1: float | None
     logits_mean_l1: float | None
@@ -26,7 +33,7 @@ class CompareResult:
     batches: int
 
     def __post_init__(self) -> None:
-        """Ensure batches is an int."""
+        """Ensure batches is stored as int, not float."""
         self.batches = int(self.batches)
 
 
@@ -39,8 +46,22 @@ def compare_teacher_student(
     attention: CompareThreshold | None,
     logits: CompareThreshold | None,
 ) -> CompareResult:
-    """
-    compare_teacher_student compares teacher and student on a batch list.
+    """Run both models on identical inputs and measure output divergence.
+
+    This is the core verification function. It traces intermediate outputs
+    from both models (using the predicate to select which layers to compare)
+    and computes L1 error metrics.
+
+    Args:
+        teacher: The frozen teacher model (ground truth)
+        student: The trained student model to verify
+        batches: List of input tensors to test on
+        predicate: Function that identifies which layers to trace
+        attention: If set, compare traced layer outputs
+        logits: If set, compare final model outputs
+
+    Returns:
+        CompareResult with mean and max L1 errors
     """
     if not batches:
         raise ValueError("batches must be non-empty")
@@ -71,16 +92,17 @@ def compare_teacher_student(
             with s_trace:
                 s_logits = student(x)
 
+            # Compare traced layer outputs (typically attention outputs)
             if attention is not None:
                 if len(t_trace.outputs) != len(s_trace.outputs):
                     raise ValueError(
-                        "Teacher/student trace outputs mismatch: "
+                        f"Teacher/student trace outputs mismatch: "
                         f"{len(t_trace.outputs)} vs {len(s_trace.outputs)}"
                     )
                 for t_out, s_out in zip(t_trace.outputs, s_trace.outputs):
                     if t_out.shape != s_out.shape:
                         raise ValueError(
-                            "Teacher/student output shapes mismatch: "
+                            f"Teacher/student output shapes mismatch: "
                             f"{t_out.shape} vs {s_out.shape}"
                         )
                     err = F.l1_loss(s_out, t_out, reduction="mean")
@@ -90,10 +112,11 @@ def compare_teacher_student(
                     if v > attn_max:
                         attn_max = v
 
+            # Compare final model outputs (logits)
             if logits is not None:
                 if t_logits.shape != s_logits.shape:
                     raise ValueError(
-                        "Teacher/student logits shapes mismatch: "
+                        f"Teacher/student logits shapes mismatch: "
                         f"{t_logits.shape} vs {s_logits.shape}"
                     )
                 err = F.l1_loss(s_logits, t_logits, reduction="mean")
@@ -103,6 +126,7 @@ def compare_teacher_student(
                 if v > logits_max:
                     logits_max = v
 
+    # Compute averages
     attn_mean = None
     if attention is not None:
         if attn_count <= 0:
@@ -124,45 +148,112 @@ def compare_teacher_student(
     )
 
 
-def assert_thresholds(
+@dataclass
+class ThresholdViolation:
+    """Record of a single threshold being exceeded.
+
+    Used to collect all violations when fail_fast=False, so we can
+    report everything that went wrong instead of just the first failure.
+    """
+
+    metric: str
+    value: float
+    threshold: float
+
+    def message(self) -> str:
+        """Format a human-readable error message."""
+        return (
+            f"{self.metric} exceeded threshold: "
+            f"value={self.value:.6f}, threshold={self.threshold:.6f}"
+        )
+
+
+def check_thresholds(
     *,
     result: CompareResult,
     attention: CompareThreshold | None,
     logits: CompareThreshold | None,
-) -> None:
+) -> list[ThresholdViolation]:
+    """Check if comparison results exceed configured thresholds.
+
+    This is the non-raising version—it returns a list of violations
+    rather than throwing on the first failure.
+
+    Args:
+        result: Metrics from compare_teacher_student
+        attention: Max allowed attention divergence
+        logits: Max allowed logits divergence
+
+    Returns:
+        List of violations (empty if all thresholds pass)
     """
-    assert_thresholds validates results against configured thresholds.
-    """
+    violations: list[ThresholdViolation] = []
+
     if attention is not None:
         if result.attention_mean_l1 is None or result.attention_max_l1 is None:
             raise RuntimeError("Missing attention results for threshold check.")
         if result.attention_mean_l1 > float(attention.max_mean_l1):
-            raise ValueError(
-                "compare failed: attention_mean_l1 exceeded threshold: "
-                f"mean={result.attention_mean_l1:.6f}, "
-                f"max_mean_l1={float(attention.max_mean_l1):.6f}"
-            )
+            violations.append(ThresholdViolation(
+                metric="attention_mean_l1",
+                value=result.attention_mean_l1,
+                threshold=float(attention.max_mean_l1),
+            ))
         if result.attention_max_l1 > float(attention.max_max_l1):
-            raise ValueError(
-                "compare failed: attention_max_l1 exceeded threshold: "
-                f"max={result.attention_max_l1:.6f}, "
-                f"max_max_l1={float(attention.max_max_l1):.6f}"
-            )
+            violations.append(ThresholdViolation(
+                metric="attention_max_l1",
+                value=result.attention_max_l1,
+                threshold=float(attention.max_max_l1),
+            ))
 
     if logits is not None:
         if result.logits_mean_l1 is None or result.logits_max_l1 is None:
             raise RuntimeError("Missing logits results for threshold check.")
         if result.logits_mean_l1 > float(logits.max_mean_l1):
-            raise ValueError(
-                "compare failed: logits_mean_l1 exceeded threshold: "
-                f"mean={result.logits_mean_l1:.6f}, "
-                f"max_mean_l1={float(logits.max_mean_l1):.6f}"
-            )
+            violations.append(ThresholdViolation(
+                metric="logits_mean_l1",
+                value=result.logits_mean_l1,
+                threshold=float(logits.max_mean_l1),
+            ))
         if result.logits_max_l1 > float(logits.max_max_l1):
-            raise ValueError(
-                "compare failed: logits_max_l1 exceeded threshold: "
-                f"max={result.logits_max_l1:.6f}, "
-                f"max_max_l1={float(logits.max_max_l1):.6f}"
-            )
+            violations.append(ThresholdViolation(
+                metric="logits_max_l1",
+                value=result.logits_max_l1,
+                threshold=float(logits.max_max_l1),
+            ))
+
+    return violations
 
 
+def assert_thresholds(
+    *,
+    result: CompareResult,
+    attention: CompareThreshold | None,
+    logits: CompareThreshold | None,
+    fail_fast: bool = True,
+) -> list[ThresholdViolation]:
+    """Check thresholds and optionally raise on violations.
+
+    With fail_fast=True (the default), this raises ValueError on the first
+    violation—good for CI pipelines that should fail immediately.
+
+    With fail_fast=False, it returns all violations without raising, so
+    training can continue to benchmarks even if verification fails.
+
+    Args:
+        result: Metrics from compare_teacher_student
+        attention: Max allowed attention divergence
+        logits: Max allowed logits divergence
+        fail_fast: If True, raise on first violation
+
+    Returns:
+        List of violations (only useful when fail_fast=False)
+
+    Raises:
+        ValueError: If fail_fast=True and any threshold is exceeded
+    """
+    violations = check_thresholds(result=result, attention=attention, logits=logits)
+
+    if violations and fail_fast:
+        raise ValueError(f"compare failed: {violations[0].message()}")
+
+    return violations

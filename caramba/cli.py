@@ -1,19 +1,23 @@
-"""
-cli provides the command line interface for the caramba system.
+"""Command-line interface for the caramba system.
 
-It is designed to be a minimal, intent-first CLI that is easy to use and understand.
-Advanced optimization knobs are intentionally hidden, given one of the core principles
-of the platform is self-optimization, auto-tuning, and auto-fitting.
+Designed as a minimal, intent-first CLI that's easy to use and understand.
+Advanced optimization knobs are intentionally hidden—one of the platform's
+core principles is self-optimization, auto-tuning, and auto-fitting.
+
+Commands:
+- compile: Parse → lower → validate a manifest without building
+- run: Full experiment pipeline (upcycle + benchmarks + artifacts)
 """
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+
 from caramba.command import Command, CompileCommand, RunCommand
-from caramba.config.mode import Mode
-from caramba.config.manifest import Manifest
 from caramba.compiler import Compiler
+from caramba.config.manifest import Manifest
+from caramba.config.mode import Mode
 from caramba.console import logger
 
 
@@ -26,6 +30,8 @@ class ExperimentCommand:
 
 
 class _Args(argparse.Namespace):
+    """Typed namespace for CLI arguments."""
+
     command: str | None = None
     compile_manifest: Path | None = None
     print_plan: bool = False
@@ -46,11 +52,14 @@ class _Args(argparse.Namespace):
 
 
 class CLI(argparse.ArgumentParser):
-    """
-    CLI is a minimal, intent-first command line interface.
+    """Minimal, intent-first command-line interface.
+
+    Provides subcommands for compiling and running experiments, plus
+    legacy arguments for backward compatibility.
     """
 
     def __init__(self) -> None:
+        """Set up CLI with subcommands and legacy arguments."""
         super().__init__(
             prog="caramba",
             description="Caramba - A research platform for efficient AI.",
@@ -88,7 +97,7 @@ class CLI(argparse.ArgumentParser):
             help="Print the lowered graph/plan.",
         )
 
-        # Run command (new: full experiment pipeline)
+        # Run command (full experiment pipeline)
         run_parser = subparsers.add_parser(
             "run",
             help="Run a full experiment: upcycle + benchmarks + artifact generation.",
@@ -111,7 +120,7 @@ class CLI(argparse.ArgumentParser):
             "--entity",
             type=str,
             default=None,
-            help="The entity is a label for the institution or user that is running the experiments.",
+            help="The entity is a label for the institution or user running the experiments.",
         )
         _ = self.add_argument(
             "--project",
@@ -123,23 +132,27 @@ class CLI(argparse.ArgumentParser):
             "--manifest",
             type=Path,
             default=Path("caramba/manifest.json"),
-            help=" ".join([
-                "Use the given manifest to run the system.",
-                "This also enables the 'expert' configuration mode.",
-                "If not provided, the default manifest will be used.",
-                "The default manifest is located at caramba/manifest.json.",
-            ]),
+            help=" ".join(
+                [
+                    "Use the given manifest to run the system.",
+                    "This also enables the 'expert' configuration mode.",
+                    "If not provided, the default manifest will be used.",
+                    "The default manifest is located at caramba/manifest.json.",
+                ]
+            ),
         )
         _ = self.add_argument(
             "--mode",
             type=str,
             default="train",
             choices=["train", "sample", "chat"],
-            help=" ".join([
-                "Run mode. 'train' for training,",
-                "'sample' for sampling from a checkpoint,",
-                "'chat' for chatting with the model.",
-            ]),
+            help=" ".join(
+                [
+                    "Run mode. 'train' for training,",
+                    "'sample' for sampling from a checkpoint,",
+                    "'chat' for chatting with the model.",
+                ]
+            ),
         )
         _ = self.add_argument(
             "--exp",
@@ -151,56 +164,64 @@ class CLI(argparse.ArgumentParser):
                 "bottleneck",
                 "decoupled",
             ],
-            help=" ".join([
-                "Experiment preset (only used in 'train' mode).",
-                "Available presets:",
-                "- baseline: Standard attention",
-                "- gqa: GQA attention",
-                "- bottleneck: Bottleneck attention",
-                "- decoupled: Decoupled Bottleneck attention",
-            ]),
+            help=" ".join(
+                [
+                    "Experiment preset (only used in 'train' mode).",
+                    "Available presets:",
+                    "- baseline: Standard attention",
+                    "- gqa: GQA attention",
+                    "- bottleneck: Bottleneck attention",
+                    "- decoupled: Decoupled Bottleneck attention",
+                ]
+            ),
         )
         _ = self.add_argument(
             "--data",
             type=str,
             default=None,
-            help=" ".join([
-                "Dataset path (only used in 'train' mode).",
-                "If not provided, the dataset will be downloaded automatically.",
-            ]),
+            help=" ".join(
+                [
+                    "Dataset path (only used in 'train' mode).",
+                    "If not provided, the dataset will be downloaded automatically.",
+                ]
+            ),
         )
         _ = self.add_argument(
             "--ckpt",
             type=str,
             default=None,
-            help=" ".join([
-                "Checkpoint path (only used in 'sample' and 'chat' modes).",
-                "If not provided, the latest checkpoint will be used.",
-            ]),
+            help=" ".join(
+                [
+                    "Checkpoint path (only used in 'sample' and 'chat' modes).",
+                    "If not provided, the latest checkpoint will be used.",
+                ]
+            ),
         )
         _ = self.add_argument(
             "--resume",
             type=str,
             default=None,
-            help=" ".join([
-                "Resume training from an explicit checkpoint path (only used in 'train' mode).",
-                "If not provided, the training will start from scratch.",
-            ]),
+            help=" ".join(
+                [
+                    "Resume training from an explicit checkpoint path (only used in 'train' mode).",
+                    "If not provided, the training will start from scratch.",
+                ]
+            ),
         )
         _ = self.add_argument(
             "--seed",
             type=int,
             default=1337,
-            help=" ".join([
-                "Random seed for reproducibility.",
-                "If not provided, the seed will be set to 1337.",
-            ]),
+            help=" ".join(
+                [
+                    "Random seed for reproducibility.",
+                    "If not provided, the seed will be set to 1337.",
+                ]
+            ),
         )
 
     def _get_mode(self, mode: str) -> Mode:
-        """
-        get the mode from the string.
-        """
+        """Convert mode string to Mode enum."""
         match mode:
             case "train":
                 return Mode.TRAIN
@@ -212,24 +233,14 @@ class CLI(argparse.ArgumentParser):
                 raise ValueError(f"Invalid mode: {mode}")
 
     def _load_and_validate_manifest(self, manifest_path: Path) -> Manifest:
-        """
-        Load a manifest from path, lower it, and validate it.
-
-        Args:
-            manifest_path: Path to the manifest file.
-
-        Returns:
-            The lowered and validated manifest.
-        """
+        """Load a manifest from path, lower it, and validate it."""
         compiler = Compiler()
         manifest = compiler.lowerer.lower_manifest(Manifest.from_path(manifest_path))
         compiler.validator.validate_manifest(manifest)
         return manifest
 
     def parse_command(self, argv: list[str] | None = None) -> Command | ExperimentCommand:
-        """
-        parse_command parses the CLI arguments into a typed command payload.
-        """
+        """Parse CLI arguments into a typed command payload."""
         args = self.parse_args(argv, namespace=_Args())
 
         match args.command:
@@ -257,9 +268,7 @@ class CLI(argparse.ArgumentParser):
                 raise ValueError(f"Invalid command: {args.command}")
 
     def _parse_run_manifest(self, args: _Args) -> Manifest:
-        """
-        _parse_run_manifest builds or loads a manifest for the run command.
-        """
+        """Build or load a manifest for the legacy run command."""
         if args.manifest.exists():
             return Compiler().lowerer.lower_manifest(Manifest.from_path(args.manifest))
 
@@ -269,12 +278,10 @@ class CLI(argparse.ArgumentParser):
         )
 
     def parse(self, argv: list[str] | None = None) -> Manifest:
-        """
-        parse the CLI arguments and return a Manifest object.
+        """Parse CLI arguments and return a Manifest object.
 
-        if --manifest is provided, it will ignore all other arguments,
-        and serialize the manifest.json file onto the Manifest object.
-        otherwise, it will use the arguments to construct a Manifest object.
+        If --manifest is provided, ignores all other arguments and loads
+        the manifest from the file.
         """
         command = self.parse_command(argv)
         match command:
@@ -290,11 +297,9 @@ class CLI(argparse.ArgumentParser):
 
 
 def main(argv: list[str] | None = None) -> int:
-    """
-    Main entry point for the CLI.
+    """Main entry point for the CLI.
 
-    Returns:
-        Exit code (0 for success, non-zero for failure)
+    Returns exit code (0 for success, non-zero for failure).
     """
     cli = CLI()
 

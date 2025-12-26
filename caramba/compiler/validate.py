@@ -1,5 +1,12 @@
-"""
-validate provides compiler-time validation of lowered configs.
+"""Validation pass: check shape invariants and constraints.
+
+After lowering, we validate that the config makes sense:
+- Layer IO dimensions are compatible (output of layer N matches input of layer N+1)
+- Residual connections preserve shape
+- Attention layers have valid head/dim configurations
+- Parallel branches have consistent outputs
+
+Catching these errors early prevents cryptic runtime failures.
 """
 from __future__ import annotations
 
@@ -7,37 +14,43 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from caramba.config.layer import (
+    AttentionLayerConfig,
     AttentionMode,
     DropoutLayerConfig,
     LayerConfig,
     LinearLayerConfig,
 )
-from caramba.config.layer import AttentionLayerConfig
 from caramba.config.manifest import Manifest
 from caramba.config.topology import NodeConfig, TopologyConfig
 
 
 @dataclass(frozen=True, slots=True)
 class _IO:
+    """Input/output dimension pair for a node."""
+
     d_in: int | None
     d_out: int | None
 
 
 class Validator:
-    """Validator checks cross-layer shape invariants."""
+    """Checks cross-layer shape invariants.
+
+    Validates that layers connect properly and attention configs are valid.
+    """
 
     def validate_manifest(self, manifest: Manifest) -> None:
         """Validate a full manifest including attention layer constraints."""
         self.validate_topology(manifest.model.topology, path="model.topology")
-        # Validate all attention layers
         self._validate_all_attention_layers(manifest)
 
     def validate(self, manifest: Manifest) -> None:
-        """Alias for validate_manifest for backwards compatibility."""
+        """Alias for validate_manifest (backwards compatibility)."""
         return self.validate_manifest(manifest)
 
-    def validate_topology(self, config: TopologyConfig, *, path: str = "model.topology") -> None:
-        """Validate a topology config."""
+    def validate_topology(
+        self, config: TopologyConfig, *, path: str = "model.topology"
+    ) -> None:
+        """Validate a topology config by inferring IO dimensions."""
         self.infer_topology_io(config, path=path)
 
     def is_topology(self, node: NodeConfig) -> bool:
@@ -45,22 +58,24 @@ class Validator:
         return hasattr(node, "layers")
 
     def infer_node_io(self, node: NodeConfig, *, path: str) -> _IO:
-        """Infer IO dimensions for a node."""
+        """Infer IO dimensions for any node type."""
         if self.is_topology(node):
             return self.infer_topology_io(node, path=path)  # type: ignore[arg-type]
         return self.infer_layer_io(node)  # type: ignore[arg-type]
 
     def infer_layer_io(self, config: LayerConfig) -> _IO:
-        """Infer IO dimensions for a layer."""
-        # Linear: explicit d_in/d_out
+        """Infer IO dimensions for a layer.
+
+        - Linear: explicit d_in/d_out
+        - Dropout: shape-transparent (None/None)
+        - Others: preserve d_model
+        """
         if isinstance(config, LinearLayerConfig):
             return _IO(d_in=int(config.d_in), d_out=int(config.d_out))
 
-        # Dropout: shape-transparent
         if isinstance(config, DropoutLayerConfig):
             return _IO(d_in=None, d_out=None)
 
-        # All other layers preserve d_model
         d_model = getattr(config, "d_model", None)
         if d_model is not None:
             d = int(d_model)
@@ -69,24 +84,27 @@ class Validator:
         raise ValueError(f"Unsupported layer config: {type(config)!r}")
 
     def infer_topology_io(self, config: TopologyConfig, *, path: str) -> _IO:
-        """Infer IO dimensions for a topology."""
-        # Check if this is a branching/parallel topology
+        """Infer IO dimensions for a topology.
+
+        Different topology types have different constraints:
+        - Parallel/Branching: all branches must have same output
+        - Residual: all nodes must preserve shape
+        - Sequential-like: chain IO through nodes
+        """
         if config.type.value in ("ParallelTopology", "BranchingTopology"):
             outs = self.collect_branch_outs(list(config.layers), path=path)
             return self.require_single_out(outs, path=path, kind=config.type.value)
 
-        # Residual needs shape preservation check
         if config.type.value == "ResidualTopology":
             io = self.infer_seq_io(list(config.layers), path=path)
             if io.d_out is not None:
                 self.require_shape_preserving(list(config.layers), path=path)
             return io
 
-        # Sequential-like topologies
         return self.infer_seq_io(list(config.layers), path=path)
 
     def infer_seq_io(self, nodes: list[NodeConfig], *, path: str) -> _IO:
-        """Infer IO for sequential nodes."""
+        """Infer IO for sequential nodes, checking dimension compatibility."""
         cur: int | None = None
         for i, node in enumerate(nodes):
             node_path = f"{path}.layers[{i}]"
@@ -102,7 +120,7 @@ class Validator:
         return _IO(d_in=None, d_out=cur)
 
     def require_match(self, cur: int | None, want: int, *, path: str) -> None:
-        """Require dimension match."""
+        """Require dimension match between consecutive layers."""
         if cur is not None and cur != want:
             raise ValueError(
                 f"{path}: expected d_in={cur}, got d_in={want}. "
@@ -110,7 +128,7 @@ class Validator:
             )
 
     def collect_branch_outs(self, nodes: list[NodeConfig], *, path: str) -> set[int]:
-        """Collect output dimensions from branches."""
+        """Collect output dimensions from parallel branches."""
         outs: set[int] = set()
         for i, node in enumerate(nodes):
             node_path = f"{path}.layers[{i}]"
@@ -120,7 +138,7 @@ class Validator:
         return outs
 
     def require_single_out(self, outs: set[int], *, path: str, kind: str) -> _IO:
-        """Require all branches have same output dimension."""
+        """Require all branches have the same output dimension."""
         if len(outs) > 1:
             raise ValueError(
                 f"{path}: {kind} requires consistent d_out, got {sorted(outs)}. "
@@ -129,7 +147,7 @@ class Validator:
         return _IO(d_in=None, d_out=next(iter(outs)) if outs else None)
 
     def require_shape_preserving(self, nodes: list[NodeConfig], *, path: str) -> None:
-        """Require all nodes preserve shape (for residual)."""
+        """Require all nodes preserve shape (for residual connections)."""
         for i, node in enumerate(nodes):
             node_path = f"{path}.layers[{i}]"
             io = self.infer_node_io(node, path=node_path)
@@ -140,8 +158,10 @@ class Validator:
                     "Fix: ensure all nodes inside residual preserve d_model."
                 )
 
-    def iter_layers(self, topology: TopologyConfig, *, path: str) -> Iterable[tuple[LayerConfig, str]]:
-        """Iterate over all layers in a topology."""
+    def iter_layers(
+        self, topology: TopologyConfig, *, path: str
+    ) -> Iterable[tuple[LayerConfig, str]]:
+        """Iterate over all layers in a topology recursively."""
         for i, node in enumerate(topology.layers):
             node_path = f"{path}.layers[{i}]"
             if self.is_topology(node):
@@ -160,16 +180,16 @@ class Validator:
     def validate_attention(self, config: AttentionLayerConfig, *, path: str) -> None:
         """Validate attention layer configuration.
 
-        Checks divisibility constraints for all attention modes:
-        - Standard/GQA: attn_dim must be divisible by n_heads
-        - Decoupled: sem_dim, geo_dim, v_dim must be divisible by n_heads
-        - All modes: n_heads must be divisible by n_kv_heads
+        Checks:
+        - n_heads divisible by n_kv_heads (GQA constraint)
+        - Decoupled: sem_dim, geo_dim, v_dim divisible by n_heads
+        - Decoupled + RoPE: geo_head_dim must be even
+        - Standard: attn_dim == n_heads * head_dim
         """
         d_model = config.d_model
         n_heads = config.n_heads
-        n_kv_heads = config.kv_heads  # Property that defaults to n_heads
+        n_kv_heads = config.kv_heads
 
-        # Check n_heads divisible by n_kv_heads (required for all modes)
         if n_heads % n_kv_heads != 0:
             raise ValueError(
                 f"{path}: expected n_heads % n_kv_heads == 0, got "
@@ -178,7 +198,6 @@ class Validator:
             )
 
         if config.mode == AttentionMode.DECOUPLED:
-            # Decoupled mode specific validation
             if config.sem_dim is None or config.geo_dim is None:
                 raise ValueError(
                     f"{path}: decoupled mode requires sem_dim and geo_dim. "
@@ -210,7 +229,6 @@ class Validator:
                     "Fix: choose v_dim (or attn_dim) that is divisible by n_heads."
                 )
 
-            # RoPE requires even geo_head_dim
             geo_head_dim = geo_dim // n_heads
             if config.rope_enabled and geo_head_dim % 2 != 0:
                 raise ValueError(
@@ -219,7 +237,6 @@ class Validator:
                     "Fix: adjust geo_dim so geo_dim / n_heads is even."
                 )
         else:
-            # Standard/GQA mode validation
             head_dim = config.head_dim
             attn_dim = config.attn_dim if config.attn_dim is not None else d_model
 

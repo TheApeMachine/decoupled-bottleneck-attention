@@ -1,48 +1,48 @@
-"""
-model provides the model configuration.
+"""Model configuration: the complete specification for a model.
+
+A model config ties together:
+- Embedder: how to convert tokens to vectors
+- Topology: the layer structure
+- Optional diffusion head for hybrid generation
 """
 from __future__ import annotations
 
 import enum
-from pydantic import BaseModel, Field
+
+from pydantic import Field
+
 from caramba.config import Config
+from caramba.config.diffusion import DiffusionHeadConfig
 from caramba.config.embedder import EmbedderConfig, NoEmbedderConfig
 from caramba.config.topology import TopologyConfig
-from caramba.config.diffusion import DiffusionHeadConfig
 
 
 class ModelType(str, enum.Enum):
-    """
-    ModelType provides the model type.
-    """
+    """Type of model architecture."""
+
     TRANSFORMER = "TransformerModel"
     GPT = "GPTModel"
     VIT = "ViTModel"
     MLP = "MLPModel"
 
     @classmethod
-    def from_str(cls, s: str) -> ModelType:
-        """Converts a string to a ModelType."""
+    def from_str(cls, s: str) -> "ModelType":
+        """Convert a string to a ModelType."""
         return cls(s)
 
     @staticmethod
     def module_name() -> str:
-        """Returns the module name for the model type."""
+        """Return the Python module containing model implementations."""
         return "caramba.model"
 
 
 class ModelConfig(Config):
-    """
-    ModelConfig provides the model configuration.
+    """Complete specification for a model architecture.
 
-    Attributes:
-        type: The model type (transformer, gpt, etc.)
-        embedder: Embedding layer configuration
-        topology: Network topology configuration
-        diffusion_head: Optional diffusion next-token head configuration
-        tied_embeddings: Whether to use tied embeddings (embed weight as LM head).
-                        Set to False when topology includes a separate LM head layer.
+    Combines embedder, topology, and optional diffusion head into a
+    single config that can build the full model.
     """
+
     type: ModelType
     embedder: EmbedderConfig = Field(default_factory=NoEmbedderConfig)
     topology: TopologyConfig

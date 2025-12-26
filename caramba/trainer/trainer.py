@@ -1,7 +1,9 @@
-"""
-trainer provides the training loop.
-"""
+"""Main training loop orchestrator.
 
+The Trainer class reads a manifest file and executes training runs in order.
+Each run can be standard training, upcycling, or evaluation. The trainer
+handles session management so runs within a group share state.
+"""
 from __future__ import annotations
 
 from caramba.config.manifest import Manifest
@@ -11,19 +13,25 @@ from caramba.trainer.upcycle import Upcycle
 
 
 class Trainer:
-    """
-    Trainer composes the training loop.
+    """Orchestrates training runs from a manifest.
+
+    Iterates through groups and runs, dispatching to the appropriate
+    training implementation (currently Upcycle for TRAIN mode).
     """
 
     def __init__(
         self,
         manifest: Manifest,
     ) -> None:
+        """Set up the trainer with a manifest."""
         self.manifest: Manifest = manifest
 
     def run(self) -> None:
-        """
-        Run the training loop.
+        """Execute all training runs in the manifest.
+
+        Runs are processed in order within each group. A session (Upcycle)
+        is created for the first run and reused for subsequent runs in
+        the same group.
         """
         for group in self.manifest.groups:
             logger.header("Training", f"group={group.name!r}")

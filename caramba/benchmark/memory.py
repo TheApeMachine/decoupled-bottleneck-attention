@@ -1,5 +1,9 @@
-"""
-memory provides memory profiling for language models.
+"""Memory benchmark: measuring KV-cache and peak memory usage.
+
+For DBA upcycling, the key metric is KV-cache memory reduction. Standard
+attention caches K and V tensors of size n_kv_heads × head_dim per token.
+DBA caches semantic keys (sem_dim), geometric keys (geo_dim), and values
+(v_dim)—typically much smaller total.
 """
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MemoryMeasurement:
-    """Single memory measurement."""
+    """Single memory measurement for a specific configuration."""
 
     seq_len: int
     batch_size: int
@@ -33,16 +37,16 @@ class MemoryMeasurement:
 class KVCacheAnalysis:
     """Analysis of KV-cache memory usage.
 
-    For standard attention, K and V both use n_kv_heads * head_dim dimensions.
-    For DBA (decoupled bottleneck attention), the cache stores:
-      - k_sem: semantic keys (sem_dim per layer)
-      - k_geo: geometric keys (geo_dim per layer)
-      - v: values (v_dim per layer, may differ from standard kv_dim)
+    For standard attention, K and V both use n_kv_heads × head_dim.
+    For DBA, the cache stores:
+    - k_sem: semantic keys (sem_dim per layer)
+    - k_geo: geometric keys (geo_dim per layer)
+    - v: values (v_dim per layer)
 
-    All byte estimates include appropriate overhead for quantized formats:
-      - fp16: 2 bytes/element
-      - q8: 1 byte/element (int8 + amortized scale)
-      - q4: 0.625 bytes/element (4-bit data + scale overhead)
+    Byte estimates include quantization overhead:
+    - fp16: 2 bytes/element
+    - q8: 1 byte/element
+    - q4: 0.625 bytes/element
     """
 
     model_name: str
@@ -54,10 +58,10 @@ class KVCacheAnalysis:
     bytes_per_token_q8: float
     bytes_per_token_q4: float
 
-    # DBA-specific (stored for accurate cache sizing)
+    # DBA-specific dimensions
     sem_dim: int | None = None
     geo_dim: int | None = None
-    v_dim: int | None = None  # Actual V dimension for decoupled attention
+    v_dim: int | None = None
     bytes_per_token_dba_fp16: float | None = None
     bytes_per_token_dba_q8: float | None = None
     bytes_per_token_dba_q4: float | None = None
@@ -65,7 +69,7 @@ class KVCacheAnalysis:
 
 @dataclass
 class MemoryResult:
-    """Result of a memory benchmark."""
+    """Complete memory benchmark results for a model."""
 
     model_name: str
     measurements: list[MemoryMeasurement] = field(default_factory=list)
@@ -73,24 +77,32 @@ class MemoryResult:
 
     @property
     def peak_memory_mb(self) -> float:
+        """Maximum peak memory across all measurements."""
         if not self.measurements:
             return 0.0
         return max(m.peak_memory_mb for m in self.measurements)
 
 
 class MemoryBenchmark:
-    """Measures memory usage including KV-cache."""
+    """Measures memory usage including KV-cache analysis.
 
-    def __init__(self, config: MemoryBenchmarkConfig, device: torch.device) -> None:
+    Analyzes the model architecture to compute theoretical KV-cache sizes,
+    then runs actual forward passes to measure peak memory.
+    """
+
+    def __init__(
+        self, config: MemoryBenchmarkConfig, device: torch.device
+    ) -> None:
+        """Set up the benchmark with config and target device."""
         self.config = config
         self.device = device
 
     def run(self, model: nn.Module, model_name: str) -> MemoryResult:
-        """Run memory benchmark on a model."""
+        """Run the memory benchmark, measuring both theoretical and actual usage."""
         model.eval()
         result = MemoryResult(model_name=model_name)
 
-        # Analyze KV-cache structure
+        # Analyze KV-cache structure from model architecture
         result.kvcache_analysis = self._analyze_kvcache(model, model_name)
 
         # Measure actual memory usage
@@ -108,14 +120,18 @@ class MemoryBenchmark:
         return result
 
     def _analyze_kvcache(self, model: nn.Module, model_name: str) -> KVCacheAnalysis:
-        """Analyze KV-cache structure from model architecture."""
+        """Analyze KV-cache structure from model architecture.
+
+        Inspects attention layers to determine cache dimensions and
+        compute theoretical bytes per token for different precisions.
+        """
         n_layers = 0
         n_kv_heads: int | None = None
         head_dim: int | None = None
         attention_mode: str | None = None
         sem_dim: int | None = None
         geo_dim: int | None = None
-        v_dim: int | None = None  # Actual V dimension for decoupled attention
+        v_dim: int | None = None
 
         for module in model.modules():
             if isinstance(module, AttentionLayer):
@@ -129,48 +145,49 @@ class MemoryBenchmark:
                     n_kv_heads = layer_n_kv_heads
                 elif n_kv_heads != layer_n_kv_heads:
                     raise ValueError(
-                        f"Inconsistent n_kv_heads across layers: {n_kv_heads} vs {layer_n_kv_heads}"
+                        f"Inconsistent n_kv_heads: {n_kv_heads} vs {layer_n_kv_heads}"
                     )
 
                 if head_dim is None:
                     head_dim = layer_head_dim
                 elif head_dim != layer_head_dim:
                     raise ValueError(
-                        f"Inconsistent head_dim across layers: {head_dim} vs {layer_head_dim}"
+                        f"Inconsistent head_dim: {head_dim} vs {layer_head_dim}"
                     )
 
                 if attention_mode is None:
                     attention_mode = layer_mode
                 elif attention_mode != layer_mode:
                     raise ValueError(
-                        f"Inconsistent attention mode across layers: {attention_mode} vs {layer_mode}"
+                        f"Inconsistent attention mode: {attention_mode} vs {layer_mode}"
                     )
 
+                # Extract DBA dimensions
                 if module.mode == AttentionMode.DECOUPLED:
                     cfg = module.config
                     layer_sem_dim = cfg.sem_dim
                     layer_geo_dim = cfg.geo_dim
-                    layer_v_dim = cfg.v_dim  # Actual V dimension from config
+                    layer_v_dim = cfg.v_dim
 
                     if sem_dim is None:
                         sem_dim = layer_sem_dim
                     elif sem_dim != layer_sem_dim:
                         raise ValueError(
-                            f"Inconsistent sem_dim across layers: {sem_dim} vs {layer_sem_dim}"
+                            f"Inconsistent sem_dim: {sem_dim} vs {layer_sem_dim}"
                         )
 
                     if geo_dim is None:
                         geo_dim = layer_geo_dim
                     elif geo_dim != layer_geo_dim:
                         raise ValueError(
-                            f"Inconsistent geo_dim across layers: {geo_dim} vs {layer_geo_dim}"
+                            f"Inconsistent geo_dim: {geo_dim} vs {layer_geo_dim}"
                         )
 
                     if v_dim is None:
                         v_dim = layer_v_dim
                     elif v_dim != layer_v_dim:
                         raise ValueError(
-                            f"Inconsistent v_dim across layers: {v_dim} vs {layer_v_dim}"
+                            f"Inconsistent v_dim: {v_dim} vs {layer_v_dim}"
                         )
 
         # Use defaults if no attention layers found
@@ -188,31 +205,25 @@ class MemoryBenchmark:
         if n_layers == 0 or used_defaults:
             logger.warning(
                 "No attention layers detected; using defaults: %s",
-                ", ".join(used_defaults) if used_defaults else "n_layers=0"
+                ", ".join(used_defaults) if used_defaults else "n_layers=0",
             )
 
         # Calculate bytes per token for standard attention
-        # Standard: 2 * n_layers * n_kv_heads * head_dim * dtype_size (K and V)
-        # Note: Q4 uses 0.625 bytes/element (0.5 for data + 0.125 for scale overhead)
-        # to match the BYTES_PER_Q4_0 constant in upcycle.py
         kv_dim = n_kv_heads * head_dim
-        bytes_fp16 = 2 * n_layers * kv_dim * 2.0    # 2 bytes for fp16
-        bytes_q8 = 2 * n_layers * kv_dim * 1.0      # 1 byte for q8
-        bytes_q4 = 2 * n_layers * kv_dim * 0.625    # 0.625 bytes for q4 (including scale overhead)
+        bytes_fp16 = 2 * n_layers * kv_dim * 2.0
+        bytes_q8 = 2 * n_layers * kv_dim * 1.0
+        bytes_q4 = 2 * n_layers * kv_dim * 0.625
 
-        # DBA: cache sizing using actual dimensions
-        # Cache stores: k_sem (sem_dim) + k_geo (geo_dim) + v (v_dim) per layer
+        # Calculate DBA bytes per token
         bytes_dba_fp16: float | None = None
         bytes_dba_q8: float | None = None
         bytes_dba_q4: float | None = None
         if sem_dim is not None and geo_dim is not None:
-            # Use actual v_dim if available, otherwise fall back to kv_dim
             actual_v_dim = v_dim if v_dim is not None else kv_dim
-            # Total cached elements: sem_dim + geo_dim + v_dim per token per layer
             dba_elements_per_token = n_layers * (sem_dim + geo_dim + actual_v_dim)
-            bytes_dba_fp16 = float(dba_elements_per_token * 2.0)      # 2 bytes for fp16
-            bytes_dba_q8 = float(dba_elements_per_token * 1.0)        # 1 byte for q8
-            bytes_dba_q4 = float(dba_elements_per_token * 0.625)      # 0.625 bytes for q4
+            bytes_dba_fp16 = float(dba_elements_per_token * 2.0)
+            bytes_dba_q8 = float(dba_elements_per_token * 1.0)
+            bytes_dba_q4 = float(dba_elements_per_token * 0.625)
 
         return KVCacheAnalysis(
             model_name=model_name,
@@ -238,25 +249,22 @@ class MemoryBenchmark:
         seq_len: int,
         quantization: str,
     ) -> MemoryMeasurement:
-        """Measure actual memory usage."""
-        # Clear memory
+        """Measure actual memory usage for a specific configuration."""
         gc.collect()
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
 
-        # Get baseline model memory
         if self.device.type == "cuda":
             model_memory = torch.cuda.memory_allocated() / (1024 * 1024)
         else:
-            model_memory = 0.0  # Can't measure on CPU/MPS easily
+            model_memory = 0.0
 
-        # Determine vocab size from model
         vocab_size = self._get_vocab_size(model)
 
-        # Create input and run forward
         input_ids = torch.randint(
-            0, vocab_size,
+            0,
+            vocab_size,
             (batch_size, seq_len),
             device=self.device,
             dtype=torch.long,
@@ -265,13 +273,11 @@ class MemoryBenchmark:
         with torch.no_grad():
             _ = model(input_ids)
 
-        # Measure peak memory
         if self.device.type == "cuda":
             peak_memory = torch.cuda.max_memory_allocated() / (1024 * 1024)
         else:
             peak_memory = 0.0
 
-        # Estimate KV-cache memory (theoretical)
         kvcache_memory = self._estimate_kvcache_memory(
             model=model,
             batch_size=batch_size,
@@ -295,7 +301,7 @@ class MemoryBenchmark:
         seq_len: int,
         quantization: str,
     ) -> float:
-        """Estimate KV-cache memory usage."""
+        """Estimate theoretical KV-cache memory usage."""
         n_layers = 0
         kv_dim = 0
         dba_k_dim: int | None = None
@@ -310,33 +316,30 @@ class MemoryBenchmark:
                     cfg = module.config
                     if cfg.sem_dim and cfg.geo_dim:
                         dba_k_dim = cfg.sem_dim + cfg.geo_dim
-                        # Use actual v_dim from config
                         dba_v_dim = cfg.v_dim
 
-        # Bytes per element (including scale overhead for quantized formats)
-        # These match the constants in upcycle.py for consistent reporting
         bytes_per_elem = {
             "fp16": 2.0,
             "fp32": 4.0,
-            "q8": 1.0,       # int8 + amortized scale overhead
+            "q8": 1.0,
             "q8_0": 1.0,
-            "q4": 0.625,     # 4-bit data (0.5) + scale overhead (0.125)
+            "q4": 0.625,
             "q4_0": 0.625,
             "nf4": 0.625,
         }.get(quantization, 2.0)
 
         if dba_k_dim is not None:
-            # DBA: K uses sem+geo dims, V uses actual v_dim
             actual_v_dim = dba_v_dim if dba_v_dim is not None else kv_dim
             k_bytes = n_layers * batch_size * seq_len * dba_k_dim * bytes_per_elem
             v_bytes = n_layers * batch_size * seq_len * actual_v_dim * bytes_per_elem
             total_bytes = k_bytes + v_bytes
         else:
-            # Standard: K and V both use kv_dim
-            total_bytes = 2 * n_layers * batch_size * seq_len * kv_dim * bytes_per_elem
+            total_bytes = (
+                2 * n_layers * batch_size * seq_len * kv_dim * bytes_per_elem
+            )
 
-        return total_bytes / (1024 * 1024)  # MB
+        return total_bytes / (1024 * 1024)
 
     def _get_vocab_size(self, model: nn.Module) -> int:
-        """Get vocab size from model, with fallback to default."""
+        """Get vocab size from model."""
         return get_model_vocab_size(model, default=32000)

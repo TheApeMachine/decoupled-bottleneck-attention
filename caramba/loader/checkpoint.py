@@ -1,5 +1,8 @@
-"""
-checkpoint provides weight-loading utilities for PyTorch checkpoints.
+"""Generic checkpoint loading for PyTorch and safetensors files.
+
+Checkpoints store trained model weights. This module handles the mechanics
+of loading them from various formats (PyTorch .pt/.bin, safetensors, sharded)
+and optionally remapping keys when the architecture differs from the source.
 """
 from __future__ import annotations
 
@@ -14,42 +17,48 @@ from torch import Tensor, nn
 
 def _get_torch_version() -> tuple[int, int]:
     """Parse PyTorch version into (major, minor) tuple."""
-    version_str = torch.__version__.split("+")[0]  # Remove build suffix like +cu118
+    version_str = torch.__version__.split("+")[0]
     parts = version_str.split(".")
     return int(parts[0]), int(parts[1])
 
 
 def _safe_torch_load(path: Path) -> dict[str, Tensor]:
-    """Load a torch checkpoint with weights_only=True when supported.
+    """Load a checkpoint safely.
 
-    weights_only=True was introduced in PyTorch 2.4 and became the default in 2.6.
-    This function provides backwards compatibility for older versions.
+    Uses weights_only=True when available (PyTorch ≥2.4) for security—this
+    prevents pickle-based arbitrary code execution from malicious checkpoints.
     """
     major, minor = _get_torch_version()
 
-    # PyTorch >= 2.4 supports weights_only=True
     if (major, minor) >= (2, 4):
         try:
             return torch.load(path, map_location="cpu", weights_only=True)
         except TypeError:
-            # Fallback if weights_only causes issues
             return torch.load(path, map_location="cpu")
     else:
-        # Older PyTorch versions don't support weights_only
         return torch.load(path, map_location="cpu")
 
 
 class CheckpointLoader:
-    """Loads state dicts from various checkpoint formats."""
+    """Loads state dictionaries from various checkpoint formats.
+
+    Supports:
+    - Single-file PyTorch checkpoints (.pt, .bin)
+    - Single-file safetensors (.safetensors)
+    - Sharded checkpoints with index files (.index.json)
+    """
 
     def load(self, path: Path) -> dict[str, Tensor]:
-        """Load a state_dict from torch, safetensors, or sharded index files."""
+        """Load a state_dict, auto-detecting the format from file extension.
+
+        For sharded checkpoints, pass the .index.json file and this will
+        load all shards and merge them.
+        """
         path = Path(path)
         if path.name.endswith(".index.json"):
             return self.load_sharded(path)
         if path.suffix == ".safetensors":
             return self.load_safetensors(path)
-        # Use weights_only=True for safety (requires PyTorch >= 2.4)
         return _safe_torch_load(path)
 
     def load_mapped(
@@ -60,7 +69,11 @@ class CheckpointLoader:
         *,
         strict: bool = True,
     ) -> None:
-        """Load a state_dict into a model using key remapping."""
+        """Load a state_dict with key remapping.
+
+        Use this when the checkpoint uses different parameter names than
+        your model. The mapping is {source_key: dest_key}.
+        """
         if not mapping:
             raise ValueError("mapping must be non-empty")
 
@@ -68,17 +81,21 @@ class CheckpointLoader:
         try:
             result = model.load_state_dict(mapped, strict=strict)
         except RuntimeError as e:
-            # strict=True raises RuntimeError with missing/unexpected info
             raise ValueError(f"load failed: {e}") from e
-        # strict=False returns (missing_keys, unexpected_keys)
-        # Only raise an error when strict=True was requested
+
         if strict and result is not None:
             missing, unexpected = result
             if missing or unexpected:
-                raise ValueError(f"load failed: missing={missing}, unexpected={unexpected}")
+                raise ValueError(
+                    f"load failed: missing={missing}, unexpected={unexpected}"
+                )
 
     def load_sharded(self, index_path: Path) -> dict[str, Tensor]:
-        """Load from a sharded checkpoint index."""
+        """Load a sharded checkpoint from its index file.
+
+        Sharded checkpoints split weights across multiple files for large
+        models. The index file maps weight names to shard files.
+        """
         data = json.loads(index_path.read_text(encoding="utf-8"))
         weight_map = data.get("weight_map")
         if not isinstance(weight_map, dict):
@@ -87,9 +104,10 @@ class CheckpointLoader:
         out: dict[str, Tensor] = {}
         for shard in sorted(set(weight_map.values())):
             shard_path = index_path.parent / shard
-            # Prevent infinite recursion: shards should not be index files
             if shard_path.name.endswith(".index.json"):
-                raise ValueError(f"Shard {shard} is an index file, expected tensor file")
+                raise ValueError(
+                    f"Shard {shard} is an index file, expected tensor file"
+                )
             for key, value in self.load(shard_path).items():
                 if key in out:
                     raise ValueError(f"Duplicate key in shards: {key}")
@@ -97,12 +115,21 @@ class CheckpointLoader:
         return out
 
     def load_safetensors(self, path: Path) -> dict[str, Tensor]:
-        """Load from safetensors format."""
+        """Load a safetensors file.
+
+        Safetensors is a fast, safe format for storing tensors without
+        the security risks of Python pickle.
+        """
         return load_file(str(path), device="cpu")
 
 
 class AttentionLoader:
-    """Loads attention weights from teacher Q/K/V/O tensors."""
+    """Loads Q/K/V/O weights into attention modules.
+
+    Handles the common pattern of loading attention weights from a
+    checkpoint into a model, supporting both old-style (query/key/value/out)
+    and new-style (q_proj/k_proj/v_proj/out_proj) attribute names.
+    """
 
     def load(
         self,
@@ -113,12 +140,10 @@ class AttentionLoader:
         v: Tensor,
         o: Tensor,
     ) -> None:
-        """Load Q/K/V/O weights into student attention module.
+        """Load Q/K/V/O weights into the attention module.
 
-        Supports both old attribute names (query/key/value/out) and
-        new attribute names (q_proj/k_proj/v_proj/out_proj).
+        Auto-detects which attribute names the module uses.
         """
-        # Try new attribute names first
         q_proj = getattr(student, "q_proj", None)
         k_proj = getattr(student, "k_proj", None)
         v_proj = getattr(student, "v_proj", None)
@@ -126,66 +151,44 @@ class AttentionLoader:
 
         student_class_name = type(student).__name__
 
-        # Check all four projections for new-style names
-        if q_proj is not None and k_proj is not None and v_proj is not None and out_proj is not None:
+        # New-style names
+        if all(p is not None for p in [q_proj, k_proj, v_proj, out_proj]):
             self.copy(cast(nn.Linear, q_proj), q)
             self.copy(cast(nn.Linear, k_proj), k)
             self.copy(cast(nn.Linear, v_proj), v)
             self.copy(cast(nn.Linear, out_proj), o)
         else:
-            # Fallback to old attribute names per-projection
-            q_found = False
-            if q_proj is not None:
-                self.copy(cast(nn.Linear, q_proj), q)
-                q_found = True
-            elif hasattr(student, "query"):
-                self.copy(cast(nn.Linear, student.query), q)  # type: ignore[attr-defined]
-                q_found = True
-            if not q_found:
-                raise ValueError(
-                    f"Could not find Q projection in {student_class_name}. "
-                    "Expected 'q_proj' or 'query' attribute."
-                )
+            # Fall back to old-style names
+            self._load_with_fallback(student, "q_proj", "query", q, "Q", student_class_name)
+            self._load_with_fallback(student, "k_proj", "key", k, "K", student_class_name)
+            self._load_with_fallback(student, "v_proj", "value", v, "V", student_class_name)
+            self._load_with_fallback(student, "out_proj", "out", o, "Out", student_class_name)
 
-            k_found = False
-            if k_proj is not None:
-                self.copy(cast(nn.Linear, k_proj), k)
-                k_found = True
-            elif hasattr(student, "key"):
-                self.copy(cast(nn.Linear, student.key), k)  # type: ignore[attr-defined]
-                k_found = True
-            if not k_found:
-                raise ValueError(
-                    f"Could not find K projection in {student_class_name}. "
-                    "Expected 'k_proj' or 'key' attribute."
-                )
+    def _load_with_fallback(
+        self,
+        student: nn.Module,
+        new_name: str,
+        old_name: str,
+        weight: Tensor,
+        proj_label: str,
+        class_name: str,
+    ) -> None:
+        """Try new-style attribute name, fall back to old-style."""
+        proj = getattr(student, new_name, None)
+        if proj is not None:
+            self.copy(cast(nn.Linear, proj), weight)
+            return
 
-            v_found = False
-            if v_proj is not None:
-                self.copy(cast(nn.Linear, v_proj), v)
-                v_found = True
-            elif hasattr(student, "value"):
-                self.copy(cast(nn.Linear, student.value), v)  # type: ignore[attr-defined]
-                v_found = True
-            if not v_found:
-                raise ValueError(
-                    f"Could not find V projection in {student_class_name}. "
-                    "Expected 'v_proj' or 'value' attribute."
-                )
+        proj = getattr(student, old_name, None)
+        if proj is not None:
+            self.copy(cast(nn.Linear, proj), weight)
+            return
 
-            out_found = False
-            if out_proj is not None:
-                self.copy(cast(nn.Linear, out_proj), o)
-                out_found = True
-            elif hasattr(student, "out"):
-                self.copy(cast(nn.Linear, student.out), o)  # type: ignore[attr-defined]
-                out_found = True
-            if not out_found:
-                raise ValueError(
-                    f"Could not find Out projection in {student_class_name}. "
-                    "Expected 'out_proj' or 'out' attribute."
-                )
+        raise ValueError(
+            f"Could not find {proj_label} projection in {class_name}. "
+            f"Expected '{new_name}' or '{old_name}' attribute."
+        )
 
     def copy(self, dst: nn.Linear, src: Tensor) -> None:
-        """Copy weight tensor to destination module."""
+        """Copy weight tensor into a Linear module."""
         dst.weight.data.copy_(src)

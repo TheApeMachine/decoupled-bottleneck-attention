@@ -1,19 +1,25 @@
-"""
-run provides the run module for the training loop.
+"""Run configuration: a single training or evaluation run.
+
+Each run specifies what to do (train, sample, chat), how many steps,
+what seed to use, and what verification to perform afterward.
 """
 from __future__ import annotations
 
 from pydantic import BaseModel
+
+from caramba.config import PositiveInt
 from caramba.config.mode import Mode
 from caramba.config.train import TrainConfig
 from caramba.config.verify import VerifyConfig
-from caramba.config import PositiveInt
 
 
 class Run(BaseModel):
+    """Configuration for a single training or evaluation run.
+
+    A run is one execution of the training loop with specific settings.
+    Multiple runs can be grouped together for comparison.
     """
-    Run provides the run module for the training loop.
-    """
+
     id: str
     mode: Mode
     exp: str
