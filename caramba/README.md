@@ -1,14 +1,12 @@
-# caramba
+# caramba 🧪
 
 *A substrate for architecture research*
 
----
-
-Architectures are graphs. Graphs are manifests. Running experiments should require nothing more than a YAML file.
+> Architectures are graphs. Graphs are manifests. Running experiments should require nothing more than a YAML file.
 
 caramba delivers a frictionless research environment without compromise—explicit building blocks, strict validation, optimized execution. You don't need to care about the low-level details. Unless you want to.
 
-## The Pipeline
+## The Pipeline 🔄
 
 ```
 manifest → parse → lower → validate → build → run → verify → benchmark → artifacts
@@ -16,7 +14,29 @@ manifest → parse → lower → validate → build → run → verify → bench
 
 Every experiment flows through this chain. No magic, no hidden state, no surprises.
 
-## Module Map
+## Self-Optimization ⚡ (auto-fit + auto-tuning)
+
+caramba is built around the idea that the *config is declarative*, while the runtime is allowed to make **measured, cached decisions** to hit speed/memory targets.
+
+- **Runtime plan cache (training)**: `caramba/runtime/plan.py` persists a `RuntimePlan` keyed by a stable signature of (device + manifest + train config), so repeated runs reuse decisions for:
+  - dtype / AMP dtype (including `"auto"` behavior)
+  - batch size (including auto-scaling by `block_size` when enabled)
+  - `torch.compile` enablement + mode (including `"auto"`)
+- **KV-cache policy selection (inference)**: `GenerateConfig.cache_kind="auto"` chooses a cache quantization kind with:
+  - **budget filtering** (`cache_budget_mb`)
+  - **quality gates** (short-context delta NLL / PPL ratio, and optional needle-in-haystack KL gate)
+  - optional **micro-benchmarking** (`cache_auto_benchmark`) to pick the fastest passing candidate
+  - **plan persistence** (`cache_plan_path`) and optional **re-probing** (`cache_plan_probe`, `cache_plan_probe_interval_sec`)
+- **Decode-plan bucketing (long context)**: generation can dynamically adjust `q_chunk` / `local_window` by prefix length (`decode_plan="auto"` + bucket params) to reduce peak memory and improve throughput on long sequences.
+- **Speculative decoding adapts itself**: `SpeculativeConfig.spec_k_adaptive` adjusts `spec_k` based on acceptance rate and can fall back to non-speculative decode below a threshold.
+- **CUDA/Triton fast paths**: for decoupled attention decode on quantized caches, caramba can use fused Triton kernels (including split-K for very long prefixes) with launch-parameter tuning.
+- **Training speed knobs (manifest-driven)**: teacher-output caching, AMP, gradient accumulation, dataloader parallelism, activation checkpointing, scheduler choices, and convergence-based blockwise distillation.
+
+### Auto-fit (programmatic)
+
+`ModelConfig.optimize()` can derive a reasonable transformer scale from a `target_params` budget (and `block_size` as an entropy-ish signal), updating common transformer patterns (embedder d_model, attention heads/KV heads, MLP width). This is currently a **library utility** (not auto-applied by the CLI), intended for quick architecture search scripts.
+
+## Module Map 🗺️
 
 | Layer         | Purpose                                         |
 |---------------|-------------------------------------------------|
@@ -32,11 +52,13 @@ Every experiment flows through this chain. No magic, no hidden state, no surpris
 | `experiment/` | Unified pipeline orchestration                  |
 | `compiler/`   | Manifest → executable plan                      |
 | `eval/`       | Behavioral evaluation for teacher/student       |
-| `data/`       | Dataset utilities (NpyDataset)                  |
+| `data/`       | Dataset utilities (`NpyDataset`, `.tokens` support, auto-loader) |
+| `runtime/`    | Runtime planning + activation/memory helpers    |
+| `instrumentation/` | JSONL/HDF5/TensorBoard/W&B/live plotting    |
 | `console/`    | Rich-based logging and progress bars            |
 | `optimizer/`  | Triton kernels, fused attention, quantization   |
 
-## Quick Start
+## Quick Start 🚀
 
 ```bash
 # Install
@@ -242,13 +264,13 @@ layer = AttentionLayer(config)
 
 ---
 
-## Upcycling: Llama → DBA
+## Upcycling: Llama → DBA 🦙✨
 
 caramba can transplant **Decoupled Bottleneck Attention** into a pretrained Llama checkpoint, then train via blockwise distillation and global fine-tuning.
 
 This workflow draws from [Attention Surgery](https://arxiv.org/abs/2509.24899) (Ghafoorian et al., 2025).
 
-### The DBA Advantage
+### The DBA Advantage 📉
 
 | Metric             | Standard Attention | DBA (sem=128, geo=256) |
 |--------------------|--------------------|------------------------|
@@ -284,9 +306,16 @@ The preset targets `mps` with `float32`. Edit the manifest to change device or d
 6. **Benchmark** — perplexity, latency, memory comparison
 7. **Artifacts** — CSV, JSON, PNG charts, LaTeX tables
 
+### Optimization highlights (what caramba does for you)
+
+- **Blockwise convergence mode**: optionally trains each block until it hits a target loss (instead of a fixed step count).
+- **Non-fatal verification**: verification can be non-blocking so you can still get benchmarks/artifacts.
+- **RuntimePlan caching**: dtype/AMP/compile/batch decisions are cached and reused across runs with the same signature.
+- **Activation checkpointing**: can be enabled with a memory threshold so long-context runs fit.
+
 ---
 
-## Verification
+## Verification ✅
 
 Attach a `verify:` block to any run to automatically compare teacher vs. student after training completes.
 
@@ -308,9 +337,24 @@ runs:
       logits:
         max_mean_l1: 0.05   # Mean L1 across final logits
         max_max_l1: 0.25
+      fail_fast: false      # Default: false (log warnings but keep pipeline running)
 ```
 
-Both models run on identical input batches. L1 agreement is measured at two levels: per-layer attention outputs `(B,T,D)` and full model logits `(B,T,V)`. Thresholds are enforced—exceed them and the run fails fast.
+Both models run on identical input batches. L1 agreement is measured at two levels: per-layer attention outputs `(B,T,D)` and full model logits `(B,T,V)`. With `fail_fast: false`, threshold violations are non-fatal so benchmarks can still run.
+
+### Fidelity Verification (loss-based gate)
+
+`fidelity` is a cheap, stable short-context quality gate based on negative log-likelihood (NLL):
+
+```yaml
+verify:
+  type: fidelity
+  batches: 5
+  split: auto          # auto|train|val
+  max_delta_nll: 0.05  # teacher_nll - student_nll
+  max_ppl_ratio: 1.05  # student_ppl / teacher_ppl
+  fail_fast: false
+```
 
 ### Eval Verification
 
@@ -347,7 +391,7 @@ Eval case kinds:
 
 ---
 
-## Benchmarks
+## Benchmarks 📊
 
 Groups can declare benchmark suites that run after all training completes and generate paper-ready artifacts.
 
@@ -409,7 +453,7 @@ benchmark:
 
 ---
 
-## Artifacts
+## Artifacts 📦
 
 After running with benchmarks, caramba generates publication-ready artifacts:
 
@@ -445,7 +489,7 @@ KV-Cache (bytes/tok) $\downarrow$ & 2048 & 384 & 5.33$\times$ \\
 
 ---
 
-## Inference
+## Inference 🔮
 
 ### Standard Generation
 
@@ -459,6 +503,11 @@ config = GenerateConfig(
     top_p=0.9,
     eos_token_id=2,
     max_seq_len=4096,
+  # KV-cache policy:
+  # - set cache_kind="auto" to benchmark + choose a quantization kind
+  # - set cache_plan_path to persist/reuse that choice across runs
+  cache_kind="auto",
+  cache_plan_path="runs/cache_plans.json",
 )
 
 # Stateful generator (reuses KV cache)
@@ -469,6 +518,42 @@ output_ids = generator.generate(input_ids)
 output_ids = generate(model, input_ids, config=config)
 ```
 
+### KV-cache auto policy selection (budget + gates + benchmarking)
+
+When `cache_kind="auto"`, selection proceeds in this order:
+
+- **Budget filter**: drop candidates that exceed `cache_budget_mb` (if set)
+- **Quality gates** (optional):
+  - `cache_quality_max_delta_nll`
+  - `cache_quality_max_ppl_ratio`
+  - `cache_quality_max_mean_kl` (needle-in-haystack gate)
+- **Speed pick**: if `cache_auto_benchmark=true`, micro-benchmark remaining candidates and keep the fastest
+- **Persistence**: store/reuse the decision via `cache_plan_path` (with optional periodic re-probing)
+
+Example:
+
+```python
+config = GenerateConfig(
+    cache_kind="auto",
+    cache_budget_mb=1024,
+    cache_quality_max_delta_nll=0.05,
+    cache_quality_max_ppl_ratio=1.05,
+    cache_auto_benchmark=True,
+    cache_auto_bench_steps=8,
+    cache_plan_path="runs/cache_plans.json",
+    cache_plan_probe=True,
+    cache_plan_probe_interval_sec=3600,
+)
+```
+
+### Decode-plan bucketing (q_chunk / local_window)
+
+For long contexts you can let the generator auto-adjust attention memory behavior by prefix length:
+
+- `decode_plan="auto"`: use buckets (short/mid/long) to pick `q_chunk` and `local_window`
+- `decode_plan="fixed"`: always use `decode_q_chunk` / `decode_local_window`
+- `decode_plan="none"`: disable overrides and use layer defaults
+
 ### Speculative Decoding
 
 Accelerate inference by using a smaller draft model to propose tokens, then verify with the target model:
@@ -478,11 +563,13 @@ from caramba.infer import SpeculativeGenerator, SpeculativeConfig
 
 config = SpeculativeConfig(
     spec_k=4,              # Draft 4 tokens per step
+  spec_k_adaptive=True,  # Adjust K automatically based on acceptance rate
     max_new_tokens=128,
     temperature=0.8,
     spec_method="reject_sampling",
     spec_extra_token=True,
     spec_disable_below_accept=0.3,  # Fall back if acceptance < 30%
+  cache_kind="auto",              # Optional: auto-select KV-cache quantization
 )
 
 generator = SpeculativeGenerator(
@@ -497,7 +584,7 @@ print(f"Acceptance rate: {generator.acceptance_rate:.2%}")
 
 ---
 
-## KV-Cache
+## KV-Cache 🗄️
 
 caramba includes a production-grade KV-cache implementation with:
 
@@ -516,7 +603,7 @@ cache = LayerKVCache(
     max_seq_len=2048,
     k_dim=256,
     v_dim=256,
-    k_cfg=KVCacheTensorConfig(kind=KVCacheKind.Q8),
+    k_cfg=KVCacheTensorConfig(kind=KVCacheKind.Q8_0),
     v_cfg=KVCacheTensorConfig(kind=KVCacheKind.FP16),
     device=torch.device("mps"),
 )
@@ -541,13 +628,16 @@ cache = DecoupledLayerKVCache(
 Load pre-tokenized data from `.npy` files:
 
 ```python
-from caramba.data import NpyDataset
+from caramba.data import NpyDataset, build_token_dataset
 
 # Load dataset with block size for next-token prediction
 dataset = NpyDataset("fineweb_100m.npy", block_size=2048)
 
 # Returns (x, y) where y is the next-token shift of x
 x, y = dataset[0]  # x: [T], y: [T]
+
+# Or: pick the right loader automatically based on suffix (.npy or .tokens)
+dataset = build_token_dataset(path="fineweb_100m.tokens", block_size=2048)
 
 # Use with DataLoader
 from torch.utils.data import DataLoader
@@ -584,7 +674,7 @@ for i, attn_out in enumerate(trace.outputs):
 
 ---
 
-## Distributed Training (DDP/FSDP)
+## Distributed Training (DDP/FSDP) 🌐
 
 Scale training to multiple GPUs with built-in distributed support:
 
@@ -642,13 +732,15 @@ if is_main_process():
 
 ---
 
-## Triton Kernel Optimization (CUDA)
+## Triton Kernel Optimization (CUDA) 🔥
 
 When running on CUDA with Triton installed, caramba automatically uses fused kernels for decoupled attention decode. This provides significant speedups for long sequences by:
 
 - Fusing dequantization + attention + softmax into single kernels
 - Using FlashAttention-style online softmax for memory efficiency
 - Supporting quantized KV caches (q4_0, q8_0, nf4)
+- Switching to split-K (2-pass) for very long prefixes when beneficial
+- Choosing launch parameters via a lightweight tuning heuristic
 
 ```python
 from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
@@ -717,17 +809,17 @@ logger.artifacts_summary({"model.pt": "/path/to/model.pt", "config.json": "/path
 
 ---
 
-## Testing
+## Testing 🧪
 
 ```bash
-# Run all tests
-python3 -m unittest discover -s caramba -p '*_test.py' -v
+# Run everything (repo-wide)
+python -m pytest -q
 
-# Run specific test module
-python3 -m unittest caramba.layer.attention_test -v
+# Run only caramba unit tests
+python -m pytest caramba -q
 
 # Run with coverage
-coverage run -m unittest discover -s caramba -p '*_test.py'
+coverage run -m pytest
 coverage report -m
 ```
 
@@ -764,16 +856,21 @@ caramba/
 ├── console/             # Logging utilities
 │   └── logger.py        # Rich-based logger
 ├── data/                # Dataset utilities
-│   └── npy.py           # NpyDataset for .npy files
+│   ├── auto.py          # build_token_dataset() (.npy or .tokens)
+│   ├── npy.py           # NpyDataset for .npy files (mmap)
+│   └── text_tokens.py   # TextTokensDataset for legacy .tokens files
 ├── eval/                # Behavioral evaluation
 │   ├── suite.py         # Eval runner
 │   └── tokenizer.py     # Tokenizer abstraction
 ├── experiment/          # Experiment orchestration
 │   └── runner.py        # ExperimentRunner
+├── instrumentation/     # RunLogger, HDF5, TensorBoard, W&B, live plots
 ├── infer/               # Inference utilities
 │   ├── context.py       # InferContext for KV cache
+│   ├── cache_plan.py    # Persist/reuse cache_kind auto decisions
 │   ├── generate.py      # Standard generation
-│   └── speculative.py   # Speculative decoding
+│   ├── speculative.py   # Speculative decoding (adaptive spec_k)
+│   └── token_view.py    # Thread-safe token buffer abstraction
 ├── layer/               # Layer implementations
 │   ├── attention.py     # Multi-head attention
 │   ├── dropout.py       # Dropout
@@ -797,6 +894,8 @@ caramba/
 │   ├── kernels_decoupled.py  # DBA-specific kernels
 │   ├── quantizer.py          # Quantization utilities
 │   └── triton_runtime.py     # Triton availability check
+├── runtime/             # Runtime planning/persistence helpers
+│   └── plan.py          # RuntimePlan caching (dtype/amp/compile/batch)
 ├── topology/            # Topology implementations
 │   ├── branching.py     # Branching topology
 │   ├── cyclic.py        # Cyclic topology
@@ -811,6 +910,8 @@ caramba/
     ├── compare.py       # Model comparison
     ├── distill.py       # Distillation training
     ├── distributed.py   # DDP/FSDP support
+    ├── fidelity.py      # Loss-based short-context quality gate
+    ├── scheduler.py     # LR scheduler utilities (linear/cosine/none)
     ├── trainer.py       # Base trainer
     └── upcycle.py       # Upcycle orchestration
 ```

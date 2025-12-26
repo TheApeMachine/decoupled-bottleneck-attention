@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from caramba.instrumentation.run_logger import RunLogger
 
 
-def test_run_logger_writes_jsonl(tmp_path) -> None:
+def test_run_logger_writes_jsonl(tmp_path: Path) -> None:
     rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
     rl.log_event(type="phase_start", run_id="r1", phase="blockwise", step=0, data={"x": 1})
     rl.log_metrics(run_id="r1", phase="blockwise", step=1, metrics={"loss": 0.1234})
@@ -26,7 +27,7 @@ def test_run_logger_writes_jsonl(tmp_path) -> None:
     assert ev1["data"]["metrics"]["loss"] == 0.1234
 
 
-def test_run_logger_best_effort_disabled(tmp_path) -> None:
+def test_run_logger_best_effort_disabled(tmp_path: Path) -> None:
     rl = RunLogger(tmp_path, enabled=False)
     rl.log_event(type="x", data={"a": 1})
     rl.close()

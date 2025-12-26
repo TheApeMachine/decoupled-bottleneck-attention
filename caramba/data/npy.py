@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import warnings
 from typing import cast
 
 import torch
@@ -97,11 +98,18 @@ class NpyDataset(Dataset[tuple[Tensor, Tensor]]):
         if not callable(reshape):
             raise TypeError("Expected numpy array to support .reshape(...)")
         arr = reshape(-1)
-        t = cast(Tensor, torch.from_numpy(arr)).to(dtype=torch.long)
 
-        # Note: we intentionally do NOT clone read-only memmaps.
-        # The dataset never mutates token storage, and cloning would defeat
-        # memory mapping for large corpora.
+        # Suppress PyTorch's warning about non-writable tensors. The warning is
+        # about potential undefined behavior if the tensor is written to, but
+        # this dataset is read-only (we only slice in __getitem__). Copying
+        # would defeat memory-mapping for datasets that don't fit in RAM.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*non-writable.*",
+                category=UserWarning,
+            )
+            t = cast(Tensor, torch.from_numpy(arr)).to(dtype=torch.long)
 
         if len(t) <= int(block_size):
             raise ValueError(
