@@ -7,6 +7,9 @@ core principles is self-optimization, auto-tuning, and auto-fitting.
 Commands:
 - compile: Parse → lower → validate a manifest without building
 - run: Full experiment pipeline (upcycle + benchmarks + artifacts)
+- paper: AI-assisted paper drafting from experiments
+- review: AI-assisted paper review with experiment proposals
+- research: Autonomous research loop (write → review → experiment → repeat)
 """
 from __future__ import annotations
 
@@ -29,6 +32,36 @@ class ExperimentCommand:
     group: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class PaperCommand:
+    """Command to draft/update a paper from a manifest."""
+
+    manifest: Manifest
+    manifest_path: Path
+    output_dir: Path | None
+    update: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewCommand:
+    """Command to review a paper and propose improvements."""
+
+    manifest: Manifest
+    manifest_path: Path
+    paper_dir: Path
+    strictness: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchCommand:
+    """Command to run the autonomous research loop."""
+
+    manifest: Manifest
+    manifest_path: Path
+    output_dir: Path | None
+    max_iterations: int
+
+
 class _Args(argparse.Namespace):
     """Typed namespace for CLI arguments."""
 
@@ -39,6 +72,21 @@ class _Args(argparse.Namespace):
     # Experiment command args
     experiment_manifest: Path | None = None
     group: str | None = None
+
+    # Paper command args
+    paper_manifest: Path | None = None
+    paper_output_dir: Path | None = None
+    paper_update: bool = False
+
+    # Review command args
+    review_manifest: Path | None = None
+    review_paper_dir: Path | None = None
+    review_strictness: str = "conference"
+
+    # Research loop command args
+    research_manifest: Path | None = None
+    research_output_dir: Path | None = None
+    research_max_iterations: int = 5
 
     entity: str | None = None
     project: str | None = None
@@ -113,6 +161,85 @@ class CLI(argparse.ArgumentParser):
             type=str,
             default=None,
             help="Group name to run. If not specified, runs the first group.",
+        )
+
+        # Paper command (AI-assisted paper drafting)
+        paper_parser = subparsers.add_parser(
+            "paper",
+            help="Draft or update a paper using AI from experiment manifest.",
+        )
+        _ = paper_parser.add_argument(
+            "paper_manifest",
+            type=Path,
+            metavar="manifest",
+            help="Manifest path (.json, .yml, or .yaml) with paper configuration.",
+        )
+        _ = paper_parser.add_argument(
+            "--output-dir",
+            type=Path,
+            default=None,
+            dest="paper_output_dir",
+            help="Output directory for paper files. Defaults to artifacts/{name}/paper/",
+        )
+        _ = paper_parser.add_argument(
+            "--update",
+            action="store_true",
+            default=False,
+            dest="paper_update",
+            help="Update existing paper with new experiment results.",
+        )
+
+        # Review command (AI-assisted paper review)
+        review_parser = subparsers.add_parser(
+            "review",
+            help="Review a paper using AI and propose improvements/experiments.",
+        )
+        _ = review_parser.add_argument(
+            "review_manifest",
+            type=Path,
+            metavar="manifest",
+            help="Manifest path (.json, .yml, or .yaml).",
+        )
+        _ = review_parser.add_argument(
+            "--paper-dir",
+            type=Path,
+            default=None,
+            dest="review_paper_dir",
+            help="Directory containing paper.tex. Defaults to artifacts/{name}/paper/",
+        )
+        _ = review_parser.add_argument(
+            "--strictness",
+            type=str,
+            default="conference",
+            dest="review_strictness",
+            choices=["workshop", "conference", "journal", "top_venue"],
+            help="Review strictness level.",
+        )
+
+        # Research loop command (autonomous research)
+        research_parser = subparsers.add_parser(
+            "research",
+            help="Run autonomous research loop: write → review → experiment → repeat.",
+        )
+        _ = research_parser.add_argument(
+            "research_manifest",
+            type=Path,
+            metavar="manifest",
+            help="Manifest path (.json, .yml, or .yaml) with paper configuration.",
+        )
+        _ = research_parser.add_argument(
+            "--output-dir",
+            type=Path,
+            default=None,
+            dest="research_output_dir",
+            help="Output directory for research artifacts.",
+        )
+        _ = research_parser.add_argument(
+            "--max-iterations",
+            type=int,
+            default=5,
+            dest="research_max_iterations",
+            help="Maximum research loop iterations (default: 5).",
         )
 
         # Legacy arguments for backward compatibility
@@ -239,7 +366,7 @@ class CLI(argparse.ArgumentParser):
         compiler.validator.validate_manifest(manifest)
         return manifest
 
-    def parse_command(self, argv: list[str] | None = None) -> Command | ExperimentCommand:
+    def parse_command(self, argv: list[str] | None = None) -> Command | ExperimentCommand | PaperCommand | ReviewCommand | ResearchCommand:
         """Parse CLI arguments into a typed command payload."""
         args = self.parse_args(argv, namespace=_Args())
 
@@ -259,6 +386,53 @@ class CLI(argparse.ArgumentParser):
                 return ExperimentCommand(
                     manifest=manifest,
                     group=args.group,
+                )
+            case "paper":
+                if args.paper_manifest is None:
+                    raise ValueError("paper requires a manifest path.")
+                manifest = self._load_and_validate_manifest(args.paper_manifest)
+                if manifest.paper is None:
+                    raise ValueError(
+                        "Manifest does not have a 'paper' section. "
+                        "Add paper configuration to enable AI-assisted drafting."
+                    )
+                return PaperCommand(
+                    manifest=manifest,
+                    manifest_path=args.paper_manifest,
+                    output_dir=args.paper_output_dir,
+                    update=args.paper_update,
+                )
+            case "review":
+                if args.review_manifest is None:
+                    raise ValueError("review requires a manifest path.")
+                manifest = self._load_and_validate_manifest(args.review_manifest)
+
+                # Determine paper directory
+                if args.review_paper_dir:
+                    paper_dir = args.review_paper_dir
+                else:
+                    paper_dir = Path("artifacts") / (manifest.name or "experiment") / "paper"
+
+                return ReviewCommand(
+                    manifest=manifest,
+                    manifest_path=args.review_manifest,
+                    paper_dir=paper_dir,
+                    strictness=args.review_strictness,
+                )
+            case "research":
+                if args.research_manifest is None:
+                    raise ValueError("research requires a manifest path.")
+                manifest = self._load_and_validate_manifest(args.research_manifest)
+                if manifest.paper is None:
+                    raise ValueError(
+                        "Manifest does not have a 'paper' section. "
+                        "Add paper configuration to enable the research loop."
+                    )
+                return ResearchCommand(
+                    manifest=manifest,
+                    manifest_path=args.research_manifest,
+                    output_dir=args.research_output_dir,
+                    max_iterations=args.research_max_iterations,
                 )
             case None:
                 manifest = self._parse_run_manifest(args)
@@ -289,11 +463,19 @@ class CLI(argparse.ArgumentParser):
                 return c.manifest
             case ExperimentCommand() as c:
                 return c.manifest
+            case PaperCommand() as c:
+                return c.manifest
+            case ReviewCommand() as c:
+                return c.manifest
+            case ResearchCommand() as c:
+                return c.manifest
             case CompileCommand():
                 raise ValueError(
                     "compile is not supported via CLI.parse(); use `caramba compile` "
                     "via the console script entrypoint."
                 )
+            case _:
+                raise ValueError(f"Unsupported command for parse(): {command}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -323,6 +505,114 @@ def main(argv: list[str] | None = None) -> int:
                 logger.success("Experiment complete!")
                 logger.artifacts_summary(artifacts)
                 return 0
+
+            case PaperCommand() as cmd:
+                from caramba.paper import PaperDrafter
+
+                paper_config = cmd.manifest.paper
+                if paper_config is None:
+                    logger.error("No paper configuration found in manifest")
+                    return 1
+
+                logger.header("Paper Drafter", paper_config.title)
+
+                # Determine output directory
+                if cmd.output_dir:
+                    output_dir = cmd.output_dir
+                else:
+                    output_dir = Path("artifacts") / (cmd.manifest.name or "experiment") / paper_config.output_dir
+
+                drafter = PaperDrafter(paper_config, output_dir)
+                paper_path = drafter.draft_sync(
+                    manifest=cmd.manifest,
+                    manifest_path=cmd.manifest_path,
+                )
+
+                logger.success(f"Paper drafted: {paper_path}")
+                logger.key_value({
+                    "Output": str(paper_path),
+                    "References": str(paper_path.parent / "references.bib"),
+                })
+                return 0
+
+            case ReviewCommand() as cmd:
+                from caramba.paper import PaperReviewer, ReviewConfig
+
+                # Build review config
+                review_config = cmd.manifest.review or ReviewConfig()
+                review_config = ReviewConfig(
+                    **{**review_config.model_dump(), "strictness": cmd.strictness}
+                )
+
+                logger.header("Paper Reviewer", f"Reviewing paper in {cmd.paper_dir}")
+
+                reviewer = PaperReviewer(review_config, cmd.paper_dir)
+                result = reviewer.review_sync(
+                    manifest=cmd.manifest,
+                    manifest_path=cmd.manifest_path,
+                )
+
+                logger.success("Review complete!")
+                logger.key_value({
+                    "Score": f"{result.overall_score:.1f}/10",
+                    "Recommendation": result.recommendation.value,
+                    "Strengths": len(result.strengths),
+                    "Weaknesses": len(result.weaknesses),
+                    "Proposed experiments": len(result.proposed_experiments),
+                })
+
+                if result.proposed_experiments:
+                    logger.info("Proposed experiments:")
+                    for exp in result.proposed_experiments:
+                        logger.info(f"  - {exp.name}: {exp.rationale[:60]}...")
+
+                return 0
+
+            case ResearchCommand() as cmd:
+                from caramba.paper import ResearchLoop, ResearchLoopConfig
+
+                paper_config = cmd.manifest.paper
+                if paper_config is None:
+                    logger.error("No paper configuration found in manifest")
+                    return 1
+
+                review_config = cmd.manifest.review
+
+                logger.header("Research Loop", f"🔄 {paper_config.title}")
+
+                loop_config = ResearchLoopConfig(max_iterations=cmd.max_iterations)
+
+                # Determine output directory
+                if cmd.output_dir:
+                    output_dir = cmd.output_dir
+                else:
+                    output_dir = Path("artifacts") / (cmd.manifest.name or "experiment") / paper_config.output_dir
+
+                loop = ResearchLoop(
+                    paper_config=paper_config,
+                    review_config=review_config,
+                    loop_config=loop_config,
+                    output_dir=output_dir,
+                )
+
+                result = loop.run_sync(
+                    manifest=cmd.manifest,
+                    manifest_path=cmd.manifest_path,
+                )
+
+                if result.success:
+                    logger.success(f"🎉 Research loop completed successfully!")
+                else:
+                    logger.warning(f"Research loop ended: {result.message}")
+
+                logger.key_value({
+                    "Iterations": len(result.iterations),
+                    "Final score": f"{result.final_score:.1f}/10" if result.final_score else "N/A",
+                    "Experiments run": result.total_experiments_run,
+                    "Output": str(result.paper_path) if result.paper_path else "N/A",
+                })
+
+                return 0 if result.success else 1
 
             case RunCommand() as cmd:
                 # Legacy run behavior

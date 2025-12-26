@@ -24,3 +24,12 @@ def test_model_config_optimize_scales_common_transformer() -> None:
     assert isinstance(opt.embedder, TokenEmbedderConfig)
     assert opt.embedder.d_model % 64 == 0
     assert opt.topology.repeat >= 4
+    # Verify the optimized config's total parameter count is close to target
+    param_count_fn = getattr(opt, "parameter_count", None)
+    if callable(param_count_fn) and cfg.target_params is not None:
+        total_params: int = param_count_fn()  # type: ignore[assignment]
+        target = cfg.target_params
+        tolerance = 0.1  # 10% tolerance
+        assert abs(total_params - target) / target < tolerance, (
+            f"Optimized param count {total_params} not within {tolerance*100}% of target {target}"
+        )

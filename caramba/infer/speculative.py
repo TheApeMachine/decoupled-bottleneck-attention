@@ -239,18 +239,18 @@ class SpeculativeGenerator:
         """
 
         cfg = self.config
-        if not bool(getattr(cfg, "spec_k_adaptive", False)):
+        if not cfg.spec_k_adaptive:
             return
-        interval = max(1, int(getattr(cfg, "spec_k_adjust_interval", 32)))
+        interval = max(1, int(cfg.spec_k_adjust_interval))
         if self._propose_total < interval:
             return
         if (self._propose_total - self._last_k_adjust_at) < interval:
             return
 
-        target = float(getattr(cfg, "spec_k_target_accept", 0.7))
-        step = max(1, int(getattr(cfg, "spec_k_step", 1)))
-        k_min = max(1, int(getattr(cfg, "spec_k_min", 1)))
-        k_max = max(k_min, int(getattr(cfg, "spec_k_max", 16)))
+        target = float(cfg.spec_k_target_accept)
+        step = max(1, int(cfg.spec_k_step))
+        k_min = max(1, int(cfg.spec_k_min))
+        k_max = max(k_min, int(cfg.spec_k_max))
         r = float(self.acceptance_rate)
 
         # Deadband to avoid oscillation.

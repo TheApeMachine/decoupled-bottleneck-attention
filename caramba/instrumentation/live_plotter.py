@@ -83,7 +83,12 @@ class LivePlotter:
             ax.clear()
             ax.set_title(str(self.title))
             for name, ys in self._series.items():
-                xs = self._steps[-len(ys) :]
+                # Invariant: every update must append to all series and _steps together.
+                # If series lengths diverge, align by taking the last len(ys) steps.
+                if len(ys) > len(self._steps):
+                    # Should not happen; truncate series to match steps.
+                    ys = ys[-len(self._steps):]
+                xs = self._steps[-len(ys):]
                 ax.plot(xs, ys, label=name)
             try:
                 ax.legend()

@@ -16,7 +16,9 @@ from caramba.config import PositiveInt
 from caramba.config.defaults import Defaults
 from caramba.config.group import Group
 from caramba.config.model import ModelConfig
+from caramba.config.paper import PaperConfig
 from caramba.config.resolve import Resolver, normalize_type_names
+from caramba.paper.review import ReviewConfig
 
 
 class Manifest(BaseModel):
@@ -24,6 +26,8 @@ class Manifest(BaseModel):
 
     Contains model architecture, training runs, and benchmark definitions.
     Variable substitution allows reusing common values throughout the config.
+
+    Optionally includes paper configuration for AI-assisted paper drafting.
     """
 
     version: PositiveInt
@@ -32,6 +36,8 @@ class Manifest(BaseModel):
     defaults: Defaults
     model: ModelConfig
     groups: list[Group]
+    paper: PaperConfig | None = None
+    review: ReviewConfig | None = None
 
     @classmethod
     def from_path(cls, path: Path) -> "Manifest":

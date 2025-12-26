@@ -55,12 +55,15 @@ def _to_numpy(x: object) -> object:
     # torch.Tensor: has detach/cpu/numpy
     try:
         detach = getattr(x, "detach", None)
-        cpu = getattr(x, "cpu", None)
-        if callable(detach) and callable(cpu):
-            x2 = cpu(detach(x))
-            numpy_fn = getattr(x2, "numpy", None)
-            if callable(numpy_fn):
-                return numpy_fn()
+        if callable(detach):
+            # Call methods on the tensor in correct order: x.detach().cpu().numpy()
+            x_detached = detach()
+            cpu_fn = getattr(x_detached, "cpu", None)
+            if callable(cpu_fn):
+                x_cpu = cpu_fn()
+                numpy_fn = getattr(x_cpu, "numpy", None)
+                if callable(numpy_fn):
+                    return numpy_fn()
     except Exception:
         pass
 

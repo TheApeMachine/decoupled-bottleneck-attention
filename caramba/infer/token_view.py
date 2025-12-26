@@ -33,7 +33,11 @@ class TokenView:
 
     @staticmethod
     def allocate(*, batch_size: int, max_len: int, device: torch.device, dtype: torch.dtype) -> "TokenView":
-        """Allocate a zero-initialized token buffer."""
+        """Allocate an uninitialized token buffer.
+
+        Note: The buffer is uninitialized (torch.empty). Only positions up to
+        the current logical length are valid; unused capacity contains garbage.
+        """
         buf = torch.empty((int(batch_size), int(max_len)), device=device, dtype=dtype)
         return TokenView(_buf=buf, _length=0, _lock=threading.Lock())
 

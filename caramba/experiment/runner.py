@@ -5,9 +5,11 @@ The ExperimentRunner coordinates all phases of an experiment:
 2. Run training (upcycling with distillation)
 3. Run benchmarks comparing teacher and student
 4. Generate artifacts for analysis and publication
+5. (Optional) Draft/update paper with AI agent
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -83,6 +85,12 @@ class ExperimentRunner:
         artifacts: dict[str, Path] = {}
         if group.benchmarks:
             artifacts = self._run_benchmarks(group, upcycle)
+
+        # Draft/update paper if configured
+        if self.manifest.paper and self.manifest.paper.enabled:
+            paper_path = self._run_paper_drafter(group, artifacts)
+            if paper_path:
+                artifacts["paper.tex"] = paper_path
 
         logger.success(f"Experiment complete • {len(artifacts)} artifacts generated")
         return artifacts
@@ -160,6 +168,104 @@ class ExperimentRunner:
         # Run benchmarks
         runner = BenchmarkRunner(suite, upcycle.device, metadata)
         return runner.run(upcycle.teacher, upcycle.student)
+
+    def _run_paper_drafter(
+        self,
+        group: Group,
+        artifacts: dict[str, Path],
+    ) -> Path | None:
+        """Run the AI paper drafter to generate/update paper draft.
+
+        Args:
+            group: The experiment group that was run.
+            artifacts: Dict of generated artifact paths.
+
+        Returns:
+            Path to the generated paper.tex, or None if drafting failed.
+        """
+        if not self.manifest.paper:
+            return None
+
+        try:
+            from caramba.paper import PaperDrafter
+
+            logger.header("Paper Drafter", self.manifest.paper.title)
+
+            # Build experiment results summary
+            experiment_results = self._build_experiment_results(group, artifacts)
+
+            # Determine output directory
+            base_dir = Path(f"artifacts/{self.manifest.name or 'experiment'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            output_dir = base_dir / self.manifest.paper.output_dir
+
+            # Create and run the drafter
+            drafter = PaperDrafter(self.manifest.paper, output_dir)
+            paper_path = drafter.draft_sync(
+                manifest=self.manifest,
+                experiment_results=experiment_results,
+                artifacts=artifacts,
+            )
+
+            logger.success(f"Paper drafted: {paper_path}")
+            return paper_path
+
+        except Exception as e:
+            logger.error(f"Paper drafting failed: {e}")
+            return None
+
+    def _build_experiment_results(
+        self,
+        group: Group,
+        artifacts: dict[str, Path],
+    ) -> dict:
+        """Build a summary of experiment results for the paper drafter.
+
+        Args:
+            group: The experiment group.
+            artifacts: Generated artifacts.
+
+        Returns:
+            Dict containing experiment summary data.
+        """
+        results = {
+            "experiment_name": self.manifest.name,
+            "group_name": group.name,
+            "group_description": group.description,
+            "notes": self.manifest.notes,
+            "runs": [],
+            "artifacts": {name: str(path) for name, path in artifacts.items()},
+        }
+
+        # Add run information
+        for run in group.runs:
+            run_info = {
+                "id": run.id,
+                "mode": run.mode,
+                "seed": run.seed,
+                "steps": run.steps,
+            }
+            if run.train:
+                run_info["train"] = {
+                    "phase": run.train.phase.value if run.train.phase else None,
+                    "batch_size": run.train.batch_size,
+                    "block_size": run.train.block_size,
+                    "lr": run.train.lr,
+                    "device": run.train.device,
+                }
+            results["runs"].append(run_info)
+
+        # Try to load report.json if it exists
+        for name, path in artifacts.items():
+            if name == "report.json" and path.exists():
+                try:
+                    with open(path) as f:
+                        report = json.load(f)
+                        results["benchmark_summary"] = report.get("summary", {})
+                        results["metadata"] = report.get("metadata", {})
+                except Exception:
+                    pass
+
+        return results
 
 
 def run_experiment(

@@ -9,6 +9,7 @@ attention layers and generates tokens autoregressively. It handles:
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -20,7 +21,6 @@ from caramba.cache.decoupled import DecoupledLayerKVCache
 from caramba.cache.layer import LayerKVCache
 from caramba.config.kvcache import KVCacheKind, KVCacheTensorConfig
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
-import time
 
 from caramba.infer.cache_policy import (
     estimate_kvcache_bytes,
@@ -239,9 +239,16 @@ def _resolve_cache_kind(
         except Exception:
             continue
 
-        # Random prompt; assumes vocab >= 1000 (good enough for benchmarking).
+        # Random prompt using model's vocab size if available, otherwise fallback to 1000.
+        vocab_size = getattr(model, "vocab_size", None)
+        if vocab_size is None:
+            config_attr = getattr(model, "config", None)
+            if config_attr is not None:
+                vocab_size = getattr(config_attr, "vocab_size", None)
+        if vocab_size is None or vocab_size < 1:
+            vocab_size = 1000  # Safe fallback
         input_ids = torch.randint(
-            0, 1000, (batch_size, prompt_len), dtype=torch.long, device=bench_device
+            0, int(vocab_size), (batch_size, prompt_len), dtype=torch.long, device=bench_device
         )
         t0 = time.perf_counter()
         try:

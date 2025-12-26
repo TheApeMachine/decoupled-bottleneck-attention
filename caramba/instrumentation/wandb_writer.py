@@ -122,10 +122,12 @@ class WandBWriter:
     group: str | None = None
     tags: list[str] | None = None
     config: object | None = None
+    max_consecutive_failures: int = 3
 
     def __post_init__(self) -> None:
         self.out_dir = Path(self.out_dir)
         self.run: _WandbRun | None = None
+        self._consecutive_failures: int = 0
 
         if not self.enabled:
             return
@@ -184,8 +186,18 @@ class WandBWriter:
         try:
             payload = {f"{prefix}/{k}": float(v) for k, v in scalars.items()}
             self.run.log(payload, step=int(step))
-        except Exception:
-            self.enabled = False
+            # Reset failure counter on success.
+            self._consecutive_failures = 0
+        except Exception as e:
+            self._consecutive_failures += 1
+            # Log the failure details (best-effort, to stderr).
+            try:
+                print(f"[wandb] log failure ({self._consecutive_failures}/{self.max_consecutive_failures}): {e}", file=sys.stderr)
+            except Exception:
+                pass
+            # Only disable after exceeding the threshold.
+            if self._consecutive_failures >= self.max_consecutive_failures:
+                self.enabled = False
 
     def close(self) -> None:
         """Finish the W&B run."""

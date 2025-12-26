@@ -596,8 +596,6 @@ class TestAttentionWithCache(unittest.TestCase):
     def test_ctx_overrides_q_chunk_and_local_window(self) -> None:
         """InferContext can override q_chunk/local_window for long prefixes."""
         from caramba.infer.context import InferContext
-        from caramba.cache.layer import LayerKVCache
-        from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
 
         cfg = AttentionLayerConfig(d_model=self.d_model, n_heads=self.n_heads, is_causal=True)
         layer = AttentionLayer(cfg)

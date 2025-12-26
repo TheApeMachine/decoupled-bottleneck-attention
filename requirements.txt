@@ -14,3 +14,4 @@ huggingface_hub
 safetensors
 tensordict
 pytest
+openai-agents

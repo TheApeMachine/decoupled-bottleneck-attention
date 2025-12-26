@@ -168,6 +168,10 @@ class AttentionLayer(nn.Module):
         if mb <= 0:
             return k, v, k_pos
 
+        # Guard for empty k tensor.
+        if k.size(2) == 0:
+            return k, v, k_pos
+
         threshold = getattr(self.config, "mem_activation_threshold", None)
         if threshold is not None and int(k.size(2)) < int(threshold):
             return k, v, k_pos
@@ -842,19 +846,27 @@ class AttentionLayer(nn.Module):
                 # Fallback: recompute geometric block means to match.
                 # k_pos already corresponds to the summarized sequence.
                 # Keep last local_window tokens intact.
-                local_window = getattr(self.config, "local_window", None)
-                lw = int(local_window) if local_window is not None else 0
+                cfg_local_window = getattr(self.config, "local_window", None)
                 Tgeo = int(k_slice_geo.size(2))
-                if lw > 0 and lw < Tgeo and getattr(self.config, "mem_block", None) is not None:
-                    remote_len = Tgeo - lw
-                    mb = int(getattr(self.config, "mem_block"))
+                Tsem = int(k_slice_sem.size(2))
+                # Ensure lw is bounded by actual tensor sizes.
+                lw = int(cfg_local_window) if cfg_local_window is not None else 0
+                lw = min(lw, Tgeo, Tsem)
+                mem_block_val = getattr(self.config, "mem_block", None)
+                if lw > 0 and lw < Tgeo and mem_block_val is not None:
+                    remote_len = max(0, Tgeo - lw)
+                    mb = int(mem_block_val)
                     blocks: list[Tensor] = []
                     for j0 in range(0, remote_len, mb):
                         j1 = min(remote_len, j0 + mb)
                         blocks.append(k_slice_geo[:, :, j0:j1, :].mean(dim=2))
-                    k_mem_geo = torch.stack(blocks, dim=2)
-                    k_local_geo = k_slice_geo[:, :, remote_len:, :]
-                    k_slice_geo = torch.cat([k_mem_geo, k_local_geo], dim=2)
+                    if blocks:
+                        k_mem_geo = torch.stack(blocks, dim=2)
+                        k_local_geo = k_slice_geo[:, :, remote_len:, :]
+                        k_slice_geo = torch.cat([k_mem_geo, k_local_geo], dim=2)
+                    else:
+                        # No blocks to stack; use local portion only.
+                        k_slice_geo = k_slice_geo[:, :, remote_len:, :]
 
             sem_scores = torch.matmul(q_slice_sem, k_slice_sem.transpose(-2, -1)) * sem_scale
             geo_scores = torch.matmul(q_slice_geo, k_slice_geo.transpose(-2, -1)) * geo_scale

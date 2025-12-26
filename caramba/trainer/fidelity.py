@@ -125,7 +125,9 @@ def compute_short_context_fidelity(
     teacher_nll = teacher_sum / float(total_tokens)
     student_nll = student_sum / float(total_tokens)
     delta_nll = student_nll - teacher_nll
-    ppl_ratio = math.exp(delta_nll)
+    # Guard against overflow in math.exp by clamping delta_nll to a safe range.
+    clamped_delta = max(-700.0, min(700.0, delta_nll))
+    ppl_ratio = math.exp(clamped_delta)
 
     return FidelityResult(
         teacher_nll=float(teacher_nll),

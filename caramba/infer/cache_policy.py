@@ -90,7 +90,10 @@ def estimate_kvcache_bytes(
 
     total = 0
     configs: list[AttentionLayerConfig] = []
-    for m in getattr(model, "modules")():  # type: ignore[misc]
+    modules_fn = getattr(model, "modules", None)
+    if modules_fn is None or not callable(modules_fn):
+        return 0
+    for m in modules_fn():  # type: ignore[union-attr]
         if isinstance(m, AttentionLayer):
             configs.append(m.config)
 
@@ -156,7 +159,10 @@ def _create_caches_for_kind(
 ) -> list[LayerKVCache | DecoupledLayerKVCache]:
     tensor_cfg = KVCacheTensorConfig(kind=kind, qblock=int(qblock), residual_len=int(residual_len))
     caches: list[LayerKVCache | DecoupledLayerKVCache] = []
-    for m in getattr(model, "modules")():  # type: ignore[misc]
+    modules_fn = getattr(model, "modules", None)
+    if modules_fn is None or not callable(modules_fn):
+        return caches
+    for m in modules_fn():  # type: ignore[union-attr]
         if not isinstance(m, AttentionLayer):
             continue
         cfg = m.config
@@ -390,33 +396,8 @@ def choose_cache_kind(
         )
 
     budget_bytes = float(budget_mb) * 1024.0 * 1024.0
-    best: CachePolicyChoice | None = None
-    for k in candidates[::-1]:
-        est = estimate_kvcache_bytes(
-            model=model,
-            batch_size=batch_size,
-            max_seq_len=max_seq_len,
-            kind=k,
-            qblock=qblock,
-            residual_len=residual_len,
-        )
-        if float(est) <= budget_bytes:
-            best = CachePolicyChoice(kind=k, estimated_bytes=int(est))
-            # keep searching higher-quality by iterating reversed? we'll just break later
-    if best is None:
-        # Nothing fits; choose most compressed.
-        k = KVCacheKind.Q4_0
-        est = estimate_kvcache_bytes(
-            model=model,
-            batch_size=batch_size,
-            max_seq_len=max_seq_len,
-            kind=k,
-            qblock=qblock,
-            residual_len=residual_len,
-        )
-        return CachePolicyChoice(kind=k, estimated_bytes=int(est))
 
-    # Find the highest-quality candidate that fits.
+    # Find the highest-quality candidate that fits (candidates are ordered high to low quality).
     for k in candidates:
         est = estimate_kvcache_bytes(
             model=model,
@@ -428,5 +409,16 @@ def choose_cache_kind(
         )
         if float(est) <= budget_bytes:
             return CachePolicyChoice(kind=k, estimated_bytes=int(est))
-    return best
+
+    # Nothing fits; fall back to the most compressed kind.
+    fallback_kind = KVCacheKind.Q4_0
+    est = estimate_kvcache_bytes(
+        model=model,
+        batch_size=batch_size,
+        max_seq_len=max_seq_len,
+        kind=fallback_kind,
+        qblock=qblock,
+        residual_len=residual_len,
+    )
+    return CachePolicyChoice(kind=fallback_kind, estimated_bytes=int(est))
 

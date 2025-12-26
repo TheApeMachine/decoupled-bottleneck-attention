@@ -67,7 +67,11 @@ class TransformerTest(unittest.TestCase):
         topo = transformer.topology
         if hasattr(topo, "activation_checkpointing"):
             setattr(topo, "activation_checkpointing", True)
-            setattr(topo, "activation_checkpoint_threshold_mb", 0.0)
+            # Use a small positive threshold so >0 checks pass.
+            setattr(topo, "activation_checkpoint_threshold_mb", 0.1)
         x = torch.randn(1, 8, 32, requires_grad=True)
         y = transformer(x)
         self.assertEqual(y.shape, (1, 8, 32))
+        # Perform a backward pass to confirm autograd works with checkpointing.
+        y.sum().backward()
+        self.assertIsNotNone(x.grad, "Input should have gradients after backward pass")

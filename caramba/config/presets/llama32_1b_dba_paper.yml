@@ -1,0 +1,269 @@
+# ============================================================================
+# Llama 3.2 1B → DBA Upcycle Experiment with Paper Drafting
+# ============================================================================
+# This manifest includes AI-assisted paper drafting. After running the
+# experiment, an AI agent will automatically draft or update a LaTeX paper
+# with the results.
+#
+# Usage:
+#   caramba run caramba/config/presets/llama32_1b_dba_paper.yml --group paper
+#
+# Or just draft the paper:
+#   caramba paper caramba/config/presets/llama32_1b_dba_paper.yml
+# ============================================================================
+
+version: 1
+name: llama32_1b_dba_paper
+notes: "Llama 3.2 1B with Decoupled Bottleneck Attention - with paper drafting."
+
+vars:
+  # Model architecture (matches Llama 3.2 1B)
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  head_dim: 64
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+
+  # DBA configuration - aggressive compression
+  sem_dim: 128
+  geo_dim: 256
+
+  # Training parameters
+  batch_size: 1
+  block_size: 2048
+  blockwise_steps: 500
+  global_steps: 2000
+  blockwise_lr: 0.0001
+  global_lr: 0.00005
+
+defaults:
+  tokenizer: llama
+  val_frac: 0.05
+  instrument: rich
+  wandb: true
+  wandb_project: "dba-upcycle"
+  wandb_entity: ""
+  wandb_mode: online
+  eval_iters: 50
+  save_every: 500
+
+# ============================================================================
+# Paper Configuration - AI-Assisted Drafting
+# ============================================================================
+paper:
+  enabled: true
+  title: "Decoupled Bottleneck Attention: Efficient KV-Cache Compression via Attention Surgery"
+  authors:
+    - "Your Name"
+    - "Collaborator Name"
+  paper_type: paper
+
+  # Sections to include
+  sections:
+    - abstract
+    - introduction
+    - related_work
+    - methodology
+    - experiments
+    - results
+    - discussion
+    - conclusion
+
+  # Citation configuration
+  citations:
+    enabled: true
+    max_citations: 25
+    sources:
+      - arxiv
+      - semantic_scholar
+    prefer_recent: true
+    recent_years: 3
+
+  # Keywords for citation search
+  keywords:
+    - attention mechanism
+    - KV-cache compression
+    - transformer efficiency
+    - model distillation
+    - grouped query attention
+    - multi-query attention
+    - long context modeling
+    - memory efficient transformers
+
+  # Model settings
+  model: gpt-5.2
+  temperature: 0.7
+
+  # Versioning
+  auto_version: true
+  max_versions: 5
+
+  # Custom instructions for the agent
+  custom_instructions: |
+    Focus on the following key contributions:
+    1. The "attention surgery" approach for converting trained models
+    2. The decoupled semantic/geometric bottleneck design
+    3. The significant KV-cache memory reduction with minimal quality loss
+    4. The distillation training procedure for recovering accuracy
+
+    Use proper mathematical notation for attention mechanisms.
+    Include comparisons to GQA, MQA, and standard multi-head attention.
+
+# ============================================================================
+# Review Configuration - AI Paper Review
+# ============================================================================
+review:
+  enabled: true
+  strictness: conference
+
+  # What to check
+  check_methodology: true
+  check_experiments: true
+  check_results: true
+  check_writing: true
+  check_citations: true
+
+  # Thresholds
+  min_score_to_approve: 7.0
+
+  # Experiment generation
+  auto_generate_experiments: true
+  max_proposed_experiments: 3
+
+  # Reviewer persona
+  reviewer_persona: senior_researcher
+
+  # Model settings
+  model: gpt-5.2
+  temperature: 0.3
+
+  # Custom review instructions
+  custom_instructions: |
+    Pay special attention to:
+    - Comparisons with GQA/MQA baselines
+    - Memory vs quality trade-off analysis
+    - Scalability to longer contexts
+    - Ablation of semantic vs geometric bottleneck dimensions
+
+model:
+  type: TransformerModel
+  tied_embeddings: false
+  embedder:
+    type: token
+    vocab_size: "${vocab_size}"
+    d_model: "${d_model}"
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: "${n_layers}"
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: "${d_model}"
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: "${d_model}"
+                n_heads: "${n_heads}"
+                n_kv_heads: "${n_kv_heads}"
+                mode: decoupled
+                sem_dim: "${sem_dim}"
+                geo_dim: "${geo_dim}"
+                rope_enabled: true
+                rope_base: "${rope_theta}"
+                is_causal: true
+                dropout_p: 0.0
+                decoupled_gate: true
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: "${d_model}"
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: "${d_model}"
+                d_ff: "${d_ff}"
+                bias: false
+      - type: RMSNormLayer
+        d_model: "${d_model}"
+        eps: 1e-5
+      - type: LinearLayer
+        d_in: "${d_model}"
+        d_out: "${vocab_size}"
+        bias: false
+
+groups:
+  # ============================================================================
+  # Paper Experiment Group
+  # ============================================================================
+  - name: paper
+    description: "Full DBA upcycle pipeline with paper drafting."
+    data: "fineweb_100m.npy"
+    runs:
+      - id: blockwise
+        mode: train
+        exp: dba_blockwise
+        seed: 42
+        steps: "${blockwise_steps}"
+        expected:
+          phase: blockwise
+        train:
+          phase: blockwise
+          batch_size: "${batch_size}"
+          block_size: "${block_size}"
+          lr: "${blockwise_lr}"
+          device: mps
+          dtype: float32
+          teacher_ckpt: "hf://meta-llama/Llama-3.2-1B"
+
+      - id: finetune
+        mode: train
+        exp: dba_finetune
+        seed: 42
+        steps: "${global_steps}"
+        expected:
+          phase: global
+        train:
+          phase: global
+          batch_size: "${batch_size}"
+          block_size: "${block_size}"
+          lr: "${global_lr}"
+          device: mps
+          dtype: float32
+
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: "fineweb_100m.npy"
+          block_size: 2048
+          batch_size: 1
+          num_batches: 100
+        models: ["teacher", "student"]
+        repeats: 1
+
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: [128, 512, 1024, 2048]
+          generation_lengths: [64, 128, 256]
+          batch_sizes: [1]
+          warmup_runs: 3
+          timed_runs: 10
+          use_cache: true
+        models: ["teacher", "student"]
+        repeats: 1
+
+      - id: memory
+        config:
+          type: memory
+          sequence_lengths: [512, 1024, 2048, 4096]
+          batch_sizes: [1]
+          measure_peak: true
+          measure_kvcache: true
+          quantization_modes: ["fp16", "q8", "q4"]
+        models: ["teacher", "student"]
+        repeats: 1

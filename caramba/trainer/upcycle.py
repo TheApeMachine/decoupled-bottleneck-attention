@@ -1336,39 +1336,11 @@ class Upcycle:
                         dtype=amp_dtype,
                         enabled=autocast_enabled,
                     ):
-                        if has_diffusion:
-                            result = self.student.forward(x, return_features=True)  # type: ignore[call-arg]
-                            features: Tensor = result[0]  # type: ignore[index]
-                            logits: Tensor = result[1]  # type: ignore[index]
-                            ce_loss = F.cross_entropy(
-                                logits.view(-1, logits.shape[-1]), y.reshape(-1)
-                            )
-                            diff_loss_val: Tensor = self.student.diffusion_loss(features, y)  # type: ignore[attr-defined]
-                            diff_loss = diff_loss_val
-                            diff_weight = self._get_diffusion_loss_weight()
-                            loss = ce_loss + diff_weight * diff_loss_val
-                        else:
-                            logits = self.student.forward(x)
-                            ce_loss = F.cross_entropy(
-                                logits.view(-1, logits.shape[-1]), y.reshape(-1)
-                            )
-                            loss = ce_loss
+                        loss, ce_loss, diff_loss = self._compute_loss(x, y, has_diffusion)
                 except TypeError:
                     # Older torch versions: fallback to no autocast.
                     autocast_enabled = False
-                    if has_diffusion:
-                        result = self.student.forward(x, return_features=True)  # type: ignore[call-arg]
-                        features: Tensor = result[0]  # type: ignore[index]
-                        logits: Tensor = result[1]  # type: ignore[index]
-                        ce_loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.reshape(-1))
-                        diff_loss_val = self.student.diffusion_loss(features, y)  # type: ignore[attr-defined]
-                        diff_loss = diff_loss_val
-                        diff_weight = self._get_diffusion_loss_weight()
-                        loss = ce_loss + diff_weight * diff_loss_val
-                    else:
-                        logits = self.student.forward(x)
-                        ce_loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.reshape(-1))
-                        loss = ce_loss
+                    loss, ce_loss, diff_loss = self._compute_loss(x, y, has_diffusion)
 
                 if scaler is not None and autocast_enabled:
                     scaler.scale(loss).backward()
@@ -1615,6 +1587,32 @@ class Upcycle:
             return float(self.student.config.diffusion_head.loss_weight)  # type: ignore[union-attr]
         except (AttributeError, TypeError, ValueError):
             return 0.10
+
+    def _compute_loss(
+        self, x: Tensor, y: Tensor, has_diffusion: bool
+    ) -> tuple[Tensor, Tensor, Tensor | None]:
+        """Compute forward pass and loss.
+
+        Returns:
+            (total_loss, ce_loss, diff_loss) where diff_loss is None if not using diffusion.
+        """
+        if has_diffusion:
+            result = self.student.forward(x, return_features=True)  # type: ignore[call-arg]
+            features: Tensor = result[0]  # type: ignore[index]
+            logits: Tensor = result[1]  # type: ignore[index]
+            ce_loss = F.cross_entropy(
+                logits.view(-1, logits.shape[-1]), y.reshape(-1)
+            )
+            diff_loss_val: Tensor = self.student.diffusion_loss(features, y)  # type: ignore[attr-defined]
+            diff_weight = self._get_diffusion_loss_weight()
+            loss = ce_loss + diff_weight * diff_loss_val
+            return loss, ce_loss, diff_loss_val
+        else:
+            logits = self.student.forward(x)
+            ce_loss = F.cross_entropy(
+                logits.view(-1, logits.shape[-1]), y.reshape(-1)
+            )
+            return ce_loss, ce_loss, None
 
     def _build_blockwise_config(self, train: TrainConfig) -> BlockwiseConfig:
         """Create BlockwiseConfig from training settings.

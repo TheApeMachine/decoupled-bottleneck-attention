@@ -23,6 +23,13 @@ def test_plan_roundtrip(tmp_path: Path) -> None:
     save_plan(path, plan, payload=payload)
     loaded = load_plan(path)
     assert loaded is not None
-    assert loaded.key == key
-    assert loaded.dtype == "float32"
-    assert loaded.batch_size == 4
+    # Assert all fields are correctly serialized/deserialized.
+    assert loaded.key == plan.key
+    assert loaded.device == plan.device
+    assert loaded.torch_version == plan.torch_version
+    assert loaded.dtype == plan.dtype
+    assert loaded.use_amp == plan.use_amp
+    assert loaded.amp_dtype == plan.amp_dtype
+    assert loaded.batch_size == plan.batch_size
+    assert loaded.compile == plan.compile
+    assert loaded.compile_mode == plan.compile_mode

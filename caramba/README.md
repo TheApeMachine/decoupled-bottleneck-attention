@@ -88,6 +88,9 @@ caramba compile <manifest> [--print-plan]
 
 # Run full experiment pipeline
 caramba run <manifest> [--group <name>]
+
+# AI-assisted paper drafting
+caramba paper <manifest> [--output-dir <path>] [--update]
 ```
 
 ### Legacy Mode
@@ -123,6 +126,7 @@ A manifest declares the complete experiment configuration.
 | **runs**       | Mode, seed, steps, training config                 |
 | **verify**     | Post-run comparison tests (per run)                |
 | **benchmarks** | Perplexity, latency, memory benchmarks (per group) |
+| **paper**      | AI-assisted paper drafting configuration (optional)|
 
 ### Manifest Variables
 
@@ -165,12 +169,328 @@ Presets live in `caramba/config/presets/`:
 | Preset                      | Description                              |
 |-----------------------------|------------------------------------------|
 | `llama32_1b_dba.yml`        | Full Llama 3.2 1B → DBA upcycle          |
+| `llama32_1b_dba_paper.yml`  | DBA upcycle with AI paper drafting       |
 | `llama32_1b_dba_compare.yml`| Comparison experiment with verification  |
 | `llama32_1b_dba_eval.yml`   | Evaluation-focused experiment            |
 | `llama_block.yml`           | Single Llama block for testing           |
 | `dba.yml`                   | Minimal DBA configuration                |
 
 The compiler that lowers manifests into executable plans lives in `caramba/compiler/`.
+
+---
+
+## AI-Assisted Paper Drafting 📝
+
+Caramba includes an AI agent that can draft and update academic papers based on your experiments. This feature uses OpenAI's Agent SDK to coordinate paper writing with full access to experiment data, artifacts, and citation search.
+
+### Quick Start
+
+```bash
+# Draft a paper from a manifest with paper configuration
+caramba paper caramba/config/presets/llama32_1b_dba_paper.yml
+
+# Or run experiments with automatic paper drafting
+caramba run caramba/config/presets/llama32_1b_dba_paper.yml --group paper
+```
+
+### Paper Configuration
+
+Add a `paper` section to your manifest:
+
+```yaml
+paper:
+  enabled: true
+  title: "Your Paper Title"
+  authors:
+    - "Author Name"
+    - "Co-author Name"
+  paper_type: paper  # paper, technical_report, arxiv, blog_post
+
+  # Sections to include
+  sections:
+    - abstract
+    - introduction
+    - related_work
+    - methodology
+    - experiments
+    - results
+    - discussion
+    - conclusion
+
+  # Citation configuration
+  citations:
+    enabled: true
+    max_citations: 25
+    sources:
+      - arxiv
+      - semantic_scholar
+    prefer_recent: true
+    recent_years: 3
+
+  # Keywords for citation search
+  keywords:
+    - attention mechanism
+    - transformer efficiency
+    - KV-cache compression
+
+  # Model settings
+  model: gpt-4o
+  temperature: 0.7
+
+  # Versioning
+  auto_version: true
+  max_versions: 5
+
+  # Custom instructions for the agent
+  custom_instructions: |
+    Focus on the key contributions of this work.
+    Use proper mathematical notation.
+```
+
+### What the Agent Does
+
+1. **Creates new papers**: Generates a complete LaTeX document with all sections
+2. **Updates existing drafts**: Integrates new experiment results while preserving structure
+3. **Searches citations**: Queries arXiv and Semantic Scholar for relevant papers
+4. **Includes figures**: Copies experiment artifacts and generates \includegraphics commands
+5. **Manages references**: Creates and updates references.bib with proper BibTeX entries
+
+### Agent Tools
+
+The paper drafting agent has access to:
+
+| Tool | Description |
+|------|-------------|
+| `read_tex_file` | Read the current paper.tex |
+| `write_tex_file` | Write the complete paper |
+| `update_section` | Update a specific section |
+| `add_citation` | Add a BibTeX entry |
+| `search_arxiv` | Search arXiv for papers |
+| `search_semantic_scholar` | Search Semantic Scholar |
+| `get_experiment_manifest` | Read the experiment config |
+| `get_experiment_results` | Get benchmark results |
+| `list_artifacts` | List generated figures/data |
+| `include_figure` | Generate LaTeX figure code |
+| `get_paper_template` | Get a LaTeX template |
+
+### Output Structure
+
+```
+artifacts/
+└── experiment_name/
+    └── paper/
+        ├── paper.tex          # Main LaTeX file
+        ├── references.bib     # Bibliography
+        ├── figures/           # Copied artifacts
+        │   ├── summary.png
+        │   └── ...
+        └── versions/          # Backup versions
+            ├── paper_v001_20240101_120000.tex
+            └── ...
+```
+
+### Programmatic Usage
+
+```python
+from caramba.config.paper import PaperConfig
+from caramba.paper import PaperDrafter
+
+config = PaperConfig(
+    title="My Research Paper",
+    authors=["Your Name"],
+    keywords=["machine learning", "efficiency"],
+)
+
+drafter = PaperDrafter(config, output_dir="./my_paper")
+paper_path = drafter.draft_sync(
+    experiment_results={"accuracy": 0.95, "speedup": 2.3},
+    artifacts={"figure1.png": Path("./results/figure1.png")},
+)
+```
+
+---
+
+## AI Paper Review & Autonomous Research Loop 🔄
+
+Beyond paper drafting, caramba includes a complete autonomous research system with:
+
+1. **Paper Reviewer** - An AI agent that critiques papers and proposes improvements
+2. **Research Loop** - An autonomous cycle that writes, reviews, runs experiments, and iterates
+
+### The Research Loop
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                    AUTONOMOUS RESEARCH LOOP               │
+├───────────────────────────────────────────────────────────┤
+│                                                           │
+│    ┌──────────┐    ┌──────────┐    ┌─────────────────┐    │
+│    │  Write   │───▶│  Review  │───▶│ Style fixes OR  │    │
+│    │  Paper   │    │  Paper   │    │ New experiments │    │
+│    └────▲─────┘    └──────────┘    └────────┬────────┘    │
+│         │          ┌──────────────┐         │             │
+│         │          │   Generate   │         │             │
+│         │◀─────────│   Manifest   │◀────────┘             │
+│         │          └──────────────┘                       │
+│         │                 │                               │
+│         │          ┌──────▼───────┐                       │
+│         │          │     Run      │                       │
+│         └──────────│  Experiment  │                       │
+│                    └──────────────┘                       │
+│                                                           │
+│    Repeat until: approved OR max iterations reached       │
+└───────────────────────────────────────────────────────────┘
+```
+
+### Quick Start
+
+```bash
+# Review an existing paper
+caramba review manifest.yml --paper-dir ./artifacts/paper --strictness conference
+
+# Run the full autonomous research loop
+caramba research manifest.yml --max-iterations 5
+```
+
+### Review Configuration
+
+Add a `review` section to your manifest:
+
+```yaml
+review:
+  enabled: true
+  strictness: conference  # workshop, conference, journal, top_venue
+
+  # What to check
+  check_methodology: true
+  check_experiments: true
+  check_results: true
+  check_writing: true
+  check_citations: true
+
+  # Thresholds
+  min_score_to_approve: 7.0
+
+  # Experiment generation
+  auto_generate_experiments: true
+  max_proposed_experiments: 3
+
+  # Reviewer persona
+  reviewer_persona: senior_researcher  # or: methodology_expert, practitioner
+
+  # Model settings
+  model: gpt-5.2
+  temperature: 0.3
+```
+
+### Reviewer Personas
+
+| Persona | Focus |
+|---------|-------|
+| `senior_researcher` | Novelty, significance, complete evaluation, clear presentation |
+| `methodology_expert` | Experimental design, statistical rigor, reproducibility, ablations |
+| `practitioner` | Practical applicability, efficiency claims, deployment considerations |
+
+### Review Actions
+
+The reviewer can recommend different actions:
+
+| Action | Description |
+|--------|-------------|
+| `approve` | Paper is ready, no changes needed |
+| `style_fix` | Stylistic changes only, can be resolved with existing data |
+| `clarification` | Needs clarification, addressable without new experiments |
+| `new_experiment` | Requires new experiments to address gaps |
+| `major_revision` | Significant restructuring needed |
+
+### Experiment Proposal
+
+When the reviewer identifies gaps, it can:
+
+1. **Propose experiments** with rationale and hypothesis
+2. **Generate YAML manifests** that are directly runnable
+3. **Specify benchmarks** needed (perplexity, latency, memory)
+4. **Prioritize experiments** by importance
+
+Example proposed experiment manifest:
+
+```yaml
+# Generated by reviewer
+version: 1
+name: ablation_bottleneck_dim
+notes: "Test impact of varying bottleneck dimensions"
+
+groups:
+  - name: ablation_study
+    description: "Ablate semantic vs geometric bottleneck ratio"
+    data: "fineweb_100m.npy"
+    runs:
+      - id: sem64_geo320
+        # ... configuration
+    benchmarks:
+      - id: perplexity
+        # ... benchmark config
+```
+
+### Research Loop Configuration
+
+Configure the autonomous loop behavior:
+
+```python
+from caramba.paper import ResearchLoop, ResearchLoopConfig
+
+loop_config = ResearchLoopConfig(
+    max_iterations=5,              # Maximum write-review-experiment cycles
+    max_experiments_per_iteration=2,  # Experiments per iteration
+    max_total_experiments=5,       # Total experiments allowed
+    min_score_to_approve=7.5,      # Minimum score for approval
+    auto_approve_score=9.0,        # Auto-approve above this score
+    auto_run_experiments=True,     # Automatically run proposed experiments
+    save_all_versions=True,        # Keep all paper versions
+)
+
+loop = ResearchLoop(
+    paper_config=paper_config,
+    review_config=review_config,
+    loop_config=loop_config,
+)
+
+result = loop.run_sync(manifest=manifest, manifest_path=path)
+```
+
+### Research Loop Output
+
+```
+artifacts/
+└── experiment_name/
+    └── paper/
+        ├── paper.tex                    # Final paper
+        ├── references.bib               # Bibliography
+        ├── figures/                     # All figures
+        ├── review_iter1.json            # Review from iteration 1
+        ├── review_iter2.json            # Review from iteration 2
+        ├── proposed_ablation_study.yml  # Generated experiment manifest
+        ├── research_loop_result.json    # Final loop result
+        └── versions/                    # All paper versions
+            ├── paper_iter1_*.tex
+            ├── paper_iter2_*.tex
+            └── ...
+```
+
+### Reviewer Tools
+
+The reviewer agent has access to:
+
+| Tool | Description |
+|------|-------------|
+| `analyze_paper_structure` | Get section counts, word counts, figures, tables |
+| `check_experimental_claims` | Find claims that need supporting evidence |
+| `check_citation_coverage` | Verify citations for key topics |
+| `read_paper_section` | Read specific sections in detail |
+| `get_experiment_results_summary` | Review available experiment data |
+| `propose_experiment` | Formally propose a new experiment |
+| `generate_experiment_manifest` | Create runnable YAML manifest |
+| `submit_review` | Submit final review with score and recommendation |
 
 ---
 

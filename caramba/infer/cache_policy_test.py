@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from caramba.config.kvcache import KVCacheKind
@@ -91,7 +92,7 @@ def test_short_context_fidelity_fp16_vs_fp16_zero_delta() -> None:
 def test_long_context_fidelity_requires_long_prompt() -> None:
     model = _TinyTokenModel()
     tokens = torch.randint(0, 1000, (1, 16), dtype=torch.long)
-    try:
+    with pytest.raises(ValueError):
         _ = long_context_fidelity_check(
             model=model,
             token_ids=tokens,
@@ -102,9 +103,6 @@ def test_long_context_fidelity_requires_long_prompt() -> None:
             residual_len=0,
             prompt_len=32,
         )
-        assert False, "expected ValueError"
-    except ValueError:
-        pass
 
 
 def test_needle_gate_fp16_vs_fp16_zero_kl() -> None:

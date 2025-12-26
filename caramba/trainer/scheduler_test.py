@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
@@ -41,5 +42,5 @@ def test_constant_scheduler_keeps_lr() -> None:
     for _ in range(5):
         opt.step()
         sched.step()
-    assert float(opt.param_groups[0]["lr"]) == 1.0
+    assert float(opt.param_groups[0]["lr"]) == pytest.approx(1.0)
 

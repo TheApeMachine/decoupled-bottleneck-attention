@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,14 +74,18 @@ def load_plan(path: Path) -> RuntimePlan | None:
 
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
-    except OSError:
+    except OSError as e:
+        logger.debug("Failed to read plan file %s: %s", path, e)
         return None
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.debug("Failed to parse JSON from plan file %s: %s", path, e)
         return None
     if not isinstance(blob, dict):
+        logger.debug("Plan file %s does not contain a dict at top level", path)
         return None
     plan = blob.get("plan", None)
     if not isinstance(plan, dict):
+        logger.debug("Plan file %s missing 'plan' dict key", path)
         return None
     try:
         return RuntimePlan(
@@ -92,6 +99,7 @@ def load_plan(path: Path) -> RuntimePlan | None:
             compile=bool(plan["compile"]),
             compile_mode=str(plan["compile_mode"]),
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to construct RuntimePlan from %s: %s", path, e)
         return None
 
